@@ -1,0 +1,126 @@
+// ===========================================================================
+// routes/requests.js — إنشاء/متابعة/اعتماد الطلبات (محرّك الموافقات)
+//   POST   /api/requests                 إنشاء طلب (توافق createRequest)
+//   GET    /api/requests?scope=mine|inbox|all
+//   GET    /api/requests/:id
+//   POST   /api/requests/:id/approve     { note }
+//   POST   /api/requests/:id/reject      { note }
+//   POST   /api/requests/:id/comment     { text }
+//   POST   /api/requests/:id/cancel
+//   PATCH  /api/requests/:model/:id      (توافق updateRequest — تحديث عام)
+// ===========================================================================
+import { Router } from "express";
+import { requireAuth } from "../middleware/auth.js";
+import * as wf from "../lib/workflow.js";
+import { runAction } from "../odooActions.js";
+import { isTestMode } from "../lib/settings.js";
+import { badRequest, notFound } from "../lib/errors.js";
+
+const router = Router();
+router.use(requireAuth);
+
+// عند اكتمال طلب إجازة: أنشئ hr.leave في Odoo (مزامنة النتيجة)
+async function syncToOdoo(reqObj, user) {
+  if (reqObj.category === "leave" && reqObj.extra?.from && reqObj.extra?.to) {
+    const r = await runAction("leave.create", {
+      from: reqObj.extra.from, to: reqObj.extra.to,
+      leaveTypeId: reqObj.extra.leaveTypeId || 1, reason: reqObj.title,
+    }, { user });
+    return { model: "hr.leave", ...r.data };
+  }
+  // الطلبات المالية (سلفة/مصروف) → hr.expense عند الاعتماد
+  if (reqObj.category === "finance" && reqObj.extra?.amount) {
+    const r = await runAction("expense.create", {
+      title: reqObj.title, amount: reqObj.extra.amount, productId: reqObj.extra.productId,
+    }, { user });
+    return r.data;
+  }
+  return null; // بقية الأنواع تبقى في الـ backend (خطابات/عهد/تعاميم…) أو تُضاف لاحقًا
+}
+
+router.post("/requests", async (req, res, next) => {
+  try {
+    const p = req.body || {};
+    if (!p.service) throw badRequest("service مطلوب");
+    // Odoo مصدر الحقيقة: في الوضع الحقيقي يُنشأ الطلب في Odoo؛ في الاختبار محليًا
+    if (!isTestMode()) {
+      const { data } = await runAction("request.create", p, { user: req.user });
+      return res.status(201).json({ odooId: data.odooId, ...data });
+    }
+    const created = wf.createRequest({ user: req.user, payload: { ...p, idempotencyKey: undefined } });
+    res.status(201).json({ odooId: created.id, ...created });
+  } catch (e) { next(e); }
+});
+
+router.get("/requests", async (req, res, next) => {
+  try {
+    if (!isTestMode()) {
+      const { data } = await runAction("request.list", { scope: req.query.scope || "mine" }, { user: req.user });
+      return res.json(data);
+    }
+    res.json({ records: wf.listRequests(req.user, req.query.scope || "mine") });
+  } catch (e) { next(e); }
+});
+
+router.get("/requests/:id", (req, res, next) => {
+  const r = wf.getRequest(req.params.id);
+  if (!r) return next(notFound("الطلب غير موجود"));
+  res.json(r);
+});
+
+// أدوار مسموح لها بالاعتماد (تحقّق مبدئي في الـ backend قبل تنفيذ الانتقال في Odoo)
+const APPROVER_ROLES = ["manager", "hr", "finance", "it", "admin"];
+
+router.post("/requests/:id/approve", async (req, res, next) => {
+  try {
+    if (!isTestMode()) {
+      if (!APPROVER_ROLES.includes(req.user.role)) throw badRequest("لا تملك صلاحية الاعتماد");
+      const { data } = await runAction("request.approve", { id: Number(req.params.id) }, { user: req.user });
+      return res.json(data);
+    }
+    const r = await wf.approveRequest({
+      user: req.user, id: req.params.id, note: req.body?.note || "",
+      onSyncToOdoo: (obj) => syncToOdoo(obj, req.user),
+    });
+    res.json(r);
+  } catch (e) { next(e); }
+});
+
+router.post("/requests/:id/reject", async (req, res, next) => {
+  try {
+    if (!isTestMode()) {
+      if (!APPROVER_ROLES.includes(req.user.role)) throw badRequest("لا تملك صلاحية الرفض");
+      const { data } = await runAction("request.reject", { id: Number(req.params.id) }, { user: req.user });
+      return res.json(data);
+    }
+    res.json(wf.rejectRequest({ user: req.user, id: req.params.id, note: req.body?.note || "" }));
+  } catch (e) { next(e); }
+});
+
+router.post("/requests/:id/comment", (req, res, next) => {
+  try {
+    if (!req.body?.text) throw badRequest("text مطلوب");
+    res.json(wf.commentRequest({ user: req.user, id: req.params.id, text: req.body.text }));
+  } catch (e) { next(e); }
+});
+
+router.post("/requests/:id/cancel", (req, res, next) => {
+  try { res.json(wf.cancelRequest({ user: req.user, id: req.params.id })); }
+  catch (e) { next(e); }
+});
+
+// توافق updateRequest("model", id, values) — تحديث عام على الطلب المحلي
+router.patch("/requests/:model/:id", (req, res, next) => {
+  try {
+    const r = wf.getRequest(req.params.id);
+    if (!r) throw notFound("الطلب غير موجود");
+    // تحديث آمن للحقول المسموحة فقط
+    const values = req.body?.values || {};
+    const allowed = ["title", "desc", "priority", "extra"];
+    const patch = {};
+    for (const k of allowed) if (k in values) patch[k] = values[k];
+    res.json({ odooId: req.params.id, ...patch });
+  } catch (e) { next(e); }
+});
+
+export default router;

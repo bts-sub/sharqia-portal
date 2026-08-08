@@ -1,0 +1,17 @@
+# docker-compose لبوابة الموظفين — تعمل على البورت 4000 بجانب تطبيقك الآخر (3001)
+services:
+  portal:
+    build: .
+    container_name: sharqia-portal
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:4000:4000"   # يُنشَر خلف Nginx فقط (لا يُعرَض مباشرة للإنترنت)
+    volumes:
+      - ./data:/app/data        # حفظ المستخدمين والطلبات والإشعارات بشكل دائم
+      - ./public:/app/public    # ملف الواجهة index.html
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
