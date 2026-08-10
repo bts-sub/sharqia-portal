@@ -1,21 +1,20 @@
 // ===========================================================================
 // odooClient.js — عميل Odoo عبر JSON-RPC (/jsonrpc) مع كاش للـ uid
-//   - service=common, method=authenticate  → للحصول على uid ومصادقة الخادم
-//   - service=object,  method=execute_kw    → لكل عمليات القراءة/الكتابة
-//   يستخدم fetch المدمج في Node 18+. لا يُرسَل أي سرّ إلى الواجهة إطلاقًا.
+//   بيانات الاتصال تأتي من odooCreds (الواجهة أولًا ثم .env). لا يُرسَل أي سرّ للفرونت.
 // ===========================================================================
+import { getEffectiveCreds } from "./odooCreds.js";
 import { config } from "../config.js";
 
-let uidCache = { uid: null, at: 0 };
+let uidCache = { uid: null, at: 0, key: "" };
 let lastStatus = { connected: false, checkedAt: null, odooVersion: null, error: null };
 
 export function connectionStatus() {
   return { ...lastStatus };
 }
 
-async function rpc(service, method, args) {
-  if (!config.odoo.url) throw new Error("ODOO_URL غير مضبوط");
-  const res = await fetch(config.odoo.url + "/jsonrpc", {
+async function rpcTo(url, service, method, args) {
+  if (!url) throw new Error("عنوان خادم Odoo غير مضبوط");
+  const res = await fetch(url + "/jsonrpc", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: { service, method, args }, id: Date.now() }),
@@ -28,20 +27,21 @@ async function rpc(service, method, args) {
   return data.result;
 }
 
-// مصادقة مع كاش الـ uid لتفادي إعادة المصادقة في كل طلب (TTL من الإعدادات)
 export async function getUid(force = false) {
-  const fresh = uidCache.uid && Date.now() - uidCache.at < config.odoo.uidTtlMs;
+  const c = getEffectiveCreds();
+  const key = `${c.url}|${c.db}|${c.user}`;
+  const fresh = uidCache.uid && uidCache.key === key && Date.now() - uidCache.at < config.odoo.uidTtlMs;
   if (fresh && !force) return uidCache.uid;
-  const uid = await rpc("common", "authenticate", [config.odoo.db, config.odoo.user, config.odoo.password, {}]);
-  if (!uid) throw new Error("فشلت مصادقة مستخدم الخدمة مع Odoo (تحقق من ODOO_DB/USER/PASSWORD)");
-  uidCache = { uid, at: Date.now() };
+  const uid = await rpcTo(c.url, "common", "authenticate", [c.db, c.user, c.password, {}]);
+  if (!uid) throw new Error("فشلت مصادقة المستخدم مع Odoo (تحقق من قاعدة البيانات/المستخدم/كلمة المرور)");
+  uidCache = { uid, at: Date.now(), key };
   return uid;
 }
 
-// نداء موحّد لأي method على أي model
 export async function execKw(model, method, args = [], kwargs = {}) {
+  const c = getEffectiveCreds();
   const uid = await getUid();
-  return rpc("object", "execute_kw", [config.odoo.db, uid, config.odoo.password, model, method, args, kwargs]);
+  return rpcTo(c.url, "object", "execute_kw", [c.db, uid, c.password, model, method, args, kwargs]);
 }
 
 export const searchRead = (model, domain = [], fields = [], opts = {}) =>
@@ -51,10 +51,19 @@ export const write = (model, ids, values) => execKw(model, "write", [Array.isArr
 export const unlink = (model, ids) => execKw(model, "unlink", [Array.isArray(ids) ? ids : [ids]]);
 export const callButton = (model, method, ids, kwargs = {}) => execKw(model, method, [Array.isArray(ids) ? ids : [ids]], kwargs);
 
-// فحص الاتصال + إصدار Odoo (يحدّث lastStatus)
+// اختبار بيانات اتصال مُعيّنة (قبل الحفظ)
+export async function testCreds({ url, db, user, password }) {
+  const clean = (url || "").replace(/\/+$/, "");
+  const ver = await rpcTo(clean, "common", "version", []);
+  const uid = await rpcTo(clean, "common", "authenticate", [db, user, password, {}]);
+  if (!uid) throw new Error("بيانات الدخول غير صحيحة (لم تُقبل من Odoo)");
+  return { ok: true, uid, odooVersion: ver?.server_version || "unknown" };
+}
+
 export async function testConnection() {
   try {
-    const ver = await rpc("common", "version", []);
+    const c = getEffectiveCreds();
+    const ver = await rpcTo(c.url, "common", "version", []);
     await getUid(true);
     lastStatus = { connected: true, checkedAt: new Date().toISOString(), odooVersion: ver?.server_version || "unknown", error: null };
     return { ok: true, odooVersion: lastStatus.odooVersion };
@@ -64,4 +73,4 @@ export async function testConnection() {
   }
 }
 
-export function clearUidCache() { uidCache = { uid: null, at: 0 }; }
+export function clearUidCache() { uidCache = { uid: null, at: 0, key: "" }; }

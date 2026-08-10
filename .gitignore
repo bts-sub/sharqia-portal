@@ -5,3 +5,4 @@ data/*.json
 public/index.html
 npm-debug.log*
 .DS_Store
+data/odoo_creds.json

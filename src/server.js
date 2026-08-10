@@ -13,6 +13,7 @@ import { fileURLToPath } from "url";
 
 import { config, warnConfig } from "./config.js";
 import { seedAdminIfEmpty } from "./lib/users.js";
+import { isTestMode } from "./lib/settings.js";
 import { AppError } from "./lib/errors.js";
 
 import authRoutes from "./routes/auth.js";
@@ -52,7 +53,7 @@ app.use(cookieParser());
 if (config.corsOrigin) app.use(cors({ origin: config.corsOrigin, credentials: true }));
 
 // فحص صحّة
-app.get("/api/health", (req, res) => res.json({ ok: true, env: config.env, testMode: config.testMode }));
+app.get("/api/health", (req, res) => res.json({ ok: true, env: config.env, testMode: isTestMode() }));
 
 // المسارات
 app.use("/api", authRoutes);
