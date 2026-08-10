@@ -11,6 +11,14 @@ export function requireAuth(req, res, next) {
   const token = req.cookies?.[COOKIE_NAME];
   const payload = token ? verifyToken(token) : null;
   if (!payload) return next(unauthorized("الجلسة غير صالحة أو منتهية"));
+
+  // جلسة SaaS عبر أودو: المستخدم مُصادَق على أودو مباشرة (لا سجل محلي)
+  if (typeof payload.sub === "string" && payload.sub.startsWith("odoo:")) {
+    req.user = { id: payload.sub, login: payload.login, role: payload.role || "employee", source: "odoo" };
+    return next();
+  }
+
+  // جلسة محلية: تحقق من سجل المستخدم
   const user = findById(payload.sub);
   if (!user || user.status !== "active") return next(unauthorized("الحساب غير فعّال"));
   const { passwordHash, ...safe } = user;

@@ -1,28 +1,28 @@
 // ===========================================================================
-// routes/odoo.js — عمليات Odoo + إعداد الاتصال من الواجهة
-//   POST /api/odoo          { action, params }     (الطبقة الموحّدة — محمي)
-//   POST /api/odoo/test     { serverUrl, ... }     (فحص اتصال بدون حفظ)
-//   POST /api/odoo/connect  { serverUrl, database, login, password }
-//                            يختبر ويحفظ بيانات أودو ويطفّي وضع الاختبار
-//   POST /api/read/:model   { domain, fields }     (قراءة عامة محمية)
+// routes/odoo.js — عمليات Odoo + إعداد الاتصال
+//   POST /api/odoo/connect  { serverUrl?, database?, login, password }
+//     - لو أُرسلت بيانات خادم كاملة → تُختبر وتُحفظ (إعداد أولي من الواجهة)
+//     - لو أُرسل login/password فقط → يُصادَق على أودو ببيانات الخادم المحفوظة
+//   POST /api/odoo/test     فحص اتصال
+//   POST /api/odoo          { action, params }   (محمي)
+//   POST /api/read/:model   قراءة عامة (محمي)
 // ===========================================================================
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { runAction } from "../odooActions.js";
 import * as odoo from "../lib/odooClient.js";
 import { isTestMode, setTestMode } from "../lib/settings.js";
-import { saveCreds, maskCreds } from "../lib/odooCreds.js";
+import { saveCreds, maskCreds, getEffectiveCreds, hasStoredCreds } from "../lib/odooCreds.js";
+import { signToken, setSessionCookie } from "../lib/jwt.js";
 import { FX_VERSION } from "../fixtures.js";
 
 const router = Router();
 
-// ----- فحص اتصال بدون حفظ (عام، لأنه يُستخدم قبل الدخول من شاشة الإعداد) -----
-// يقبل serverUrl/database/login/password ويجرّبها فعليًا على أودو
-router.post("/odoo/test", async (req, res, next) => {
+// فحص اتصال (عام)
+router.post("/odoo/test", async (req, res) => {
   try {
     const { serverUrl, url, database, db, login, user, password } = req.body || {};
     const u = serverUrl || url;
-    // لو أرسلت بيانات كاملة: اختبرها فعليًا. وإلا افحص الاتصال الحالي.
     if (u && (login || user) && password) {
       const r = await odoo.testCreds({ url: u, db: database || db, user: login || user, password });
       return res.json({ ok: true, odooVersion: r.odooVersion });
@@ -35,30 +35,49 @@ router.post("/odoo/test", async (req, res, next) => {
   }
 });
 
-// ----- ربط أودو: يختبر البيانات، يحفظها، ويطفّي وضع الاختبار -----
+// ربط أودو / تسجيل دخول عبر أودو
 router.post("/odoo/connect", async (req, res) => {
   try {
     const { serverUrl, url, database, db, login, user, password } = req.body || {};
-    const u = serverUrl || url;
-    const dbName = database || db;
+    const sentUrl = serverUrl || url;
+    const sentDb = database || db;
     const userName = login || user;
-    if (!u || !dbName || !userName || !password) {
-      return res.status(400).json({ ok: false, error: "يرجى إدخال: عنوان الخادم، قاعدة البيانات، المستخدم، كلمة المرور" });
+
+    if (!userName || !password) {
+      return res.status(400).json({ ok: false, error: "يرجى إدخال المستخدم وكلمة المرور" });
     }
-    // 1) اختبر البيانات فعليًا على أودو
-    const r = await odoo.testCreds({ url: u, db: dbName, user: userName, password });
-    // 2) احفظها على الخادم (تصبح مصدر الاتصال الفعّال)
-    saveCreds({ url: u, db: dbName, user: userName, password });
-    // 3) اطفِ وضع الاختبار وامسح كاش الـ uid
+
+    // حدّد بيانات الخادم: المُرسَلة من الواجهة أولًا، وإلا المحفوظة على الخادم
+    const stored = getEffectiveCreds();
+    const finalUrl = sentUrl || stored.url;
+    const finalDb = sentDb || stored.db;
+
+    if (!finalUrl || !finalDb) {
+      return res.status(400).json({
+        ok: false,
+        error: "بيانات خادم أودو غير مضبوطة. اطلب من مدير النظام ضبط رابط الخادم وقاعدة البيانات أولًا.",
+      });
+    }
+
+    // اختبر البيانات فعليًا على أودو
+    const r = await odoo.testCreds({ url: finalUrl, db: finalDb, user: userName, password });
+
+    // احفظ بيانات الاتصال (تصبح مصدر الاتصال الفعّال) واطفِ وضع الاختبار
+    saveCreds({ url: finalUrl, db: finalDb, user: userName, password });
     setTestMode(false);
     odoo.clearUidCache();
+
+    // افتح جلسة للمستخدم (JWT cookie) — دوره يُحدَّد لاحقًا من أودو
+    const token = signToken({ sub: `odoo:${userName}`, role: "employee", login: userName });
+    setSessionCookie(res, token);
+
     res.json({ ok: true, uid: r.uid, odooVersion: r.odooVersion, connection: maskCreds() });
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message });
   }
 });
 
-// ----- ما يلي محمي بتسجيل الدخول -----
+// محمي بتسجيل الدخول
 router.use(requireAuth);
 
 router.post("/odoo", async (req, res, next) => {
