@@ -56,6 +56,7 @@ if (config.corsOrigin) app.use(cors({ origin: config.corsOrigin, credentials: tr
 app.get("/api/health", (req, res) => res.json({ ok: true, env: config.env, testMode: isTestMode() }));
 
 // المسارات
+app.use("/api", integrationRoutes);
 app.use("/api", authRoutes);
 app.use("/api", odooRoutes);
 app.use("/api", employeeRoutes);
@@ -65,7 +66,6 @@ app.use("/api", attachmentRoutes);
 app.use("/api", notificationRoutes);
 app.use("/api", settingsRoutes);
 app.use("/api", permissionRoutes);
-app.use("/api", integrationRoutes);
 
 // تقديم الواجهة (ملف HTML الواحد) — إن وُجد
 const frontendPath = path.resolve(__dirname, "..", config.frontendFile);
