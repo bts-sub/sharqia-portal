@@ -2,9 +2,18 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { readAll, writeAll } from "../lib/store.js";
+import { runAction } from "../odooActions.js";
 
 const router = Router();
 router.use(requireAuth);
+
+// التعاميم (من Odoo)
+router.get("/announcements", async (req, res, next) => {
+  try {
+    const { data } = await runAction("announcement.list", {}, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
 
 router.get("/notifications", (req, res) => {
   const mine = readAll("notifs").filter((n) => n.userId === req.user.id);

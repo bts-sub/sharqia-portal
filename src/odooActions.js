@@ -289,6 +289,29 @@ const actions = {
       { forceLiveErrors: true }
     );
   },
+
+  // ---- التعاميم (sharqia.portal.announcement) — تُقرأ من Odoo ----
+  async "announcement.list"(params, ctx) {
+    return withOdoo(
+      async () => {
+        const recs = await odoo.searchRead("sharqia.portal.announcement", [],
+          ["title", "body_html", "priority", "pinned", "publish_date", "require_ack"],
+          { limit: 50, order: "pinned desc, publish_date desc" });
+        return {
+          records: recs.map((r) => ({
+            id: r.id,
+            title: r.title,
+            body: (r.body_html || "").replace(/<[^>]*>/g, "").trim(),
+            priority: r.priority === "important" ? "مهم" : "عادي",
+            pinned: !!r.pinned,
+            requireAck: !!r.require_ack,
+            at: r.publish_date || null,
+          })),
+        };
+      },
+      async () => ({ records: [] })
+    );
+  },
 };
 
 export async function runAction(action, params = {}, ctx = {}) {
