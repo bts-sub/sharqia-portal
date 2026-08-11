@@ -40,9 +40,10 @@ app.use(helmet({
     directives: {
       "script-src": ["'self'", "'unsafe-inline'"],
       "connect-src": ["'self'"],
-      "img-src": ["'self'", "data:"],
-      "style-src": ["'self'", "'unsafe-inline'"],
-      "font-src": ["'self'", "data:", "https:"],
+      "img-src": ["'self'", "data:", "https:"],
+      "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      "style-src-elem": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      "font-src": ["'self'", "data:", "https://fonts.gstatic.com", "https:"],
     },
   },
   crossOriginEmbedderPolicy: false,
