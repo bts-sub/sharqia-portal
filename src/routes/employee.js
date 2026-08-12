@@ -9,8 +9,9 @@ router.use(requireAuth);
 // GET /api/employee/me → كائن الموظف بالشكل الذي تتوقّعه الواجهة
 router.get("/employee/me", async (req, res, next) => {
   try {
-    const { data } = await runAction("employee.me", {}, { user: req.user });
-    res.json(data);
+    const { data, source, warning } = await runAction("employee.me", {}, { user: req.user });
+    // source/warning يوضّحان مصدر البيانات (odoo / session-fallback / test)
+    res.json({ ...(data || {}), source, ...(warning ? { warning } : {}) });
   } catch (e) { next(e); }
 });
 

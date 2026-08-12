@@ -20,7 +20,8 @@ async function withOdoo(liveFn, fixtureFn, { forceLiveErrors = false } = {}) {
 }
 
 // حقول hr.employee التي نقرأها ونحوّلها لشكل الواجهة
-const EMP_FIELDS = ["name", "job_title", "department_id", "work_email", "work_phone", "parent_id", "employee_type"];
+const EMP_FIELDS = ["name", "job_title", "department_id", "work_email", "work_phone", "parent_id",
+  "employee_type", "work_location_id", "company_id"];
 
 // ---------------------------------------------------------------------------
 // تفاصيل الطلب: جمعها من الحمولة، وتحويلها لحقول Odoo
@@ -198,7 +199,8 @@ function mapEmployee(rec) {
     jobTitle: rec.job_title || "", dept: rec.department_id?.[1] || "",
     branch: rec.work_location_id?.[1] || "", empNo: String(rec.id),
     manager: rec.parent_id?.[1] || "", email: rec.work_email || "", phone: rec.work_phone || "",
-    contract: rec.employee_type || "", leaveBalance: rec.leaveBalance ?? null,
+    contract: rec.employee_type || "", company: rec.company_id?.[1] || "",
+    leaveBalance: rec.leaveBalance ?? null,
   };
 }
 
@@ -227,16 +229,30 @@ const actions = {
   },
 
   // بيانات الموظف الحالي (يُشتق من ربط المستخدم بموظف Odoo)
+  //   ⚠️ الهوية لا تُزوَّر أبدًا: عند تعذّر القراءة من Odoo نرجع اسم صاحب الجلسة
+  //   نفسه (المخزّن محليًا) لا موظفًا تجريبيًا باسم شخص آخر — إظهار اسم غريب
+  //   على شاشة «حسابي» أسوأ بكثير من إظهار بيانات ناقصة.
   async "employee.me"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
-    return withOdoo(
-      async () => {
-        if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo (odooEmployeeId)");
-        const recs = await odoo.searchRead("hr.employee", [["id", "=", empId]], EMP_FIELDS, { limit: 1 });
-        return mapEmployee(recs[0]);
-      },
-      async () => FX.FX_EMPLOYEE
-    );
+    const u = ctx?.user || {};
+    const fromSession = (reason) => ({
+      id: empId ? "E" + empId : (u.login ? "U" + u.login : ""),
+      odooId: empId || null,
+      name: u.name || u.login || "",
+      jobTitle: "", dept: "", branch: "", empNo: empId ? String(empId) : "",
+      manager: "", email: u.email || "", phone: "", contract: "",
+      company: "", leaveBalance: null,
+      unavailable: true, reason,
+    });
+    if (isTestMode()) return { source: "test", data: FX.FX_EMPLOYEE };
+    try {
+      if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo (odooEmployeeId فارغ) — اعمل «مزامنة» للمستخدم من Odoo");
+      const recs = await odoo.searchRead("hr.employee", [["id", "=", empId]], EMP_FIELDS, { limit: 1 });
+      if (!recs.length) throw new Error(`لا يوجد موظف بالرقم ${empId} في قاعدة بيانات Odoo الحالية — تحقّق من ربط المستخدم`);
+      return { source: "odoo", data: mapEmployee(recs[0]) };
+    } catch (e) {
+      return { source: "session-fallback", warning: e.message, data: fromSession(e.message) };
+    }
   },
 
   // رصيد الإجازات (allocation - taken) — مبسّط: مجموع الأيام المتبقية من hr.leave.allocation
