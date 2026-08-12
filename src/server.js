@@ -14,6 +14,8 @@ import { fileURLToPath } from "url";
 import { config, warnConfig } from "./config.js";
 import { seedAdminIfEmpty } from "./lib/users.js";
 import { isTestMode } from "./lib/settings.js";
+import { testConnection } from "./lib/odooClient.js";
+import { maskCreds } from "./lib/odooCreds.js";
 import { AppError } from "./lib/errors.js";
 
 import authRoutes from "./routes/auth.js";
@@ -57,6 +59,18 @@ if (config.corsOrigin) app.use(cors({ origin: config.corsOrigin, credentials: tr
 
 // فحص صحّة
 app.get("/api/health", (req, res) => res.json({ ok: true, env: config.env, testMode: isTestMode() }));
+
+// تشخيص الاتصال بأودو — عام ولا يكشف أي سرّ (يجيب على: لماذا "fetch failed"؟)
+app.get("/api/health/odoo", async (req, res) => {
+  const creds = maskCreds();   // { url, db, user, hasPassword, source }
+  if (isTestMode()) return res.json({ ok: false, testMode: true, reason: "وضع الاختبار مفعّل — لا يتم الاتصال بأودو", odoo: creds });
+  try {
+    const r = await testConnection();
+    res.json({ ok: true, testMode: false, odooVersion: r.odooVersion, odoo: creds });
+  } catch (e) {
+    res.status(503).json({ ok: false, testMode: false, error: e.message, odoo: creds });
+  }
+});
 
 // المسارات
 app.use("/api", integrationRoutes);

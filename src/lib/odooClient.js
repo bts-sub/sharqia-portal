@@ -12,13 +12,42 @@ export function connectionStatus() {
   return { ...lastStatus };
 }
 
+// أخطاء الشبكة من fetch تصل كـ "fetch failed" بلا أي دلالة — نترجمها لسبب واضح
+// (السبب الحقيقي مدفون في e.cause، وأشهر حالة: تغيّر رابط بِلد Odoo.sh)
+const NET_ERRORS = {
+  ENOTFOUND: "اسم النطاق غير موجود — تحقّق من ODOO_URL (روابط Odoo.sh للاستيدج تتغيّر مع كل بِلد)",
+  EAI_AGAIN: "تعذّر حلّ اسم النطاق (مشكلة DNS مؤقتة)",
+  ECONNREFUSED: "الخادم رفض الاتصال — تحقّق من العنوان والمنفذ",
+  ECONNRESET: "قُطع الاتصال من الخادم أثناء الطلب",
+  ETIMEDOUT: "انتهت مهلة الاتصال بالخادم",
+  UND_ERR_CONNECT_TIMEOUT: "انتهت مهلة الاتصال بالخادم",
+  CERT_HAS_EXPIRED: "شهادة SSL للخادم منتهية",
+  DEPTH_ZERO_SELF_SIGNED_CERT: "شهادة SSL موقّعة ذاتيًا وغير موثوقة",
+  UNABLE_TO_VERIFY_LEAF_SIGNATURE: "تعذّر التحقق من شهادة SSL للخادم",
+};
+
+function describeNetError(e, url) {
+  const code = e?.cause?.code || e?.code || "";
+  const why = NET_ERRORS[code] || e?.cause?.message || e?.message || "سبب غير معروف";
+  return new Error(`تعذّر الوصول إلى خادم Odoo (${url}): ${why}${code ? ` [${code}]` : ""}`);
+}
+
 async function rpcTo(url, service, method, args) {
   if (!url) throw new Error("عنوان خادم Odoo غير مضبوط");
-  const res = await fetch(url + "/jsonrpc", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: { service, method, args }, id: Date.now() }),
-  });
+  let res;
+  try {
+    res = await fetch(url + "/jsonrpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: { service, method, args }, id: Date.now() }),
+      signal: AbortSignal.timeout(config.odoo.timeoutMs || 20000),
+    });
+  } catch (e) {
+    throw describeNetError(e, url);
+  }
+  if (!res.ok && res.status >= 500) {
+    throw new Error(`خادم Odoo ردّ بخطأ ${res.status} — تحقّق من حالة البِلد على Odoo.sh`);
+  }
   const data = await res.json().catch(() => ({}));
   if (data.error) {
     const msg = data.error?.data?.message || data.error?.message || "خطأ من Odoo";

@@ -30,6 +30,7 @@ export const config = {
     user: process.env.ODOO_USER || "",
     password: process.env.ODOO_PASSWORD || "",
     uidTtlMs: int(process.env.ODOO_UID_TTL_MIN, 10) * 60 * 1000,
+    timeoutMs: int(process.env.ODOO_TIMEOUT_SEC, 20) * 1000,
   },
 
   testMode: bool(process.env.TEST_MODE, true),
