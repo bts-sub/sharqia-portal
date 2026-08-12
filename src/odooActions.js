@@ -217,9 +217,14 @@ const actions = {
   // ---- محرّك الطلبات في Odoo (sharqia.portal.request) — Odoo مصدر الحقيقة ----
   async "request.create"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
+    const ex = params.extra || {};
+    // استخرج التفاصيل من الحقول المباشرة أو من extra
+    const pick = (...keys) => { for (const k of keys) { if (params[k] != null && params[k] !== "") return params[k]; if (ex[k] != null && ex[k] !== "") return ex[k]; } return null; };
+    const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+    const toDate = (v) => { if (!v) return null; const d = new Date(v); return isNaN(d) ? null : d.toISOString().slice(0, 10); };
     return withOdoo(
       async () => {
-        const id = await odoo.create("sharqia.portal.request", {
+        const vals = {
           employee_id: empId,
           category: params.category || "general",
           service: params.service,
@@ -227,8 +232,27 @@ const actions = {
           description: params.desc || "",
           priority: { "عادية": "0", "متوسطة": "1", "عاجلة": "2" }[params.priority] || "0",
           confidential: !!params.confidential,
-          extra_json: JSON.stringify(params.extra || {}),
-        });
+          extra_json: JSON.stringify(ex),
+        };
+        // حقول تفصيلية منفصلة (تُملأ إن وُجدت)
+        const subType = pick("leaveType", "assetType", "letterType", "sub_type", "subType");
+        const dateFrom = toDate(pick("from", "dateFrom", "startDate", "date", "needDate"));
+        const dateTo = toDate(pick("to", "dateTo", "endDate", "returnDate"));
+        const days = toNum(pick("days", "duration"));
+        const amount = toNum(pick("amount"));
+        const quantity = toNum(pick("quantity", "copies"));
+        const purpose = pick("purpose", "to_entity", "to_entity", "delivery");
+        const reason = pick("reason");
+        if (subType != null) vals.sub_type = String(subType);
+        if (dateFrom) vals.date_from = dateFrom;
+        if (dateTo) vals.date_to = dateTo;
+        if (days != null) vals.days = days;
+        if (amount != null) vals.amount = amount;
+        if (quantity != null) vals.quantity = quantity;
+        if (purpose != null) vals.purpose = String(purpose);
+        if (reason != null) vals.reason = String(reason);
+
+        const id = await odoo.create("sharqia.portal.request", vals);
         const recs = await odoo.searchRead("sharqia.portal.request", [["id", "=", id]],
           ["name", "state", "category", "service", "title"], { limit: 1 });
         return { odooId: id, ...recs[0] };
