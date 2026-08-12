@@ -62,10 +62,19 @@ router.get("/requests", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get("/requests/:id", (req, res, next) => {
-  const r = wf.getRequest(req.params.id);
-  if (!r) return next(notFound("الطلب غير موجود"));
-  res.json(r);
+router.get("/requests/:id", async (req, res, next) => {
+  try {
+    // Odoo مصدر الحقيقة: اقرأ منه أولًا (يقبل رقم Odoo أو رقم الطلب النصي)
+    if (!isTestMode()) {
+      const { data } = await runAction("request.read",
+        { id: req.params.id, scope: APPROVER_ROLES.includes(req.user.role) ? "all" : "mine" },
+        { user: req.user });
+      if (data) return res.json(data);
+    }
+    const r = wf.getRequest(req.params.id);
+    if (!r) throw notFound("الطلب غير موجود");
+    res.json(r);
+  } catch (e) { next(e); }
 });
 
 // أدوار مسموح لها بالاعتماد (تحقّق مبدئي في الـ backend قبل تنفيذ الانتقال في Odoo)
