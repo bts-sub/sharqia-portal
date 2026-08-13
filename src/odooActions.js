@@ -191,11 +191,42 @@ async function requestReadFields() {
 }
 
 // سجل Odoo → شكل يفهمه التطبيق (extra جاهزة + تفاصيل معنونة)
+//   ⚠️ empId ضروري: شاشة «طلباتي» تفلتر بـ (request.empId === employee.id)
+//   وصيغة معرّف الموظف في التطبيق هي "E"+رقم أودو (انظر mapEmployee).
+//   بدونه تظهر الشاشة فارغة تمامًا مهما كان عدد الطلبات.
 function mapRequestRecord(rec) {
   let extra = {};
   try { extra = JSON.parse(rec.extra_json || "{}") || {}; } catch { extra = {}; }
   if (typeof extra !== "object" || Array.isArray(extra)) extra = {};
-  return { ...rec, extra, details: pickDetailValues(rec) };
+  const emp = Array.isArray(rec.employee_id) ? rec.employee_id : null;
+  return {
+    ...rec,
+    empId: emp ? "E" + emp[0] : "",
+    empName: emp ? emp[1] : "",
+    extra,
+    details: pickDetailValues(rec),
+  };
+}
+
+// أسماء حقول أي موديل — تُقرأ مرة وتُخزَّن. تُستخدم لتصفية قائمة حقول مطلوبة
+// على الموجود فعلًا، فاختلاف اسم حقل بين نسخ أودو لا يُفشل القراءة كلها.
+const modelFieldsCache = new Map();
+async function modelFieldNames(model) {
+  const hit = modelFieldsCache.get(model);
+  if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.names;
+  let names = null;
+  try {
+    const f = await odoo.execKw(model, "fields_get", [[], ["type"]]);
+    names = new Set(Object.keys(f || {}));
+  } catch { names = null; }
+  modelFieldsCache.set(model, { at: Date.now(), names });
+  return names;
+}
+async function availableFields(model, wanted) {
+  const names = await modelFieldNames(model);
+  if (!names) return wanted;
+  const ok = wanted.filter((f) => names.has(f));
+  return ok.length ? ok : wanted;
 }
 
 async function requestFieldNames() {
@@ -227,12 +258,19 @@ const LEAVE_STATE_AR = {
   validate: "معتمدة", refuse: "مرفوضة", cancel: "ملغاة",
 };
 function mapLeave(rec) {
+  const from = rec.request_date_from || rec.date_from;
+  const to = rec.request_date_to || rec.date_to;
+  const today = new Date().toISOString().slice(0, 10);
   return {
     id: "LV-" + String(rec.id).padStart(5, "0"), odooId: rec.id,
-    type: rec.holiday_status_id?.[1] || "", from: rec.request_date_from || rec.date_from,
-    to: rec.request_date_to || rec.date_to, days: rec.number_of_days,
-    status: LEAVE_STATE_AR[rec.state] || rec.state, approver: rec.manager_id?.[1] || "",
-    started: false,
+    type: rec.holiday_status_id?.[1] || "", from, to,
+    days: rec.number_of_days,
+    status: LEAVE_STATE_AR[rec.state] || rec.state,
+    approver: rec.first_approver_id?.[1] || rec.second_approver_id?.[1] || "",
+    // started: هل بدأت الإجازة فعلًا؟ كانت false دائمًا، فشاشة «قطع الإجازة
+    // والعودة للعمل» ترفض كل إجازة برسالة «لم تبدأ بعد» — تعطيل كامل للخدمة.
+    started: !!(from && from <= today),
+    ongoing: !!(from && to && from <= today && to >= today),
   };
 }
 
@@ -299,12 +337,49 @@ const actions = {
         if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo");
         const domain = [["employee_id", "=", empId]];
         if (params?.onlyApproved) domain.push(["state", "=", "validate"]);
+        // أسماء حقول المعتمِد تختلف بين نسخ أودو (manager_id في 17 →
+        // first_approver_id في 19). نطلب الموجود فعلًا فقط، فحقل واحد خاطئ
+        // كان يُفشل القراءة كلها ويترك سجل الإجازات فارغًا بلا سبب ظاهر.
         const recs = await odoo.searchRead("hr.leave", domain,
-          ["holiday_status_id", "request_date_from", "request_date_to", "number_of_days", "state", "manager_id"]);
+          await availableFields("hr.leave", ["holiday_status_id", "request_date_from", "request_date_to",
+            "number_of_days", "state", "first_approver_id", "second_approver_id"]),
+          { order: "request_date_from desc" });
         return { records: recs.map(mapLeave) };
       },
       async () => ({ records: params?.onlyApproved ? FX.FX_LEAVES.filter((l) => l.status === "معتمدة") : FX.FX_LEAVES }),
       { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  // هل الموظف في إجازة معتمدة اليوم؟ → { onLeave, type, from, to, daysLeft, returnOn }
+  async "leave.current"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const today = new Date().toISOString().slice(0, 10);
+    return withOdoo(
+      async () => {
+        if (!empId) return { onLeave: false };
+        const recs = await odoo.searchRead("hr.leave",
+          [["employee_id", "=", empId], ["state", "=", "validate"],
+            ["request_date_from", "<=", today], ["request_date_to", ">=", today]],
+          ["holiday_status_id", "request_date_from", "request_date_to", "number_of_days"],
+          { limit: 1, order: "request_date_from desc" });
+        if (!recs.length) return { onLeave: false };
+        const r = recs[0];
+        const to = r.request_date_to;
+        const daysLeft = Math.max(0, Math.round((new Date(to) - new Date(today)) / 86400000));
+        // أول يوم عمل بعد الإجازة
+        const back = new Date(to);
+        back.setDate(back.getDate() + 1);
+        return {
+          onLeave: true,
+          type: r.holiday_status_id?.[1] || "إجازة",
+          from: r.request_date_from, to,
+          days: r.number_of_days, daysLeft,
+          returnOn: back.toISOString().slice(0, 10),
+        };
+      },
+      async () => ({ onLeave: false }),
+      { emptyOnError: () => ({ onLeave: false, unavailable: true }) }
     );
   },
 

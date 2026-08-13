@@ -89,7 +89,7 @@ router.use(requireAuth);
 //   ومعاملات الهوية (scope/employeeId) تُحقن من الجلسة لا من العميل.
 // ---------------------------------------------------------------------------
 const SAFE_ACTIONS = new Set([
-  "connection.test", "employee.me", "leave.balance", "leave.list",
+  "connection.test", "employee.me", "leave.balance", "leave.list", "leave.current",
   "leaveType.list", "attendance.log", "announcement.list",
   "request.list", "request.read", "approval.available",
 ]);
@@ -147,6 +147,16 @@ router.post("/read/:model", async (req, res, next) => {
     if (!spec) return res.status(403).json({ error: `القراءة من «${model}» غير مسموحة` });
     const { domain = [], fields = [], limit, order, offset } = req.body || {};
     if (isTestMode()) return res.json({ records: [] });
+
+    // hr.leave: تمرّ عبر الـ action لتُحوَّل السجلات لشكل الواجهة
+    //   (from/to/type/days/status). كانت تُعاد خامًا من أودو
+    //   (request_date_from/state/holiday_status_id) فتقرأها شاشة سجل
+    //   الإجازات على أنها فارغة — ولهذا كان السجل لا يظهر إطلاقًا.
+    if (model === "hr.leave") {
+      const onlyApproved = JSON.stringify(domain || []).includes('"validate"');
+      const { data } = await runAction("leave.list", { onlyApproved }, { user: req.user });
+      return res.json({ records: data.records || [] });
+    }
 
     // فلتر الملكية يُفرض على الخادم دائمًا (الأدوار الإدارية ترى الكل)
     const isAdmin = ADMIN_ROLES.includes(req.user.role);
