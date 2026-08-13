@@ -806,8 +806,10 @@ const actions = {
         const fields = await requestReadFields();
         const recs = await odoo.searchRead("sharqia.portal.request", domain, fields,
           { order: "create_date desc", limit: 200 });
-        // التطبيق يقرأ التفاصيل من extra — نعيد بناءه من extra_json والأعمدة
-        return { records: recs.map(mapRequestRecord) };
+        // inbox=true تعلّم الطلب بأنه ينتظر إجراء صاحب الجلسة، فتعرضه شاشة
+        // المدير حتى لو تعذّر تحميل قائمة الفريق.
+        const inbox = params?.scope === "inbox";
+        return { records: recs.map((r) => ({ ...mapRequestRecord(r), inbox })) };
       },
       async () => ({ records: [] })
     );
