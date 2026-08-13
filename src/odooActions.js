@@ -422,6 +422,29 @@ const actions = {
     );
   },
 
+  // بيانات مستخدم التطبيق من Odoo (الدور والموظف المرتبط والحالة)
+  //   Odoo هو مصدر الحقيقة للدور؛ users.json نسخة تُحدَّث عند «المزامنة» اليدوية
+  //   فقط — فتغيير الدور في Odoo كان لا يصل الباك إند إطلاقًا حتى يضغط أحدهم زرًا.
+  async "portalUser.get"(params) {
+    const login = String(params?.login || "").trim();
+    return withOdoo(
+      async () => {
+        if (!login) return null;
+        const recs = await odoo.searchRead("sharqia.portal.user",
+          [["login", "=ilike", login]], ["login", "name", "role", "status", "employee_id"], { limit: 1 });
+        if (!recs.length) return null;
+        const r = recs[0];
+        return {
+          login: r.login, name: r.name || "", role: r.role || "employee",
+          status: r.status === "suspended" ? "suspended" : "active",
+          odooEmployeeId: r.employee_id?.[0] || null,
+        };
+      },
+      async () => null,
+      { emptyOnError: () => null }
+    );
+  },
+
   // فريق المدير المباشر: hr.employee حيث parent_id = موظف صاحب الجلسة.
   //   شاشات المدير (لوحة المدير، فريق القسم، طلبات الفريق) كانت كلها تقرأ
   //   مصفوفة موظفين تجريبية مثبّتة في الحزمة — هذا يجعلها بيانات أودو الحقيقية.

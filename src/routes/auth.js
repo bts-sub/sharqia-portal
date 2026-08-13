@@ -11,6 +11,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { loginLimiter } from "../middleware/rateLimit.js";
 import { badRequest, unauthorized } from "../lib/errors.js";
 import { notifyOdooUserEvent } from "../lib/odooBridge.js";
+import { syncRoleFromOdoo } from "../lib/roleSync.js";
 
 const router = Router();
 
@@ -18,9 +19,12 @@ router.post("/login", loginLimiter, async (req, res, next) => {
   try {
     const { login, password } = req.body || {};
     if (!login || !password) throw badRequest("يرجى إدخال اسم المستخدم وكلمة المرور");
-    const user = findByLogin(login);
+    let user = findByLogin(login);
     const ok = user && user.status === "active" && (await verifyPassword(user, password));
     if (!ok) throw unauthorized("بيانات الدخول غير صحيحة");
+    // الدور والموظف المرتبط من Odoo (مصدر الحقيقة) — يجعل ترقية موظف إلى
+    // «مدير قسم» في Odoo تسري عند أول دخول بلا انتظار مزامنة يدوية.
+    user = (await syncRoleFromOdoo(login, { force: true })) || user;
     touchLastLogin(user.id);
     notifyOdooUserEvent(user.login);   // بلا await — لا يؤخّر الرد ولا يُفشله
     const token = signToken({ sub: user.id, role: user.role, login: user.login });
@@ -35,8 +39,11 @@ router.post("/logout", (req, res) => {
   res.json({ ok: true });
 });
 
-router.get("/me", requireAuth, (req, res) => {
-  res.json({ user: req.user });
+router.get("/me", requireAuth, async (req, res) => {
+  // يوائم الدور مع Odoo مرة كل 5 دقائق كحدّ أقصى — فتغيير الدور يسري على
+  // الجلسة الجارية عند أول تحديث للتطبيق، بلا إعادة تسجيل دخول.
+  const fresh = await syncRoleFromOdoo(req.user.login);
+  res.json({ user: fresh || req.user });
 });
 
 export default router;
