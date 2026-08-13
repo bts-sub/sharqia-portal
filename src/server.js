@@ -76,7 +76,8 @@ app.use((req, res, next) => {
 if (config.corsOrigin) app.use(cors({ origin: config.corsOrigin, credentials: true }));
 
 // فحص صحّة
-app.get("/api/health", (req, res) => res.json({ ok: true, env: config.env, testMode: isTestMode() }));
+app.get("/api/health", (req, res) =>
+  res.json({ ok: true, version: config.version, env: config.env, testMode: isTestMode() }));
 
 // تشخيص الاتصال بأودو.
 //   عام: حالة فقط — تكفي لمراقبة التشغيل (UptimeRobot) ولا تكشف شيئًا.
@@ -131,7 +132,7 @@ async function start() {
   warnConfig();
   await seedAdminIfEmpty();
   const server = app.listen(config.port, () => {
-    console.log(`✅ خادم بوابة «بيت العباءة الشرقية» يعمل على المنفذ ${config.port} — الوضع: ${config.testMode ? "اختبار (fixtures)" : "Odoo مباشر"}`);
+    console.log(`✅ خادم بوابة «بيت العباءة الشرقية» v${config.version} يعمل على المنفذ ${config.port} — الوضع: ${config.testMode ? "اختبار (fixtures)" : "Odoo مباشر"}`);
   });
 
   // إيقاف نظيف: ينهي الطلبات الجارية بدل قتلها في منتصف الكتابة على القرص

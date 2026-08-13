@@ -2,13 +2,24 @@
 // config.js — تحميل كل الإعدادات من متغيرات البيئة في مكان واحد
 // ===========================================================================
 import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 dotenv.config();
+
+// الإصدار من package.json — يُعاد في /api/health للتأكد من النسخة المنشورة فعلًا
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+let appVersion = "0.0.0";
+try {
+  appVersion = JSON.parse(fs.readFileSync(path.resolve(__dirname, "..", "package.json"), "utf8")).version || appVersion;
+} catch { /* لا يمنع الإقلاع */ }
 
 const bool = (v, def = false) =>
   v === undefined ? def : ["1", "true", "yes", "on"].includes(String(v).toLowerCase());
 const int = (v, def) => (v === undefined || v === "" ? def : parseInt(v, 10));
 
 export const config = {
+  version: appVersion,
   port: int(process.env.PORT, 4000),
   env: process.env.NODE_ENV || "production",
   isProd: (process.env.NODE_ENV || "production") === "production",
