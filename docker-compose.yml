@@ -15,3 +15,12 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    # السيرفر 512MB ويستضيف تطبيقًا آخر: بلا سقف قد تلتهم البوابة الذاكرة
+    # فيقتل نظام التشغيل الجارَ بدل المتسبّب.
+    mem_limit: 320m
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=256"
+    init: true            # معالج إشارات صحيح — إيقاف نظيف بدل قتل قسري بعد 10 ثوانٍ
+    logging:              # بلا سقف تنمو سجلات Docker حتى يمتلئ القرص فيسقط التطبيقان
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }

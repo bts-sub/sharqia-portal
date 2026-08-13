@@ -9,14 +9,31 @@ import { isTestMode } from "./lib/settings.js";
 import * as FX from "./fixtures.js";
 
 // غلاف موحّد: يجرّب Odoo، ويسقط لبيانات الاختبار عند التفعيل اليدوي أو فشل الاتصال
-async function withOdoo(liveFn, fixtureFn, { forceLiveErrors = false } = {}) {
+//   forceLiveErrors: عمليات الكتابة الحسّاسة — لا تُخفِ الخطأ خلف fixtures.
+//   emptyOnError:    بيانات يراها الموظف كحقيقة (رصيد، إجازات، تعاميم) — عند الفشل
+//                    نرجع فراغًا صريحًا مع تحذير، لا أرقامًا تجريبية يصدّقها.
+//                    (fixtures تبقى كاملة في وضع الاختبار — لم تُمسّ ميزة العرض التجريبي.)
+async function withOdoo(liveFn, fixtureFn, { forceLiveErrors = false, emptyOnError = null } = {}) {
   if (isTestMode()) return { source: "test", data: await fixtureFn() };
   try {
     return { source: "odoo", data: await liveFn() };
   } catch (e) {
-    if (forceLiveErrors) throw e;            // عمليات الكتابة الحسّاسة: لا تُخفِ الخطأ خلف fixtures
+    if (forceLiveErrors) throw e;
+    if (emptyOnError) {
+      console.warn("⚠️ تعذّرت قراءة بيانات حقيقية من Odoo:", e.message);
+      return { source: "unavailable", data: emptyOnError(), warning: e.message };
+    }
     return { source: "test-fallback", data: await fixtureFn(), warning: e.message };
   }
+}
+
+// معرّف الموظف قد يصل من الواجهة بصيغة "E42" — نحوّله لرقم Odoo
+// (بدونه كان domain يحمل نصًّا فلا يُرجع أودو أي إجازة أبدًا → شاشتا الإجازات فارغتان)
+function toEmpId(v) {
+  if (v == null || v === "") return null;
+  if (typeof v === "number") return v;
+  const m = String(v).match(/\d+/);
+  return m ? Number(m[0]) : null;
 }
 
 // حقول hr.employee التي نقرأها ونحوّلها لشكل الواجهة
@@ -260,6 +277,7 @@ const actions = {
     const empId = ctx?.user?.odooEmployeeId;
     return withOdoo(
       async () => {
+        if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo");
         const allocs = await odoo.searchRead("hr.leave.allocation",
           [["employee_id", "=", empId], ["state", "=", "validate"]], ["number_of_days"]);
         const taken = await odoo.searchRead("hr.leave",
@@ -268,22 +286,25 @@ const actions = {
         const used = taken.reduce((s, a) => s + (a.number_of_days || 0), 0);
         return { balance: Math.max(0, allocated - used) };
       },
-      async () => ({ balance: FX.FX_LEAVE_BALANCE })
+      async () => ({ balance: FX.FX_LEAVE_BALANCE }),
+      { emptyOnError: () => ({ balance: null, unavailable: true }) }
     );
   },
 
   // إجازات الموظف — كل الحالات أو المعتمدة فقط (onlyApproved)
   async "leave.list"(params, ctx) {
-    const empId = params?.employeeId || ctx?.user?.odooEmployeeId;
-    const domain = [["employee_id", "=", empId]];
-    if (params?.onlyApproved) domain.push(["state", "=", "validate"]);
+    const empId = toEmpId(params?.employeeId) || ctx?.user?.odooEmployeeId;
     return withOdoo(
       async () => {
+        if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo");
+        const domain = [["employee_id", "=", empId]];
+        if (params?.onlyApproved) domain.push(["state", "=", "validate"]);
         const recs = await odoo.searchRead("hr.leave", domain,
           ["holiday_status_id", "request_date_from", "request_date_to", "number_of_days", "state", "manager_id"]);
         return { records: recs.map(mapLeave) };
       },
-      async () => ({ records: params?.onlyApproved ? FX.FX_LEAVES.filter((l) => l.status === "معتمدة") : FX.FX_LEAVES })
+      async () => ({ records: params?.onlyApproved ? FX.FX_LEAVES.filter((l) => l.status === "معتمدة") : FX.FX_LEAVES }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
     );
   },
 
@@ -319,11 +340,13 @@ const actions = {
     const empId = ctx?.user?.odooEmployeeId;
     return withOdoo(
       async () => {
+        if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo");
         const recs = await odoo.searchRead("hr.attendance",
           [["employee_id", "=", empId]], ["check_in", "check_out"], { limit: 30, order: "check_in desc" });
         return { records: recs };
       },
-      async () => ({ records: FX.FX_ATTENDANCE })
+      async () => ({ records: FX.FX_ATTENDANCE }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
     );
   },
 
@@ -565,7 +588,8 @@ const actions = {
           })),
         };
       },
-      async () => ({ records: [] })
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
     );
   },
 };

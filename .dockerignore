@@ -1,0 +1,17 @@
+# ما لا يدخل صورة Docker إطلاقًا.
+# بدون هذا الملف كان `COPY . .` يخبز داخل طبقات الصورة:
+#   .env      → JWT_SECRET و INTEGRATION_TOKEN و ODOO_PASSWORD
+#   data/     → هاشات كلمات مرور الموظفين و odoo_creds.json (كلمة مرور أودو نصًّا)
+# وأي شخص يملك الصورة يستخرجها بـ `docker history` أو بفكّ الطبقات.
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+data
+node_modules
+npm-debug.log*
+*.md
+!README.md
+docs
+.DS_Store

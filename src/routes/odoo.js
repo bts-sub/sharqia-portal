@@ -80,21 +80,88 @@ router.post("/odoo/connect", async (req, res) => {
 // محمي بتسجيل الدخول
 router.use(requireAuth);
 
+// ---------------------------------------------------------------------------
+// إجراءات Odoo العامة — بقائمة سماح
+//   كان هذا المسار ينفّذ أي action بأي معاملات لأي موظف مسجّل، فيتيح مثلًا
+//   request.approve لاعتماد طلب الغير أو request.list بـ scope=all لقراءة
+//   طلبات الشركة كلها — متجاوزًا كل فحوص الأدوار في المسارات المتخصّصة.
+//   الحل: قائمة إجراءات قراءة آمنة للجميع، وقائمة أوسع للأدوار الإدارية،
+//   ومعاملات الهوية (scope/employeeId) تُحقن من الجلسة لا من العميل.
+// ---------------------------------------------------------------------------
+const SAFE_ACTIONS = new Set([
+  "connection.test", "employee.me", "leave.balance", "leave.list",
+  "leaveType.list", "attendance.log", "announcement.list",
+  "request.list", "request.read", "approval.available",
+]);
+// إجراءات إدارية إضافية (تتطلب دورًا إداريًا)
+const ADMIN_ACTIONS = new Set([...SAFE_ACTIONS,
+  "request.create", "request.approve", "request.reject",
+  "attachment.upload", "leave.create", "expense.create", "approval.create",
+  "attendance.punch",
+]);
+const ADMIN_ROLES = ["admin", "hr"];
+// معاملات لا يُسمح للعميل بتحديدها إطلاقًا — تُشتق من الجلسة
+const CLIENT_FORBIDDEN_PARAMS = ["employeeId", "scope"];
+
 router.post("/odoo", async (req, res, next) => {
   try {
     const { action, params } = req.body || {};
     if (!action) return res.status(400).json({ error: "action مطلوب" });
-    const result = await runAction(action, params || {}, { user: req.user });
+    const isAdmin = ADMIN_ROLES.includes(req.user.role);
+    const allowed = isAdmin ? ADMIN_ACTIONS : SAFE_ACTIONS;
+    if (!allowed.has(action)) {
+      return res.status(403).json({ error: `الإجراء «${action}» غير مسموح لدورك` });
+    }
+    // نظّف معاملات الهوية؛ الأدوار الإدارية وحدها يمكنها طلب scope موسّع
+    const clean = { ...(params || {}) };
+    for (const k of CLIENT_FORBIDDEN_PARAMS) delete clean[k];
+    if (isAdmin && params?.scope === "all") clean.scope = "all";
+    const result = await runAction(action, clean, { user: req.user });
     res.json(result);
   } catch (e) { next(e); }
 });
 
+// ---------------------------------------------------------------------------
+// قراءة عامة من Odoo — بقائمة موديلات وحقول مسموحة وفلتر ملكية إجباري
+//   كان يقبل أي موديل وأي domain بصلاحيات حساب الخدمة، فيتيح قراءة
+//   hr.contract (الرواتب) أو ir.config_parameter (مفتاح التكامل).
+// ---------------------------------------------------------------------------
+const READABLE_MODELS = {
+  "hr.leave": {
+    fields: ["holiday_status_id", "request_date_from", "request_date_to",
+      "number_of_days", "state", "manager_id", "employee_id"],
+    // الموظف يرى إجازاته فقط؛ الأدوار الإدارية ترى الكل
+    ownDomain: (user) => [["employee_id", "=", user.odooEmployeeId]],
+  },
+  "hr.leave.type": { fields: ["name"], ownDomain: () => [] },
+  "hr.attendance": {
+    fields: ["check_in", "check_out", "employee_id"],
+    ownDomain: (user) => [["employee_id", "=", user.odooEmployeeId]],
+  },
+};
+
 router.post("/read/:model", async (req, res, next) => {
   try {
     const { model } = req.params;
+    const spec = READABLE_MODELS[model];
+    if (!spec) return res.status(403).json({ error: `القراءة من «${model}» غير مسموحة` });
     const { domain = [], fields = [], limit, order, offset } = req.body || {};
     if (isTestMode()) return res.json({ records: [] });
-    const records = await odoo.searchRead(model, domain, fields, { limit, order, offset });
+
+    // فلتر الملكية يُفرض على الخادم دائمًا (الأدوار الإدارية ترى الكل)
+    const isAdmin = ADMIN_ROLES.includes(req.user.role);
+    const own = isAdmin ? [] : spec.ownDomain(req.user);
+    if (!isAdmin && !req.user.odooEmployeeId) return res.json({ records: [] });
+
+    // من domain العميل نقبل فقط الشروط التي لا تمسّ هوية الموظف
+    const safeClient = (Array.isArray(domain) ? domain : []).filter(
+      (c) => Array.isArray(c) && typeof c[0] === "string" && c[0] !== "employee_id"
+    );
+    const askFields = (Array.isArray(fields) ? fields : []).filter((f) => spec.fields.includes(f));
+
+    const records = await odoo.searchRead(model, [...own, ...safeClient],
+      askFields.length ? askFields : spec.fields,
+      { limit: Math.min(Number(limit) || 200, 500), order, offset });
     res.json({ records });
   } catch (e) { next(e); }
 });

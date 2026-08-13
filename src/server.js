@@ -55,20 +55,45 @@ app.use(helmet({
 app.use(compression());
 app.use(express.json({ limit: "12mb" }));   // يسمح بالمرفقات base64
 app.use(cookieParser());
+
+// سجل وصول مختصر: سطر واحد لكل طلب. بدونه لا يوجد أي أثر حين يقول موظف
+// «طلبي لم يصل». لا تُسجَّل أجسام الطلبات إطلاقًا (فيها base64 وكلمات مرور).
+app.use((req, res, next) => {
+  if (req.path === "/api/health") return next();
+  const t0 = Date.now();
+  res.on("finish", () => {
+    if (!req.path.startsWith("/api/")) return;   // الملفات الساكنة لا تُسجَّل
+    const line = {
+      t: new Date().toISOString(), m: req.method, p: req.path,
+      s: res.statusCode, ms: Date.now() - t0,
+      u: req.user?.login || "-", ip: req.ip,
+    };
+    if (res.statusCode >= 400) console.warn("⚠️", JSON.stringify(line));
+    else console.log(JSON.stringify(line));
+  });
+  next();
+});
 if (config.corsOrigin) app.use(cors({ origin: config.corsOrigin, credentials: true }));
 
 // فحص صحّة
 app.get("/api/health", (req, res) => res.json({ ok: true, env: config.env, testMode: isTestMode() }));
 
-// تشخيص الاتصال بأودو — عام ولا يكشف أي سرّ (يجيب على: لماذا "fetch failed"؟)
+// تشخيص الاتصال بأودو.
+//   عام: حالة فقط — تكفي لمراقبة التشغيل (UptimeRobot) ولا تكشف شيئًا.
+//   بالتفاصيل: للأدمن فقط عبر ?key=<INTEGRATION_TOKEN> — الرابط واسم قاعدة
+//   البيانات واسم حساب الخدمة ثلاثة أرباع بيانات الدخول إلى Odoo، ونشرها
+//   للعامة يحوّل أي كلمة مرور ضعيفة إلى اختراق كامل.
 app.get("/api/health/odoo", async (req, res) => {
-  const creds = maskCreds();   // { url, db, user, hasPassword, source }
-  if (isTestMode()) return res.json({ ok: false, testMode: true, reason: "وضع الاختبار مفعّل — لا يتم الاتصال بأودو", odoo: creds });
+  const detailed = !!config.integrationToken && req.query.key === config.integrationToken;
+  const detail = detailed ? { odoo: maskCreds() } : {};
+  if (isTestMode()) {
+    return res.json({ ok: false, testMode: true, reason: "وضع الاختبار مفعّل — لا يتم الاتصال بأودو", ...detail });
+  }
   try {
     const r = await testConnection();
-    res.json({ ok: true, testMode: false, odooVersion: r.odooVersion, odoo: creds });
+    res.json({ ok: true, testMode: false, odooVersion: r.odooVersion, ...detail });
   } catch (e) {
-    res.status(503).json({ ok: false, testMode: false, error: e.message, odoo: creds });
+    res.status(503).json({ ok: false, testMode: false, ...(detailed ? { error: e.message } : {}), ...detail });
   }
 });
 
@@ -105,8 +130,19 @@ app.use((err, req, res, next) => {
 async function start() {
   warnConfig();
   await seedAdminIfEmpty();
-  app.listen(config.port, () => {
+  const server = app.listen(config.port, () => {
     console.log(`✅ خادم بوابة «بيت العباءة الشرقية» يعمل على المنفذ ${config.port} — الوضع: ${config.testMode ? "اختبار (fixtures)" : "Odoo مباشر"}`);
   });
+
+  // إيقاف نظيف: ينهي الطلبات الجارية بدل قتلها في منتصف الكتابة على القرص
+  for (const sig of ["SIGTERM", "SIGINT"]) {
+    process.on(sig, () => {
+      console.log(`↩️ استلمت ${sig} — إيقاف نظيف…`);
+      server.close(() => process.exit(0));
+      setTimeout(() => process.exit(0), 8000).unref();
+    });
+  }
+  // لا تُسقط العملية بصمت على وعد مرفوض غير ملتقَط
+  process.on("unhandledRejection", (e) => console.error("❌ وعد مرفوض غير ملتقَط:", e));
 }
 start();

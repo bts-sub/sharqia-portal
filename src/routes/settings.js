@@ -16,9 +16,12 @@ const router = Router();
 router.use(requireAuth);
 
 router.get("/settings", (req, res) => {
+  // بيانات خادم Odoo (الرابط/القاعدة/المستخدم) لا تُعرض إلا لمن يديرها فعلًا —
+  // شاشة الإعدادات محصورة بالأدمن أصلًا، وبقية الأدوار لا تحتاجها.
+  const isAdmin = ["admin", "hr"].includes(req.user.role);
   res.json({
     ...getSettings(),
-    odoo: maskCreds(), // { url, db, user, hasPassword, source } — بدون باسورد
+    ...(isAdmin ? { odoo: maskCreds() } : {}), // بدون باسورد في كل الأحوال
     connection: isTestMode()
       ? { connected: false, mode: "test", odooVersion: FX_VERSION }
       : { ...connectionStatus(), mode: "odoo" },

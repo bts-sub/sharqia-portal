@@ -52,13 +52,21 @@ router.post("/requests", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// النطاق يُشتق من الدور: الموظف يرى طلباته فقط مهما أرسل في الاستعلام،
+// والأدوار الإدارية وحدها يمكنها طلب scope=all/inbox.
+function allowedScope(user, asked) {
+  const wide = ["hr", "admin", "manager", "finance", "it"].includes(user.role);
+  return wide ? (asked || "mine") : "mine";
+}
+
 router.get("/requests", async (req, res, next) => {
   try {
+    const scope = allowedScope(req.user, req.query.scope);
     if (!isTestMode()) {
-      const { data } = await runAction("request.list", { scope: req.query.scope || "mine" }, { user: req.user });
+      const { data } = await runAction("request.list", { scope }, { user: req.user });
       return res.json(data);
     }
-    res.json({ records: wf.listRequests(req.user, req.query.scope || "mine") });
+    res.json({ records: wf.listRequests(req.user, scope) });
   } catch (e) { next(e); }
 });
 
@@ -67,7 +75,7 @@ router.get("/requests/:id", async (req, res, next) => {
     // Odoo مصدر الحقيقة: اقرأ منه أولًا (يقبل رقم Odoo أو رقم الطلب النصي)
     if (!isTestMode()) {
       const { data } = await runAction("request.read",
-        { id: req.params.id, scope: APPROVER_ROLES.includes(req.user.role) ? "all" : "mine" },
+        { id: req.params.id, scope: allowedScope(req.user, "all") },
         { user: req.user });
       if (data) return res.json(data);
     }

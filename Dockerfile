@@ -4,8 +4,11 @@ FROM node:20-alpine
 WORKDIR /app
 
 # تثبيت التبعيات أولاً (استغلال طبقات الكاش)
-COPY package.json ./
-RUN npm install --omit=dev
+#   npm ci مع package-lock: كل بناء مطابق للسابق بالضبط. npm install وحده
+#   كان يتجاهل القفل فيجلب إصدارات أحدث بصمت — بناءان من نفس الكوميت قد
+#   يختلفان، فيصعب تفسير عطل يظهر بعد النشر.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
 # نسخ الكود
 COPY . .

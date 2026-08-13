@@ -15,12 +15,14 @@ router.get("/leave/balance", async (req, res, next) => {
 });
 
 // الواجهة تنادي POST /api/read/hr.leave بـ domain — نوفّر أيضًا مسارًا صريحًا أوضح:
-// GET /api/leaves?onlyApproved=1&employeeId=E1042 → { records: [...] }
+// GET /api/leaves?onlyApproved=1[&employeeId=42]  → { records: [...] }
+//   employeeId يُقبل من الأدوار الإدارية فقط؛ الموظف يرى إجازاته هو مهما أرسل.
 router.get("/leaves", async (req, res, next) => {
   try {
     const onlyApproved = ["1", "true"].includes(String(req.query.onlyApproved));
-    const { data } = await runAction("leave.list",
-      { onlyApproved, employeeId: req.query.employeeId }, { user: req.user });
+    const wide = ["hr", "admin", "manager"].includes(req.user.role);
+    const employeeId = wide && req.query.employeeId ? req.query.employeeId : undefined;
+    const { data } = await runAction("leave.list", { onlyApproved, employeeId }, { user: req.user });
     res.json(data);
   } catch (e) { next(e); }
 });
