@@ -6,6 +6,7 @@
 // ===========================================================================
 import * as odoo from "./lib/odooClient.js";
 import { isTestMode } from "./lib/settings.js";
+import { nearestLocation } from "./lib/geo.js";
 import * as FX from "./fixtures.js";
 
 // غلاف موحّد: يجرّب Odoo، ويسقط لبيانات الاختبار عند التفعيل اليدوي أو فشل الاتصال
@@ -254,6 +255,19 @@ function mapEmployee(rec) {
   };
 }
 
+// حالات الطلب المغلقة — لا تظهر في صندوق وارد أحد
+const CLOSED_STATES = ["done", "rejected", "cancelled"];
+
+// مسارات الاعتماد — مطابقة لـ FLOW في الأدون (models/portal_request.py)
+// وتُستخدم لفرض المرحلة على الخادم قبل تمرير الاعتماد إلى Odoo.
+export const FLOW = {
+  leave: ["manager", "hr", "done"], attend: ["manager", "hr", "done"],
+  finance: ["manager", "hr", "finance", "done"], custody: ["manager", "it", "done"],
+  transfer: ["manager", "hr", "done"], personal: ["hr", "done"], letters: ["hr", "done"],
+  training: ["manager", "hr", "done"], insurance: ["hr", "done"], complaint: ["hr", "done"],
+  offboard: ["manager", "hr", "done"], general: ["manager", "hr", "done"],
+};
+
 // حالات العهدة (hr.custody من Open HRMS + موديل الأدون) → نص عربي
 const CUSTODY_STATE_AR = {
   draft: "مسودة", to_approve: "بانتظار الاعتماد", approved: "مُستلَمة",
@@ -408,6 +422,57 @@ const actions = {
     );
   },
 
+  // فريق المدير المباشر: hr.employee حيث parent_id = موظف صاحب الجلسة.
+  //   شاشات المدير (لوحة المدير، فريق القسم، طلبات الفريق) كانت كلها تقرأ
+  //   مصفوفة موظفين تجريبية مثبّتة في الحزمة — هذا يجعلها بيانات أودو الحقيقية.
+  async "team.list"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const TEAM_FIELDS = EMP_FIELDS.filter((f) => f !== "image_128"); // الصور تُثقل الرد
+    return withOdoo(
+      async () => {
+        if (!empId) return { records: [] };
+        const recs = await odoo.searchRead("hr.employee",
+          [["parent_id", "=", empId]], TEAM_FIELDS, { limit: 200 });
+        if (!recs.length) return { records: [] };
+        const ids = recs.map((r) => r.id);
+        const today = new Date().toISOString().slice(0, 10);
+        let present = new Set(), onLeave = new Set();
+        const open = {};
+        // كل مصدر إضافي في try مستقل: لا تسقط شاشة الفريق لأجل تعذّر الحضور
+        try {
+          const att = await odoo.searchRead("hr.attendance",
+            [["employee_id", "in", ids], ["check_in", ">=", `${today} 00:00:00`]],
+            ["employee_id"], { limit: 500 });
+          present = new Set(att.map((a) => a.employee_id?.[0]));
+        } catch { /* تجاهل */ }
+        try {
+          const lv = await odoo.searchRead("hr.leave",
+            [["employee_id", "in", ids], ["state", "=", "validate"],
+              ["request_date_from", "<=", today], ["request_date_to", ">=", today]],
+            ["employee_id"], { limit: 500 });
+          onLeave = new Set(lv.map((a) => a.employee_id?.[0]));
+        } catch { /* تجاهل */ }
+        try {
+          const rq = await odoo.searchRead("sharqia.portal.request",
+            [["employee_id", "in", ids], ["state", "not in", CLOSED_STATES]],
+            ["employee_id"], { limit: 500 });
+          for (const r of rq) { const k = r.employee_id?.[0]; if (k) open[k] = (open[k] || 0) + 1; }
+        } catch { /* تجاهل */ }
+        return {
+          records: recs.map((r) => ({
+            ...mapEmployee(r),
+            att: onLeave.has(r.id) ? "on_leave" : present.has(r.id) ? "present" : "no_checkin",
+            leave: onLeave.has(r.id) ? "في إجازة" : "-",
+            openReq: open[r.id] || 0,
+            shift: "",
+          })),
+        };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [] }) }
+    );
+  },
+
   // ---- العهد: من Open HRMS Custody (hr.custody) وإلا من موديل الأدون ----
   //   الشركة تستخدم hr_custody المثبّت فعلًا، فالعهد تُقرأ منه مباشرة ولا
   //   تُدخَل مرتين. sharqia.portal.custody يبقى احتياطًا لمن لا يملك الموديول.
@@ -483,22 +548,109 @@ const actions = {
     );
   },
 
-  // تسجيل حضور/انصراف (يكتب في hr.attendance — الكتابة حسّاسة)
+  // نطاقات الحضور المعتمدة (sharqia.portal.location)
+  async "location.list"() {
+    return withOdoo(
+      async () => ({
+        records: await odoo.searchRead("sharqia.portal.location", [["active", "=", true]],
+          await availableFields("sharqia.portal.location",
+            ["name", "latitude", "longitude", "radius_m", "max_accuracy_m"]),
+          { limit: 100 }),
+      }),
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [] }) }
+    );
+  },
+
+  // مراقبة مواقع الحضور اليوم (لشاشة الموارد البشرية) — بيانات أودو لا عيّنات
+  async "attendance.monitor"(params, ctx) {
+    return withOdoo(
+      async () => {
+        const today = new Date().toISOString().slice(0, 10);
+        const fields = await availableFields("hr.attendance",
+          ["employee_id", "check_in", "check_out", "x_geo_lat", "x_geo_lng",
+            "x_in_range", "x_accuracy_m", "x_distance_m", "x_location_id", "x_device"]);
+        const recs = await odoo.searchRead("hr.attendance",
+          [["check_in", ">=", `${today} 00:00:00`]], fields,
+          { limit: 300, order: "check_in desc" });
+        const hhmm = (v) => (v ? String(v).slice(11, 16) : "—");
+        return {
+          records: recs.map((r) => ({
+            emp: r.employee_id?.[1] || "", empNo: String(r.employee_id?.[0] || ""),
+            dept: "", branch: r.x_location_id?.[1] || "",
+            in: hhmm(r.check_in), out: hhmm(r.check_out),
+            lat: r.x_geo_lat || null, lng: r.x_geo_lng || null,
+            accuracy: r.x_accuracy_m || 0, dist: r.x_distance_m || 0,
+            radius: 0, within: !!r.x_in_range,
+            method: "التطبيق", device: r.x_device || "",
+            capturedAt: hhmm(r.check_in), suspicious: !r.x_in_range,
+          })),
+        };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [] }) }
+    );
+  },
+
+  // تسجيل حضور/انصراف — مع فرض النطاق الجغرافي على الخادم
+  //   ⚠️ كان يكتب employee_id + check_in فقط، بوقت يحدّده العميل وبلا أي
+  //   إحداثيات ولا تحقق نطاق — أي بصمة قابلة للتزوير بطلب HTTP واحد من أي مكان.
   async "attendance.punch"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
     return withOdoo(
       async () => {
-        // params.op = "in" | "out" ؛ params.lat/lng محفوظة في الـ backend (geofence) قبل النداء
-        if (params.op === "in") {
-          const id = await odoo.create("hr.attendance", { employee_id: empId, check_in: params.at });
-          return { odooId: id, op: "in" };
+        if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo");
+        const lat = Number(params.lat), lng = Number(params.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          throw new Error("تعذّر تحديد موقعك. فعّل خدمة الموقع وحاول مرة أخرى.");
         }
-        // انصراف: أوجد آخر سجل مفتوح واكتب check_out
+        if (params.mock === true) throw new Error("تم رصد موقع مزيّف — لا يمكن تسجيل الحضور.");
+
+        // النطاقات من أودو (لا إحداثيات مثبّتة في التطبيق)
+        const { data: locData } = await runAction("location.list", {}, ctx);
+        const locs = locData.records || [];
+        if (!locs.length) throw new Error("لم تُضبط أي نطاقات حضور في Odoo (الإعدادات ← نطاقات الحضور).");
+
+        const near = nearestLocation(lat, lng, locs);
+        if (!near) throw new Error("تعذّر مطابقة موقعك بأي نطاق عمل.");
+        const maxAcc = near.location.max_accuracy_m || 50;
+        const acc = Number(params.accuracy);
+        if (Number.isFinite(acc) && acc > maxAcc) {
+          throw new Error(`دقة الموقع ضعيفة (${Math.round(acc)}م). اخرج لمكان مكشوف وحاول مرة أخرى.`);
+        }
+        if (!near.within) {
+          throw new Error(`أنت خارج نطاق «${near.location.name}» بمسافة ${near.distance} متر.`);
+        }
+
+        // وقت الخادم دائمًا — لا نثق بوقت الجهاز
+        const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+        const geo = {
+          x_in_range: true, x_location_id: near.location.id,
+          x_accuracy_m: Number.isFinite(acc) ? Math.round(acc) : 0,
+          x_distance_m: near.distance,
+          ...(params.device ? { x_device: String(params.device).slice(0, 80) } : {}),
+        };
+        const known = await modelFieldNames("hr.attendance");
+        const only = (o) => (known ? Object.fromEntries(Object.entries(o).filter(([k]) => known.has(k))) : {});
+
+        if (params.op === "in") {
+          const openNow = await odoo.searchRead("hr.attendance",
+            [["employee_id", "=", empId], ["check_out", "=", false]], ["id"], { limit: 1 });
+          if (openNow.length) throw new Error("لديك حضور مفتوح بالفعل — سجّل الانصراف أولًا.");
+          const id = await odoo.create("hr.attendance", {
+            employee_id: empId, check_in: now,
+            ...only({ ...geo, x_geo_lat: lat, x_geo_lng: lng }),
+          });
+          return { odooId: id, op: "in", at: now, location: near.location.name, distance: near.distance };
+        }
+
         const open = await odoo.searchRead("hr.attendance",
           [["employee_id", "=", empId], ["check_out", "=", false]], ["id"], { limit: 1, order: "check_in desc" });
-        if (!open.length) throw new Error("لا يوجد سجل حضور مفتوح لتسجيل الانصراف");
-        await odoo.write("hr.attendance", open[0].id, { check_out: params.at });
-        return { odooId: open[0].id, op: "out" };
+        if (!open.length) throw new Error("لا يوجد سجل حضور مفتوح لتسجيل الانصراف.");
+        await odoo.write("hr.attendance", open[0].id, {
+          check_out: now, ...only({ ...geo, x_out_lat: lat, x_out_lng: lng }),
+        });
+        return { odooId: open[0].id, op: "out", at: now, location: near.location.name, distance: near.distance };
       },
       async () => ({ odooId: Math.floor(Math.random() * 9000) + 1000, op: params.op }),
       { forceLiveErrors: true }
@@ -631,7 +783,24 @@ const actions = {
 
   async "request.list"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
-    const domain = params?.scope === "all" ? [] : [["employee_id", "=", empId]];
+    const role = ctx?.user?.role || "employee";
+    // inbox = ما ينتظر إجراء صاحب الجلسة.
+    //   المدير: مرؤوسوه المباشرون عبر hr.employee.parent_id (أودو يدعم المسار
+    //   المنقّط في الـ domain، فلا حاجة لتخزين شجرة الإدارة في users.json).
+    //   الموارد البشرية/المالية/التقنية: كل ما هو مفتوح — والواجهة تفلتر المرحلة.
+    let domain;
+    if (params?.scope === "all") domain = [];
+    else if (params?.scope === "inbox") {
+      if (role === "manager" && empId) {
+        domain = [["employee_id.parent_id", "=", empId],
+          ["employee_id", "!=", empId],              // لا اعتماد ذاتي
+          ["state", "not in", CLOSED_STATES]];
+      } else if (["hr", "finance", "it", "admin"].includes(role)) {
+        domain = [["state", "not in", CLOSED_STATES]];
+      } else {
+        domain = [["id", "=", 0]];                   // لا صندوق وارد لهذا الدور
+      }
+    } else domain = [["employee_id", "=", empId]];
     return withOdoo(
       async () => {
         const fields = await requestReadFields();

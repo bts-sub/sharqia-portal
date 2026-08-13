@@ -12,9 +12,9 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import * as wf from "../lib/workflow.js";
-import { runAction } from "../odooActions.js";
+import { runAction, FLOW } from "../odooActions.js";
 import { isTestMode } from "../lib/settings.js";
-import { badRequest, notFound } from "../lib/errors.js";
+import { badRequest, notFound, forbidden } from "../lib/errors.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -52,11 +52,47 @@ router.post("/requests", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// النطاق يُشتق من الدور: الموظف يرى طلباته فقط مهما أرسل في الاستعلام،
-// والأدوار الإدارية وحدها يمكنها طلب scope=all/inbox.
+// أدوار مسموح لها بالاعتماد
+const APPROVER_ROLES = ["manager", "hr", "finance", "it", "admin"];
+
+// النطاق يُشتق من الدور: الموظف يرى طلباته فقط مهما أرسل في الاستعلام.
+//   all   = كل طلبات المنشأة (موارد بشرية/أدمن فقط)
+//   inbox = ما ينتظر إجراء صاحب الجلسة (كل الأدوار المعتمِدة)
 function allowedScope(user, asked) {
-  const wide = ["hr", "admin", "manager", "finance", "it"].includes(user.role);
-  return wide ? (asked || "mine") : "mine";
+  if (asked === "all") return ["hr", "admin"].includes(user.role) ? "all" : "mine";
+  if (asked === "inbox") return APPROVER_ROLES.includes(user.role) ? "inbox" : "mine";
+  return "mine";
+}
+
+// قراءة طلب مفرد: المعتمِد يفتح تفاصيل ما يعتمده.
+// ⚠️ لا تُستخدم allowedScope هنا — تضييقها يمنع المدير من فتح طلب موظفه.
+function readScope(user) {
+  return APPROVER_ROLES.includes(user.role) ? "all" : "mine";
+}
+
+// ---------------------------------------------------------------------------
+// فرض المرحلة على الخادم قبل تمرير الاعتماد إلى Odoo.
+//   ⚠️ Odoo ينفّذ كل الاعتمادات بحساب الخدمة الواحد، و_can_act_current_stage
+//   هناك تبدأ بـ (إن كان أدمن → اسمح) — فحساب الخدمة يتجاوزها دائمًا.
+//   ⇒ هذا هو الحارس الحقيقي الوحيد. وصندوق الوارد نفسه مصدر الصلاحية:
+//   ما لا يظهر في inbox لا يجوز اعتماده.
+// ---------------------------------------------------------------------------
+async function assertCanAct(user, id, verb = "الاعتماد") {
+  if (!APPROVER_ROLES.includes(user.role)) throw forbidden(`لا تملك صلاحية ${verb}`);
+  if (user.role === "admin") return;
+  const { data } = await runAction("request.list", { scope: "inbox" }, { user });
+  const rec = (data?.records || []).find(
+    (x) => String(x.id) === String(id) || x.name === String(id));
+  if (!rec) throw forbidden("هذا الطلب ليس ضمن الطلبات التي تنتظر إجراءك");
+  const flow = FLOW[rec.category] || FLOW.general;
+  // state يحمل اسم المرحلة بعد أول اعتماد، و"submitted" تعني المرحلة الأولى
+  const stage = rec.state === "submitted" ? flow[0] : rec.state;
+  if (stage === "manager") {
+    if (user.role !== "manager") throw forbidden("هذا الطلب بانتظار المدير المباشر");
+    if (String(rec.empId) === "E" + user.odooEmployeeId) throw forbidden("لا يمكنك اعتماد طلبك بنفسك");
+    return;
+  }
+  if (user.role !== stage) throw forbidden(`هذا الطلب في مرحلة «${stage}» وليست مرحلتك`);
 }
 
 router.get("/requests", async (req, res, next) => {
@@ -75,7 +111,7 @@ router.get("/requests/:id", async (req, res, next) => {
     // Odoo مصدر الحقيقة: اقرأ منه أولًا (يقبل رقم Odoo أو رقم الطلب النصي)
     if (!isTestMode()) {
       const { data } = await runAction("request.read",
-        { id: req.params.id, scope: allowedScope(req.user, "all") },
+        { id: req.params.id, scope: readScope(req.user) },
         { user: req.user });
       if (data) return res.json(data);
     }
@@ -85,13 +121,10 @@ router.get("/requests/:id", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// أدوار مسموح لها بالاعتماد (تحقّق مبدئي في الـ backend قبل تنفيذ الانتقال في Odoo)
-const APPROVER_ROLES = ["manager", "hr", "finance", "it", "admin"];
-
 router.post("/requests/:id/approve", async (req, res, next) => {
   try {
     if (!isTestMode()) {
-      if (!APPROVER_ROLES.includes(req.user.role)) throw badRequest("لا تملك صلاحية الاعتماد");
+      await assertCanAct(req.user, req.params.id, "الاعتماد");
       const { data } = await runAction("request.approve", { id: Number(req.params.id) }, { user: req.user });
       return res.json(data);
     }
@@ -106,7 +139,7 @@ router.post("/requests/:id/approve", async (req, res, next) => {
 router.post("/requests/:id/reject", async (req, res, next) => {
   try {
     if (!isTestMode()) {
-      if (!APPROVER_ROLES.includes(req.user.role)) throw badRequest("لا تملك صلاحية الرفض");
+      await assertCanAct(req.user, req.params.id, "الرفض");
       const { data } = await runAction("request.reject", { id: Number(req.params.id) }, { user: req.user });
       return res.json(data);
     }

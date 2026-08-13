@@ -26,4 +26,12 @@ router.get("/custody", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /api/team → الفريق المباشر لصاحب الجلسة (يغذّي شاشات المدير)
+router.get("/team", async (req, res, next) => {
+  try {
+    const { data, source, warning } = await runAction("team.list", {}, { user: req.user });
+    res.json({ ...(data || { records: [] }), odooSource: source, ...(warning ? { warning } : {}) });
+  } catch (e) { next(e); }
+});
+
 export default router;

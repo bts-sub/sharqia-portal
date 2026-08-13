@@ -10,6 +10,7 @@ import { signToken, setSessionCookie, clearSessionCookie } from "../lib/jwt.js";
 import { requireAuth } from "../middleware/auth.js";
 import { loginLimiter } from "../middleware/rateLimit.js";
 import { badRequest, unauthorized } from "../lib/errors.js";
+import { notifyOdooUserEvent } from "../lib/odooBridge.js";
 
 const router = Router();
 
@@ -21,6 +22,7 @@ router.post("/login", loginLimiter, async (req, res, next) => {
     const ok = user && user.status === "active" && (await verifyPassword(user, password));
     if (!ok) throw unauthorized("بيانات الدخول غير صحيحة");
     touchLastLogin(user.id);
+    notifyOdooUserEvent(user.login);   // بلا await — لا يؤخّر الرد ولا يُفشله
     const token = signToken({ sub: user.id, role: user.role, login: user.login });
     setSessionCookie(res, token);
     const { passwordHash, ...safe } = user;
