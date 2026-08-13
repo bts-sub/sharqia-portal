@@ -38,7 +38,7 @@ function toEmpId(v) {
 
 // حقول hr.employee التي نقرأها ونحوّلها لشكل الواجهة
 const EMP_FIELDS = ["name", "job_title", "department_id", "work_email", "work_phone", "parent_id",
-  "employee_type", "work_location_id", "company_id"];
+  "employee_type", "work_location_id", "company_id", "image_128"];
 
 // ---------------------------------------------------------------------------
 // تفاصيل الطلب: جمعها من الحمولة، وتحويلها لحقول Odoo
@@ -248,7 +248,32 @@ function mapEmployee(rec) {
     branch: rec.work_location_id?.[1] || "", empNo: String(rec.id),
     manager: rec.parent_id?.[1] || "", email: rec.work_email || "", phone: rec.work_phone || "",
     contract: rec.employee_type || "", company: rec.company_id?.[1] || "",
+    // صورة الموظف من أودو كـ data URI جاهزة للعرض في <img> مباشرة
+    photo: rec.image_128 ? `data:image/png;base64,${rec.image_128}` : "",
     leaveBalance: rec.leaveBalance ?? null,
+  };
+}
+
+// حالات العهدة (hr.custody من Open HRMS + موديل الأدون) → نص عربي
+const CUSTODY_STATE_AR = {
+  draft: "مسودة", to_approve: "بانتظار الاعتماد", approved: "مُستلَمة",
+  returned: "مُرجَعة", rejected: "مرفوضة",
+  assigned: "مُستلَمة", pending: "بانتظار الاعتماد",
+};
+
+function mapCustody(rec) {
+  const today = new Date().toISOString().slice(0, 10);
+  const ret = rec.return_date || rec.renew_date || "";
+  return {
+    id: rec.id,
+    name: rec.custody_property_id?.[1] || rec.name || "عهدة",
+    serial: rec.name || "",                       // رقم العهدة في أودو (Code)
+    since: rec.date_request || "",
+    returnDate: ret,
+    purpose: rec.purpose || "",
+    status: CUSTODY_STATE_AR[rec.state] || rec.state || "",
+    // maint: قاربت أو تجاوزت تاريخ الإرجاع — تُبرز في الواجهة
+    maint: !!(ret && ret <= today && rec.state !== "returned"),
   };
 }
 
@@ -380,6 +405,39 @@ const actions = {
       },
       async () => ({ onLeave: false }),
       { emptyOnError: () => ({ onLeave: false, unavailable: true }) }
+    );
+  },
+
+  // ---- العهد: من Open HRMS Custody (hr.custody) وإلا من موديل الأدون ----
+  //   الشركة تستخدم hr_custody المثبّت فعلًا، فالعهد تُقرأ منه مباشرة ولا
+  //   تُدخَل مرتين. sharqia.portal.custody يبقى احتياطًا لمن لا يملك الموديول.
+  async "custody.list"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        if (!empId) return { records: [] };
+        const models = await modelFieldNames("hr.custody");
+        if (models) {
+          const recs = await odoo.searchRead("hr.custody",
+            [["employee_id", "=", empId]],
+            await availableFields("hr.custody", ["name", "custody_property_id", "date_request",
+              "return_date", "renew_date", "purpose", "state", "notes"]),
+            { order: "date_request desc", limit: 100 });
+          return { records: recs.map(mapCustody), source: "hr.custody" };
+        }
+        const recs = await odoo.searchRead("sharqia.portal.custody",
+          [["employee_id", "=", empId]], ["asset_name", "assigned_date", "state"], { limit: 100 });
+        return {
+          records: recs.map((r) => ({
+            id: r.id, name: r.asset_name || "عهدة", serial: "",
+            since: r.assigned_date || "", status: CUSTODY_STATE_AR[r.state] || r.state || "",
+            maint: false,
+          })),
+          source: "sharqia.portal.custody",
+        };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
     );
   },
 

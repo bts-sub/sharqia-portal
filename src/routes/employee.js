@@ -18,4 +18,12 @@ router.get("/employee/me", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /api/custody → عهد الموظف الحالي (من Open HRMS Custody إن كان مثبّتًا)
+router.get("/custody", async (req, res, next) => {
+  try {
+    const { data, source, warning } = await runAction("custody.list", {}, { user: req.user });
+    res.json({ ...(data || { records: [] }), odooSource: source, ...(warning ? { warning } : {}) });
+  } catch (e) { next(e); }
+});
+
 export default router;
