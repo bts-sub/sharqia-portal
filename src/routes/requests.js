@@ -147,9 +147,15 @@ router.post("/requests/:id/reject", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post("/requests/:id/comment", (req, res, next) => {
+// التعليق يذهب إلى محادثة الطلب في Odoo فيصل متابعيه، لا إلى ذاكرة المتصفح
+router.post("/requests/:id/comment", async (req, res, next) => {
   try {
     if (!req.body?.text) throw badRequest("text مطلوب");
+    if (!isTestMode()) {
+      const { data } = await runAction("request.comment",
+        { id: req.params.id, text: req.body.text }, { user: req.user });
+      return res.json(data);
+    }
     res.json(wf.commentRequest({ user: req.user, id: req.params.id, text: req.body.text }));
   } catch (e) { next(e); }
 });

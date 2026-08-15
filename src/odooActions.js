@@ -73,6 +73,11 @@ function imgDataUri(b64) {
   return `data:image/${mime};base64,${b64}`;
 }
 
+// نص المستخدم يدخل جسم رسالة HTML في محادثة أودو — بلا تهريب يصير أي تعليق
+// ثغرة حقن سكربت في واجهة أودو نفسها
+const HTML_ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => HTML_ESC[c]);
+
 // إخفاء جزئي للأرقام الحسّاسة (هوية/آيبان) — تُعرض في شاشة «مخفية جزئياً»
 function maskTail(v, keep = 4) {
   const s = String(v ?? "").trim();
@@ -449,6 +454,60 @@ const actions = {
     } catch (e) {
       return { source: "session-fallback", warning: e.message, data: fromSession(e.message) };
     }
+  },
+
+  // تعليم الإشعار مقروءًا في Odoo — يعرف مُرسِل التعميم من قرأه ومتى
+  async "notification.markRead"(params, ctx) {
+    const login = ctx?.user?.login;
+    if (!login) throw new Error("جلسة بلا اسم دخول");
+    return withOdoo(
+      async () => {
+        const id = await odoo.execKw("sharqia.portal.notification", "mark_read", [], {
+          login,
+          title: String(params?.title || "") || null,
+          request_name: String(params?.reqId || "") || null,
+        });
+        return { ok: true, matched: id || null };
+      },
+      async () => ({ ok: true, matched: null }),
+      { emptyOnError: () => ({ ok: false, matched: null }) }
+    );
+  },
+
+  // تعليق الموظف على طلبه → محادثة الطلب في Odoo (mail.message)
+  //   كان زر «إرسال» في التطبيق يضيف التعليق لحالة المتصفح فقط بلا أي نداء
+  //   شبكة، فلا يراه أحد في أودو ولا يصل متابعي الطلب إطلاقًا.
+  async "request.comment"(params, ctx) {
+    const id = toEmpId(params?.id);
+    const text = String(params?.text || "").trim();
+    if (!id) throw new Error("معرّف الطلب مطلوب");
+    if (!text) throw new Error("نص التعليق مطلوب");
+    if (text.length > 4000) throw new Error("التعليق طويل — الحد 4000 حرف");
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        // الطلب يجب أن يكون للموظف نفسه أو ضمن ما يحق له الاطلاع عليه؛
+        // بدون هذا يعلّق أي موظف على طلب أي زميل بمجرد تخمين الرقم.
+        const rec = (await odoo.searchRead("sharqia.portal.request",
+          [["id", "=", id]], ["employee_id", "name", "state"], { limit: 1 }))[0];
+        if (!rec) throw new Error("الطلب غير موجود في أودو");
+        const owner = rec.employee_id?.[0] || null;
+        const privileged = ["manager", "hr", "finance", "it", "admin"].includes(ctx?.user?.role);
+        if (!privileged && owner !== empId)
+          throw new Error("لا تملك صلاحية التعليق على هذا الطلب");
+
+        const author = ctx?.user?.name || ctx?.user?.login || "موظف";
+        const body = `<p><b>${escapeHtml(author)}</b> (عبر التطبيق):</p><p>${escapeHtml(text).replace(/\n/g, "<br/>")}</p>`;
+        const msgId = await odoo.execKw("sharqia.portal.request", "message_post", [[id]], {
+          body,
+          message_type: "comment",
+          subtype_xmlid: "mail.mt_comment",   // يُبلِّغ المتابعين، عكس mt_note الداخلية
+        });
+        return { ok: true, messageId: msgId, request: rec.name };
+      },
+      async () => { throw new Error("التعليق غير متاح في وضع الاختبار"); },
+      { forceLiveErrors: true }
+    );
   },
 
   // تغيير صورة الموظف من التطبيق — لم تكن هناك أي طريقة لتغييرها إطلاقًا

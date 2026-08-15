@@ -44,16 +44,28 @@ router.get("/notifications", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// إبلاغ Odoo بالقراءة — بلا انتظار: تعليم الإشعار مقروءًا في التطبيق يجب
+// ألّا يتأخر أو يفشل لأن أودو بطيء أو متوقف. الإخفاق يُسجَّل ولا يُرى.
+function reportRead(user, notif) {
+  if (!notif) return;
+  runAction("notification.markRead",
+    { title: notif.title || "", reqId: notif.reqId || notif.requestName || "" },
+    { user })
+    .catch((e) => console.warn("⚠️ تعذّر إبلاغ أودو بقراءة الإشعار:", e.message));
+}
+
 router.post("/notifications/:id/read", (req, res) => {
   const all = readAll("notifs");
   const n = all.find((x) => String(x.id) === req.params.id && x.userId === req.user.id);
-  if (n) { n.read = true; writeAll("notifs", all); }
+  if (n) { n.read = true; writeAll("notifs", all); reportRead(req.user, n); }
   res.json({ ok: true });
 });
 
 router.post("/notifications/read-all", (req, res) => {
-  const all = readAll("notifs").map((n) => (n.userId === req.user.id ? { ...n, read: true } : n));
-  writeAll("notifs", all);
+  const all = readAll("notifs");
+  const mineUnread = all.filter((n) => n.userId === req.user.id && !n.read);
+  writeAll("notifs", all.map((n) => (n.userId === req.user.id ? { ...n, read: true } : n)));
+  for (const n of mineUnread) reportRead(req.user, n);
   res.json({ ok: true });
 });
 
