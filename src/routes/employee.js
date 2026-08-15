@@ -18,6 +18,16 @@ router.get("/employee/me", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// POST /api/employee/photo → تغيير صورة الموظف في Odoo من داخل التطبيق
+//   الموظف يغيّر صورته هو فقط: معرّف الموظف يُشتق من الجلسة ولا يُقبل من العميل.
+router.post("/employee/photo", async (req, res, next) => {
+  try {
+    const { data } = await runAction("employee.photo",
+      { image: req.body?.image }, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
 // GET /api/custody → عهد الموظف الحالي (من Open HRMS Custody إن كان مثبّتًا)
 router.get("/custody", async (req, res, next) => {
   try {

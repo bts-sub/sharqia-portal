@@ -41,6 +41,45 @@ function toEmpId(v) {
 const EMP_FIELDS = ["name", "job_title", "department_id", "work_email", "work_phone", "parent_id",
   "employee_type", "work_location_id", "company_id", "image_128"];
 
+// حقول شاشة «ملفي الوظيفي» — أوسع من EMP_FIELDS التي تُقرأ لكل عضو فريق.
+//   الأسماء مأخوذة من فحص hr.employee على أودو 19: رقم الموظف
+//   registration_number لا حقل id، وتاريخ التعيين joining_date،
+//   والجوال mobile_phone (كان يُقرأ work_phone وحده فيظهر فارغًا دائمًا
+//   رغم وجود الرقم في أودو).
+const EMP_ME_FIELDS = [...EMP_FIELDS, "job_id", "mobile_phone", "private_phone", "private_email",
+  "registration_number", "barcode", "joining_date", "identification_id", "passport_id",
+  "permit_no", "marital", "birthday", "primary_bank_account_id"];
+
+// نوع التوظيف في أودو إنجليزي — يُعرض في التطبيق تحت «على رأس العمل»
+const EMP_TYPE_AR = {
+  employee: "موظف", worker: "عامل", student: "طالب",
+  trainee: "متدرّب", contractor: "متعاقد", freelance: "مستقل",
+};
+const MARITAL_AR = {
+  single: "أعزب/عزباء", married: "متزوج/متزوجة", cohabitant: "شريك قانوني",
+  widower: "أرمل/أرملة", divorced: "مطلق/مطلقة",
+};
+
+// نوع الصورة يُستنتج من بايتاتها لا بالتخمين: أودو يخزّن ما رُفع كما هو
+// (JPEG في الغالب)، ووسمُها png في الـ data URI وسمٌ كاذب يرفضه بعض العملاء.
+function imgDataUri(b64) {
+  if (!b64) return "";
+  const head = String(b64).slice(0, 12);
+  const mime = head.startsWith("/9j/") ? "jpeg"
+    : head.startsWith("iVBORw0") ? "png"
+    : head.startsWith("UklGR") ? "webp"
+    : head.startsWith("R0lGOD") ? "gif"
+    : "jpeg";
+  return `data:image/${mime};base64,${b64}`;
+}
+
+// إخفاء جزئي للأرقام الحسّاسة (هوية/آيبان) — تُعرض في شاشة «مخفية جزئياً»
+function maskTail(v, keep = 4) {
+  const s = String(v ?? "").trim();
+  if (!s || s === "false") return "";
+  return s.length > keep ? "•••• " + s.slice(-keep) : s;
+}
+
 // أدوار مستخدم التطبيق — نفس قيم sharqia.portal.user.role في أودو ونفس
 // تسمياتها العربية، فلا تعرض شاشة الأدوار أدوارًا لا وجود لها ولا تُسقط دورًا
 // موجودًا (كانت تعرض تسع تسميات مخترعة وتُسقط «تقنية المعلومات» كليًّا).
@@ -275,12 +314,27 @@ function mapEmployee(rec) {
   if (!rec) return null;
   return {
     id: "E" + rec.id, odooId: rec.id, name: rec.name,
-    jobTitle: rec.job_title || "", dept: rec.department_id?.[1] || "",
-    branch: rec.work_location_id?.[1] || "", empNo: String(rec.id),
-    manager: rec.parent_id?.[1] || "", email: rec.work_email || "", phone: rec.work_phone || "",
-    contract: rec.employee_type || "", company: rec.company_id?.[1] || "",
+    // المسمّى قد يكون نصًّا حرًّا أو مرتبطًا بوظيفة hr.job — نقبل الاثنين
+    jobTitle: rec.job_title || rec.job_id?.[1] || "",
+    dept: rec.department_id?.[1] || "",
+    branch: rec.work_location_id?.[1] || "",
+    // الرقم الوظيفي الحقيقي إن وُجد، وإلا رقم السجل كملاذ أخير
+    empNo: rec.registration_number || rec.barcode || String(rec.id),
+    manager: rec.parent_id?.[1] || "",
+    email: rec.work_email || rec.private_email || "",
+    // الجوال أولًا: هو ما يملؤه الناس فعلًا، وwork_phone يبقى فارغًا غالبًا
+    phone: rec.mobile_phone || rec.work_phone || rec.private_phone || "",
+    contract: EMP_TYPE_AR[rec.employee_type] || rec.employee_type || "",
+    company: rec.company_id?.[1] || "",
+    hireDate: rec.joining_date || "",
+    nationalIdMasked: maskTail(rec.identification_id),
+    iban: maskTail(rec.primary_bank_account_id?.[1]),
+    passport: maskTail(rec.passport_id),
+    iqama: maskTail(rec.permit_no),
+    marital: MARITAL_AR[rec.marital] || "",
+    birthday: rec.birthday || "",
     // صورة الموظف من أودو كـ data URI جاهزة للعرض في <img> مباشرة
-    photo: rec.image_128 ? `data:image/png;base64,${rec.image_128}` : "",
+    photo: imgDataUri(rec.image_128),
     leaveBalance: rec.leaveBalance ?? null,
   };
 }
@@ -386,12 +440,41 @@ const actions = {
     if (isTestMode()) return { source: "test", data: FX.FX_EMPLOYEE };
     try {
       if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo (odooEmployeeId فارغ) — اعمل «مزامنة» للمستخدم من Odoo");
-      const recs = await odoo.searchRead("hr.employee", [["id", "=", empId]], EMP_FIELDS, { limit: 1 });
+      // availableFields: حقل واحد غير موجود في نسخة أودو الحالية كان يُفشل
+      // قراءة بطاقة الموظف كلها فتظهر الشاشة فارغة بلا سبب ظاهر
+      const recs = await odoo.searchRead("hr.employee", [["id", "=", empId]],
+        await availableFields("hr.employee", EMP_ME_FIELDS), { limit: 1 });
       if (!recs.length) throw new Error(`لا يوجد موظف بالرقم ${empId} في قاعدة بيانات Odoo الحالية — تحقّق من ربط المستخدم`);
       return { source: "odoo", data: mapEmployee(recs[0]) };
     } catch (e) {
       return { source: "session-fallback", warning: e.message, data: fromSession(e.message) };
     }
+  },
+
+  // تغيير صورة الموظف من التطبيق — لم تكن هناك أي طريقة لتغييرها إطلاقًا
+  //   image_1920 هو الحقل القابل للكتابة؛ بقية المقاسات محسوبة منه في أودو.
+  async "employee.photo"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo");
+    const raw = String(params?.image || "");
+    const m = raw.match(/^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/i);
+    if (!m) throw new Error("الملف ليس صورة صالحة (المسموح: PNG أو JPG أو WEBP)");
+    const b64 = m[2];
+    // 4 ميجابايت بعد فك الترميز — base64 يتمدّد ~4/3
+    if (b64.length > 4 * 1024 * 1024 * 1.37)
+      throw new Error("حجم الصورة كبير — الحد الأقصى 4 ميجابايت");
+    return withOdoo(
+      async () => {
+        await odoo.write("hr.employee", [empId], { image_1920: b64 });
+        // أعد قراءة المصغّرة التي ولّدها أودو لتُعرض فورًا بلا إعادة تحميل
+        const recs = await odoo.searchRead("hr.employee", [["id", "=", empId]],
+          ["image_128"], { limit: 1 });
+        const img = recs[0]?.image_128;
+        return { ok: true, photo: imgDataUri(img) };
+      },
+      async () => { throw new Error("تغيير الصورة غير متاح في وضع الاختبار"); },
+      { forceLiveErrors: true }
+    );
   },
 
   // رصيد الإجازات (allocation - taken) — مبسّط: مجموع الأيام المتبقية من hr.leave.allocation
@@ -409,10 +492,11 @@ const actions = {
         ]);
         const allocated = allocs.reduce((s, a) => s + (a.number_of_days || 0), 0);
         const used = taken.reduce((s, a) => s + (a.number_of_days || 0), 0);
-        return { balance: Math.max(0, allocated - used) };
+        // allocated/used يُعرضان في «ملفي الوظيفي» — كانا رقمين ثابتين في الواجهة
+        return { balance: Math.max(0, allocated - used), allocated, used };
       },
       async () => ({ balance: FX.FX_LEAVE_BALANCE }),
-      { emptyOnError: () => ({ balance: null, unavailable: true }) }
+      { emptyOnError: () => ({ balance: null, allocated: null, used: null, unavailable: true }) }
     );
   },
 
