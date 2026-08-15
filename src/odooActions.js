@@ -291,6 +291,21 @@ function mapCustody(rec) {
   };
 }
 
+// حالات طلب السلفة في Advanced Loan Management → نص عربي
+const LOAN_STATE_AR = {
+  draft: "مسودة", confirmed: "مؤكّدة", waiting: "بانتظار الاعتماد",
+  approved: "معتمدة", disbursed: "مصروفة", rejected: "مرفوضة", closed: "مسدّدة",
+};
+function mapLoan(rec) {
+  return {
+    id: rec.name || String(rec.id), odooId: rec.id,
+    type: rec.loan_type_id?.[1] || "سلفة",
+    amount: rec.loan_amount || 0, months: rec.tenure || 0,
+    interest: rec.interest_rate || 0, date: rec.date || "",
+    status: LOAN_STATE_AR[rec.state] || rec.state || "",
+  };
+}
+
 // حالة الإجازة في Odoo → نص عربي متوافق مع الواجهة
 const LEAVE_STATE_AR = {
   draft: "مسودة", confirm: "في انتظار المدير", validate1: "بانتظار الموارد البشرية",
@@ -566,6 +581,28 @@ const actions = {
         return { records: recs };
       },
       async () => ({ records: FX.FX_ATTENDANCE }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  // سلف الموظف من نظام القروض (loan.request) — يُربط بالموظف عبر جهة اتصاله
+  async "loan.list"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        if (!empId) return { records: [] };
+        if (!(await modelFieldNames("loan.request"))) return { records: [] };
+        const emp = await odoo.searchRead("hr.employee", [["id", "=", empId]],
+          ["work_contact_id", "user_partner_id"], { limit: 1 });
+        const partner = emp[0]?.work_contact_id?.[0] || emp[0]?.user_partner_id?.[0];
+        if (!partner) return { records: [] };
+        const recs = await odoo.searchRead("loan.request", [["partner_id", "=", partner]],
+          await availableFields("loan.request",
+            ["name", "date", "loan_amount", "tenure", "interest_rate", "state", "loan_type_id"]),
+          { order: "date desc", limit: 50 });
+        return { records: recs.map(mapLoan) };
+      },
+      async () => ({ records: [] }),
       { emptyOnError: () => ({ records: [], unavailable: true }) }
     );
   },

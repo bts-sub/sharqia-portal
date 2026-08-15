@@ -90,7 +90,7 @@ router.use(requireAuth);
 // ---------------------------------------------------------------------------
 const SAFE_ACTIONS = new Set([
   "connection.test", "employee.me", "leave.balance", "leave.list", "leave.current",
-  "leaveType.list", "attendance.log", "announcement.list", "custody.list",
+  "leaveType.list", "attendance.log", "announcement.list", "custody.list", "loan.list",
   "request.list", "request.read", "approval.available",
 ]);
 // إجراءات إدارية إضافية (تتطلب دورًا إداريًا)

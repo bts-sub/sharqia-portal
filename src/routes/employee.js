@@ -26,6 +26,14 @@ router.get("/custody", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /api/loans → سلف الموظف الحالي من نظام القروض في Odoo
+router.get("/loans", async (req, res, next) => {
+  try {
+    const { data, source, warning } = await runAction("loan.list", {}, { user: req.user });
+    res.json({ ...(data || { records: [] }), odooSource: source, ...(warning ? { warning } : {}) });
+  } catch (e) { next(e); }
+});
+
 // GET /api/team → الفريق المباشر لصاحب الجلسة (يغذّي شاشات المدير)
 router.get("/team", async (req, res, next) => {
   try {
