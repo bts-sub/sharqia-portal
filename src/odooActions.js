@@ -73,6 +73,19 @@ function imgDataUri(b64) {
   return `data:image/${mime};base64,${b64}`;
 }
 
+// نصّ مقروء من HTML المحرّر: نزع الوسوم وحده يلصق الكلمات عبر الفقرات
+// («...الدوام<p>اعتباراً» → «الدوامعتباراً»)، فنحوّل نهايات الكتل إلى مسافات.
+function htmlToText(html) {
+  return String(html || "")
+    .replace(/<\s*br\s*\/?>/gi, " ")
+    .replace(/<\/(p|div|li|h[1-6]|tr)\s*>/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // نص المستخدم يدخل جسم رسالة HTML في محادثة أودو — بلا تهريب يصير أي تعليق
 // ثغرة حقن سكربت في واجهة أودو نفسها
 const HTML_ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -1179,19 +1192,31 @@ const actions = {
   async "announcement.list"(params, ctx) {
     return withOdoo(
       async () => {
-        const recs = await odoo.searchRead("sharqia.portal.announcement", [],
-          ["title", "body_html", "priority", "pinned", "publish_date", "require_ack"],
+        // availableFields: الصورة والمقتطف أُضيفا لاحقًا — طلبهما من أدون قديم
+        // كان سيُفشل قراءة التعاميم كلها فتختفي من الشاشة الرئيسية
+        const fields = await availableFields("sharqia.portal.announcement",
+          ["title", "body_html", "summary", "image", "priority", "pinned",
+           "publish_date", "require_ack", "audience", "department_id"]);
+        const recs = await odoo.searchRead("sharqia.portal.announcement", [], fields,
           { limit: 50, order: "pinned desc, publish_date desc" });
         return {
-          records: recs.map((r) => ({
-            id: r.id,
-            title: r.title,
-            body: (r.body_html || "").replace(/<[^>]*>/g, "").trim(),
-            priority: r.priority === "important" ? "مهم" : "عادي",
-            pinned: !!r.pinned,
-            requireAck: !!r.require_ack,
-            at: r.publish_date || null,
-          })),
+          records: recs.map((r) => {
+            const text = htmlToText(r.body_html);
+            return {
+              id: r.id,
+              title: r.title,
+              body: text,
+              bodyHtml: r.body_html || "",
+              summary: r.summary || text.slice(0, 140),
+              image: imgDataUri(r.image),
+              priority: r.priority === "important" ? "مهم" : "عادي",
+              pinned: !!r.pinned,
+              requireAck: !!r.require_ack,
+              audience: r.audience === "dept"
+                ? (r.department_id?.[1] || "قسم محدّد") : "جميع الموظفين",
+              at: r.publish_date || null,
+            };
+          }),
         };
       },
       async () => ({ records: [] }),

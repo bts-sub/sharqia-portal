@@ -7,7 +7,7 @@
 //   2) صفحة التطبيق تُطلب من الشبكة أولًا. لو خُدِّمت من الذاكرة أولًا لبقي
 //      الموظف على نسخة قديمة بعد كل نشر حتى يفرّغ ذاكرة متصفحه.
 // ===========================================================================
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 
@@ -17,6 +17,7 @@ const PRECACHE = [
   "/manifest.webmanifest",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
+  "/i18n.js",
 ];
 
 self.addEventListener("install", (e) => {
