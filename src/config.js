@@ -11,8 +11,13 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let appVersion = "0.0.0";
 try {
-  appVersion = JSON.parse(fs.readFileSync(path.resolve(__dirname, "..", "package.json"), "utf8")).version || appVersion;
-} catch { /* لا يمنع الإقلاع */ }
+  // replace: يزيل علامة ترتيب البايت (BOM) إن كتب أحدهم الملف بمحرّر يضيفها
+  // — JSON.parse يرفضها فيصير الإصدار 0.0.0 بلا سبب ظاهر.
+  const raw = fs.readFileSync(path.resolve(__dirname, "..", "package.json"), "utf8").replace(/^﻿/, "");
+  appVersion = JSON.parse(raw).version || appVersion;
+} catch (e) {
+  console.warn("⚠️ تعذّرت قراءة رقم الإصدار من package.json:", e.message);
+}
 
 const bool = (v, def = false) =>
   v === undefined ? def : ["1", "true", "yes", "on"].includes(String(v).toLowerCase());
