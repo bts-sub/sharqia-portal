@@ -355,10 +355,13 @@ const actions = {
     return withOdoo(
       async () => {
         if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo");
-        const allocs = await odoo.searchRead("hr.leave.allocation",
-          [["employee_id", "=", empId], ["state", "=", "validate"]], ["number_of_days"]);
-        const taken = await odoo.searchRead("hr.leave",
-          [["employee_id", "=", empId], ["state", "=", "validate"]], ["number_of_days"]);
+        // نداءان مستقلان → بالتوازي (كانا متتابعين فيتضاعف زمن الانتظار)
+        const [allocs, taken] = await Promise.all([
+          odoo.searchRead("hr.leave.allocation",
+            [["employee_id", "=", empId], ["state", "=", "validate"]], ["number_of_days"]),
+          odoo.searchRead("hr.leave",
+            [["employee_id", "=", empId], ["state", "=", "validate"]], ["number_of_days"]),
+        ]);
         const allocated = allocs.reduce((s, a) => s + (a.number_of_days || 0), 0);
         const used = taken.reduce((s, a) => s + (a.number_of_days || 0), 0);
         return { balance: Math.max(0, allocated - used) };
@@ -459,28 +462,24 @@ const actions = {
         if (!recs.length) return { records: [] };
         const ids = recs.map((r) => r.id);
         const today = new Date().toISOString().slice(0, 10);
-        let present = new Set(), onLeave = new Set();
         const open = {};
-        // كل مصدر إضافي في try مستقل: لا تسقط شاشة الفريق لأجل تعذّر الحضور
-        try {
-          const att = await odoo.searchRead("hr.attendance",
+        // المصادر الثلاثة بالتوازي، وكلٌّ يفشل وحده دون إسقاط شاشة الفريق
+        const safe = (p) => p.catch(() => []);
+        const [att, lv, rq] = await Promise.all([
+          safe(odoo.searchRead("hr.attendance",
             [["employee_id", "in", ids], ["check_in", ">=", `${today} 00:00:00`]],
-            ["employee_id"], { limit: 500 });
-          present = new Set(att.map((a) => a.employee_id?.[0]));
-        } catch { /* تجاهل */ }
-        try {
-          const lv = await odoo.searchRead("hr.leave",
+            ["employee_id"], { limit: 500 })),
+          safe(odoo.searchRead("hr.leave",
             [["employee_id", "in", ids], ["state", "=", "validate"],
               ["request_date_from", "<=", today], ["request_date_to", ">=", today]],
-            ["employee_id"], { limit: 500 });
-          onLeave = new Set(lv.map((a) => a.employee_id?.[0]));
-        } catch { /* تجاهل */ }
-        try {
-          const rq = await odoo.searchRead("sharqia.portal.request",
+            ["employee_id"], { limit: 500 })),
+          safe(odoo.searchRead("sharqia.portal.request",
             [["employee_id", "in", ids], ["state", "not in", CLOSED_STATES]],
-            ["employee_id"], { limit: 500 });
-          for (const r of rq) { const k = r.employee_id?.[0]; if (k) open[k] = (open[k] || 0) + 1; }
-        } catch { /* تجاهل */ }
+            ["employee_id"], { limit: 500 })),
+        ]);
+        const present = new Set(att.map((a) => a.employee_id?.[0]));
+        const onLeave = new Set(lv.map((a) => a.employee_id?.[0]));
+        for (const r of rq) { const k = r.employee_id?.[0]; if (k) open[k] = (open[k] || 0) + 1; }
         return {
           records: recs.map((r) => ({
             ...mapEmployee(r),
