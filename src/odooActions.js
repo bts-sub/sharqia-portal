@@ -427,6 +427,12 @@ function mapLeave(rec) {
     // والعودة للعمل» ترفض كل إجازة برسالة «لم تبدأ بعد» — تعطيل كامل للخدمة.
     started: !!(from && from <= today),
     ongoing: !!(from && to && from <= today && to >= today),
+    // شاشة سجل الإجازات تقرأ هذه الأربعة. غياب submitted كان يجعلها تنادي
+    // Gt(undefined).split("-") فيسقط التطبيق كله إلى «حدث خطأ مؤقت».
+    submitted: (rec.create_date || "").slice(0, 10) || from || "",
+    reason: rec.private_name || rec.name || "",
+    lastActor: rec.first_approver_id?.[1] || rec.second_approver_id?.[1] || "",
+    balanceAfter: null,
   };
 }
 
@@ -614,7 +620,10 @@ const actions = {
         // كان يُفشل القراءة كلها ويترك سجل الإجازات فارغًا بلا سبب ظاهر.
         const recs = await odoo.searchRead("hr.leave", domain,
           await availableFields("hr.leave", ["holiday_status_id", "request_date_from", "request_date_to",
-            "number_of_days", "state", "first_approver_id", "second_approver_id"]),
+            "number_of_days", "state", "first_approver_id", "second_approver_id",
+            // شاشة «سجل إجازاتي» تعرض تاريخ التقديم والسبب — وغيابهما كان
+            // يُسقط التطبيق كله لا الشاشة وحدها (Gt(undefined).split)
+            "create_date", "name", "private_name"]),
           { order: "request_date_from desc" });
         return { records: recs.map(mapLeave) };
       },
