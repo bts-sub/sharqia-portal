@@ -143,22 +143,52 @@
     return text.replace(k, row[lang]);
   }
 
-  var origin = new WeakMap();   // العقدة → نصّها العربي الأصلي
+  var baseOf = new WeakMap();     // العقدة → نصّها العربي المصدر
+  var mineOf = new WeakMap();     // العقدة → آخر ما كتبناه نحن فيها
+  var observer = null;
 
+  /* الفرق بين «ما كتبناه» و«ما فيها الآن» هو ما يميّز تحديث React عن كتابتنا.
+     بدونه نُعيد كتابة أول نص رأيناه فنجمّد كل رقم وكل حالة تتغيّر — «0 موظفاً»
+     تبقى صفرًا بعد وصول الفريق من أودو. */
   function paint(root) {
+    if (lang === "ar") return;    // العربية هي الأصل: لا نلمس الصفحة إطلاقًا
     var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
     var n, batch = [];
     while ((n = w.nextNode())) batch.push(n);
-    for (var i = 0; i < batch.length; i++) {
-      var node = batch[i];
-      var p = node.parentNode;
-      if (!p) continue;
-      var tag = p.nodeName;
-      if (tag === "SCRIPT" || tag === "STYLE" || p.id === "sq-lang") continue;
-      var base = origin.get(node);
-      if (base === undefined) { base = node.nodeValue; origin.set(node, base); }
-      var out = lang === "ar" ? base : (tr(base) || base);
-      if (node.nodeValue !== out) node.nodeValue = out;
+    if (observer) observer.disconnect();   // كتابتنا يجب ألّا توقظ المراقب
+    try {
+      for (var i = 0; i < batch.length; i++) {
+        var node = batch[i];
+        var p = node.parentNode;
+        if (!p) continue;
+        var tag = p.nodeName;
+        if (tag === "SCRIPT" || tag === "STYLE" || p.id === "sq-lang") continue;
+        var cur = node.nodeValue;
+        if (cur !== mineOf.get(node)) baseOf.set(node, cur);  // React كتب نصًّا جديدًا
+        var base = baseOf.get(node);
+        var out = tr(base) || base;
+        if (cur !== out) { node.nodeValue = out; mineOf.set(node, out); }
+      }
+    } finally {
+      if (observer) observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    }
+  }
+
+  /* العودة للعربية: نُرجع كل عقدة كتبناها إلى نصّها المصدر */
+  function restore(root) {
+    var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var n;
+    if (observer) observer.disconnect();
+    try {
+      while ((n = w.nextNode())) {
+        if (n.nodeValue === mineOf.get(n)) {
+          var base = baseOf.get(n);
+          if (base !== undefined && base !== n.nodeValue) n.nodeValue = base;
+          mineOf.delete(n);
+        }
+      }
+    } finally {
+      if (observer) observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     }
   }
 
@@ -180,10 +210,12 @@
 
   function setLang(next) {
     if (!LANGS[next]) return;
+    var wasForeign = lang !== "ar";
     lang = next;
     try { localStorage.setItem(KEY_LANG, next); } catch (e) {}
     applyDir();
-    paint(document.body);
+    if (next === "ar") { if (wasForeign) restore(document.body); }
+    else paint(document.body);
     build();
   }
 
@@ -254,7 +286,8 @@
     applyDir();
     build();
     paint(document.body);
-    new MutationObserver(schedule).observe(document.body, {
+    observer = new MutationObserver(schedule);
+    observer.observe(document.body, {
       childList: true, subtree: true, characterData: true,
     });
   }

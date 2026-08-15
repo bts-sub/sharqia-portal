@@ -469,6 +469,25 @@ const actions = {
     }
   },
 
+  // تسجيل قراءة التعميم في Odoo (sharqia.portal.announcement.ack)
+  //   بدونه يبقى «عدد القراءات» صفرًا مهما فتحه الموظفون: لم يكن أحد
+  //   ينشئ سجل قراءة إطلاقًا — لا التطبيق ولا الباك إند.
+  async "announcement.markRead"(params, ctx) {
+    const login = ctx?.user?.login;
+    const id = toEmpId(params?.id);
+    if (!login || !id) throw new Error("بيانات ناقصة لتسجيل القراءة");
+    return withOdoo(
+      async () => {
+        const ack = await odoo.execKw("sharqia.portal.announcement", "mark_read", [], {
+          login, announcement_id: id, acknowledged: !!params?.ack,
+        });
+        return { ok: true, ack: ack || null };
+      },
+      async () => ({ ok: true, ack: null }),
+      { emptyOnError: () => ({ ok: false, ack: null }) }
+    );
+  },
+
   // تعليم الإشعار مقروءًا في Odoo — يعرف مُرسِل التعميم من قرأه ومتى
   async "notification.markRead"(params, ctx) {
     const login = ctx?.user?.login;
@@ -510,12 +529,22 @@ const actions = {
           throw new Error("لا تملك صلاحية التعليق على هذا الطلب");
 
         const author = ctx?.user?.name || ctx?.user?.login || "موظف";
-        const body = `<p><b>${escapeHtml(author)}</b> (عبر التطبيق):</p><p>${escapeHtml(text).replace(/\n/g, "<br/>")}</p>`;
-        const msgId = await odoo.execKw("sharqia.portal.request", "message_post", [[id]], {
-          body,
-          message_type: "comment",
-          subtype_xmlid: "mail.mt_comment",   // يُبلِّغ المتابعين، عكس mt_note الداخلية
-        });
+        // post_app_comment في الأدون يبني الجسم كـ Markup. لا نرسل HTML من هنا:
+        // message_post يهرّب أي body نصيًّا، وJSON-RPC لا يمرّر Markup — فتظهر
+        // الوسوم خامًّا في المحادثة («&lt;p&gt;&lt;b&gt;…»).
+        let msgId;
+        try {
+          msgId = await odoo.execKw("sharqia.portal.request", "post_app_comment",
+            [[id], author, text]);
+        } catch (e) {
+          // أدون أقدم من 19.0.1.11.0 — نصٌّ صِرف أسلم من HTML مهرَّب
+          if (!/post_app_comment/i.test(e.message || "")) throw e;
+          msgId = await odoo.execKw("sharqia.portal.request", "message_post", [[id]], {
+            body: `${author} (عبر التطبيق):\n${text}`,
+            message_type: "comment",
+            subtype_xmlid: "mail.mt_comment",
+          });
+        }
         return { ok: true, messageId: msgId, request: rec.name };
       },
       async () => { throw new Error("التعليق غير متاح في وضع الاختبار"); },

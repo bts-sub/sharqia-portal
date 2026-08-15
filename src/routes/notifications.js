@@ -44,6 +44,15 @@ router.get("/notifications", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// POST /api/announcements/:id/read → تسجيل قراءة التعميم لهذا الموظف
+router.post("/announcements/:id/read", async (req, res, next) => {
+  try {
+    const { data } = await runAction("announcement.markRead",
+      { id: req.params.id, ack: !!req.body?.ack }, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
 // إبلاغ Odoo بالقراءة — بلا انتظار: تعليم الإشعار مقروءًا في التطبيق يجب
 // ألّا يتأخر أو يفشل لأن أودو بطيء أو متوقف. الإخفاق يُسجَّل ولا يُرى.
 function reportRead(user, notif) {
