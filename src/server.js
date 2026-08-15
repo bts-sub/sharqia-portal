@@ -118,6 +118,19 @@ app.use("/api", userRoutes);
 const frontendPath = path.resolve(__dirname, "..", config.frontendFile);
 if (fs.existsSync(frontendPath)) {
   const publicDir = path.dirname(frontendPath);
+  // عامل الخدمة يجب ألّا يُخزَّن طويلًا: المتصفح يقارنه بالخادم ليكتشف نسخة
+  // جديدة، فتخزينه يعني بقاء الموظفين على نسخة قديمة بعد كل نشر.
+  app.get("/sw.js", (req, res) => {
+    res.set("Cache-Control", "no-cache, must-revalidate");
+    res.type("application/javascript");
+    res.sendFile(path.join(publicDir, "sw.js"));
+  });
+  // بعض إصدارات express لا تعرف امتداد webmanifest فتُرسله نصًّا عاديًا
+  // فيتجاهله المتصفح ولا يظهر عرض التثبيت
+  app.get("/manifest.webmanifest", (req, res) => {
+    res.type("application/manifest+json");
+    res.sendFile(path.join(publicDir, "manifest.webmanifest"));
+  });
   app.use(express.static(publicDir));
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api/")) return next();
