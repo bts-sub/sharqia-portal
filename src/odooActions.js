@@ -60,6 +60,28 @@ const MARITAL_AR = {
   widower: "أرمل/أرملة", divorced: "مطلق/مطلقة",
 };
 
+// وقت إغلاق بصمة نُسيت مفتوحة: بداية الدوام + ساعات اليوم المعتادة من تقويم
+// عمل الموظف. لا نُغلقها عند منتصف الليل (يوم بأربع عشرة ساعة) ولا عند وقت
+// الحضور نفسه (يوم بصفر ساعات) — كلاهما رقم كاذب في تقارير الدوام.
+async function autoCloseStamp(empId, checkIn) {
+  let hours = 8;
+  try {
+    const emp = await odoo.searchRead("hr.employee", [["id", "=", empId]],
+      await availableFields("hr.employee", ["resource_calendar_id"]), { limit: 1 });
+    const calId = emp[0]?.resource_calendar_id?.[0];
+    if (calId) {
+      const cal = await odoo.searchRead("resource.calendar", [["id", "=", calId]],
+        ["hours_per_day"], { limit: 1 });
+      if (cal[0]?.hours_per_day > 0) hours = cal[0].hours_per_day;
+    }
+  } catch { /* التقويم اختياري — ثماني ساعات افتراض معقول */ }
+  const start = new Date(String(checkIn).replace(" ", "T") + "Z");
+  const end = new Date(start.getTime() + hours * 3600e3);
+  // لا نتجاوز نهاية يوم الحضور نفسه
+  const dayEnd = new Date(start.toISOString().slice(0, 10) + "T23:59:00Z");
+  return (end > dayEnd ? dayEnd : end).toISOString().slice(0, 19).replace("T", " ");
+}
+
 // نوع الصورة يُستنتج من بايتاتها لا بالتخمين: أودو يخزّن ما رُفع كما هو
 // (JPEG في الغالب)، ووسمُها png في الـ data URI وسمٌ كاذب يرفضه بعض العملاء.
 function imgDataUri(b64) {
@@ -1027,8 +1049,22 @@ const actions = {
 
         if (params.op === "in") {
           const openNow = await odoo.searchRead("hr.attendance",
-            [["employee_id", "=", empId], ["check_out", "=", false]], ["id"], { limit: 1 });
-          if (openNow.length) throw new Error("لديك حضور مفتوح بالفعل — سجّل الانصراف أولًا.");
+            [["employee_id", "=", empId], ["check_out", "=", false]],
+            ["id", "check_in"], { limit: 1, order: "check_in desc" });
+          if (openNow.length) {
+            const openDay = String(openNow[0].check_in || "").slice(0, 10);
+            const today = now.slice(0, 10);
+            if (openDay === today) {
+              throw new Error("لديك حضور مفتوح اليوم — سجّل الانصراف أولًا.");
+            }
+            // بصمة يومٍ سابق نُسي إغلاقها: إبقاؤها مفتوحة يحبس الموظف عن
+            // الحضور إلى الأبد. نُغلقها بساعات دوامه المعتادة ونُعلّمها يدوية
+            // ليصحّحها المسؤول، ولا نمنعه من يومه الجديد.
+            const closeAt = await autoCloseStamp(empId, openNow[0].check_in);
+            await odoo.write("hr.attendance", openNow[0].id,
+              { check_out: closeAt, ...only({ x_manual: true }) });
+            console.warn(`⚠️ أُغلقت بصمة معلّقة تلقائيًا للموظف ${empId} عند ${closeAt}`);
+          }
           const id = await odoo.create("hr.attendance", {
             employee_id: empId, check_in: now,
             ...only({ ...geo, x_geo_lat: lat, x_geo_lng: lng }),
