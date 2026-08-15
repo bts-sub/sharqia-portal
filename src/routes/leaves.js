@@ -14,6 +14,14 @@ router.get("/leave/balance", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /api/leave/balance/types → رصيد كل نوع إجازة على حدة
+router.get("/leave/balance/types", async (req, res, next) => {
+  try {
+    const { data, source, warning } = await runAction("leave.balanceByType", {}, { user: req.user });
+    res.json({ ...(data || { records: [] }), odooSource: source, ...(warning ? { warning } : {}) });
+  } catch (e) { next(e); }
+});
+
 // الواجهة تنادي POST /api/read/hr.leave بـ domain — نوفّر أيضًا مسارًا صريحًا أوضح:
 // GET /api/leaves?onlyApproved=1[&employeeId=42]  → { records: [...] }
 //   employeeId يُقبل من الأدوار الإدارية فقط؛ الموظف يرى إجازاته هو مهما أرسل.

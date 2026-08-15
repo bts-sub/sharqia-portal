@@ -607,6 +607,45 @@ const actions = {
     );
   },
 
+  // رصيد كل نوع إجازة على حدة — شاشة «رصيد الإجازات»
+  //   كانت الشاشة تعرض ثلاثة أنواع بأرقام مكتوبة في الحزمة (21/9، 30/3، 5/1)
+  //   لا علاقة لها بأودو ولا تتغيّر بين موظف وآخر.
+  async "leave.balanceByType"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        if (!empId) return { records: [] };
+        const [allocs, taken] = await Promise.all([
+          odoo.searchRead("hr.leave.allocation",
+            [["employee_id", "=", empId], ["state", "=", "validate"]],
+            ["holiday_status_id", "number_of_days"]),
+          odoo.searchRead("hr.leave",
+            [["employee_id", "=", empId], ["state", "=", "validate"]],
+            ["holiday_status_id", "number_of_days"]),
+        ]);
+        const by = new Map();
+        const slot = (r) => {
+          const id = r.holiday_status_id?.[0] || 0;
+          if (!by.has(id))
+            by.set(id, { id, name: r.holiday_status_id?.[1] || "غير محدّد", allocated: 0, used: 0 });
+          return by.get(id);
+        };
+        for (const a of allocs) slot(a).allocated += a.number_of_days || 0;
+        for (const t of taken) slot(t).used += t.number_of_days || 0;
+        const records = [...by.values()].map((x) => ({
+          ...x,
+          // النوع بلا رصيد مخصّص ليس رصيده صفرًا بل «بلا سقف» — وهو حال
+          // كل الأنواع التي ينشئها الأدون (requires_allocation=False)
+          unlimited: x.allocated <= 0,
+          remaining: x.allocated > 0 ? Math.max(0, x.allocated - x.used) : null,
+        })).sort((a, b) => b.allocated - a.allocated);
+        return { records };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
   // إجازات الموظف — كل الحالات أو المعتمدة فقط (onlyApproved)
   async "leave.list"(params, ctx) {
     const empId = toEmpId(params?.employeeId) || ctx?.user?.odooEmployeeId;
