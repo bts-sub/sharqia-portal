@@ -1,6 +1,6 @@
 {
   "name": "sharqia-employee-portal-backend",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "description": "Backend Ø­Ù‚ÙŠÙ‚ÙŠ Ù„Ø¨ÙˆØ§Ø¨Ø© Ù…ÙˆØ¸ÙÙŠ Ø¨ÙŠØª Ø§Ù„Ø¹Ø¨Ø§Ø¡Ø© Ø§Ù„Ø´Ø±Ù‚ÙŠØ© â€” ØªÙƒØ§Ù…Ù„ Odoo 19 + Ù…ØµØ§Ø¯Ù‚Ø© Ù…Ø­Ù„ÙŠØ©",
   "type": "module",
   "main": "src/server.js",

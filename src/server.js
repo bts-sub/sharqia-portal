@@ -28,6 +28,7 @@ import attendanceRoutes from "./routes/attendance.js";
 import notificationRoutes from "./routes/notifications.js";
 import settingsRoutes from "./routes/settings.js";
 import permissionRoutes from "./routes/permissions.js";
+import userRoutes from "./routes/users.js";
 import integrationRoutes from "./routes/integration.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -111,6 +112,7 @@ app.use("/api", attendanceRoutes);
 app.use("/api", notificationRoutes);
 app.use("/api", settingsRoutes);
 app.use("/api", permissionRoutes);
+app.use("/api", userRoutes);
 
 // تقديم الواجهة (ملف HTML الواحد) — إن وُجد
 const frontendPath = path.resolve(__dirname, "..", config.frontendFile);

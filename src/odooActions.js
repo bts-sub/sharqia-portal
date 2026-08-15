@@ -41,6 +41,36 @@ function toEmpId(v) {
 const EMP_FIELDS = ["name", "job_title", "department_id", "work_email", "work_phone", "parent_id",
   "employee_type", "work_location_id", "company_id", "image_128"];
 
+// أدوار مستخدم التطبيق — نفس قيم sharqia.portal.user.role في أودو ونفس
+// تسمياتها العربية، فلا تعرض شاشة الأدوار أدوارًا لا وجود لها ولا تُسقط دورًا
+// موجودًا (كانت تعرض تسع تسميات مخترعة وتُسقط «تقنية المعلومات» كليًّا).
+export const PORTAL_ROLES = ["employee", "manager", "hr", "finance", "it", "admin"];
+export const ROLE_LABEL_AR = {
+  employee: "موظف", manager: "مدير قسم", hr: "موارد بشرية",
+  finance: "مسؤول مالي", it: "تقنية المعلومات", admin: "مدير النظام",
+};
+
+// سجل sharqia.portal.user → الشكل الذي ترسمه شاشة «إدارة المستخدمين»
+function mapPortalUser(r) {
+  if (!r) return null;
+  const suspended = r.status === "suspended";
+  return {
+    id: r.id,
+    name: r.name || "",
+    login: r.login || "",
+    roleKey: r.role || "employee",
+    role: ROLE_LABEL_AR[r.role] || r.role || "",
+    status: suspended ? "موقوف" : "فعال",
+    empNo: r.employee_id?.[0] ? String(r.employee_id[0]) : "",
+    employeeName: r.employee_id?.[1] || "",
+    odooEmployeeId: r.employee_id?.[0] || null,
+    dept: r.department_id?.[1] || "",
+    branch: "",
+    lastLogin: r.last_login || "—",
+    backendId: r.backend_id || "",
+  };
+}
+
 // ---------------------------------------------------------------------------
 // تفاصيل الطلب: جمعها من الحمولة، وتحويلها لحقول Odoo
 //   التطبيق يرسل تفاصيل كل خدمة بمفاتيح مختلفة (نوع الإجازة، من/إلى، المبلغ…)
@@ -460,6 +490,76 @@ const actions = {
       },
       async () => null,
       { emptyOnError: () => null }
+    );
+  },
+
+  // قائمة مستخدمي التطبيق كما هي في أودو (شاشة «إدارة المستخدمين»).
+  //   كانت الشاشة تعرض أربعة مستخدمين وهميين مثبّتين في حزمة الواجهة، وإضافة
+  //   مستخدم فيها لا تغادر ذاكرة المتصفح — تختفي مع أول تحديث للصفحة.
+  async "portalUser.list"() {
+    return withOdoo(
+      async () => {
+        const recs = await odoo.searchRead("sharqia.portal.user", [],
+          ["name", "login", "role", "status", "employee_id", "department_id",
+           "last_login", "backend_id"],
+          { limit: 500, order: "name asc" });
+        return { records: recs.map(mapPortalUser) };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [] }) }
+    );
+  },
+
+  // إنشاء مستخدم تطبيق في أودو — أودو مصدر الحقيقة للدور والحالة
+  async "portalUser.create"(params) {
+    const login = String(params?.login || "").trim();
+    const name = String(params?.name || "").trim();
+    if (!login || !name) throw new Error("الاسم واسم الدخول مطلوبان");
+    if (!PORTAL_ROLES.includes(params?.role)) throw new Error(`دور غير معروف: ${params?.role}`);
+    return withOdoo(
+      async () => {
+        const dup = await odoo.searchRead("sharqia.portal.user",
+          [["login", "=ilike", login]], ["id"], { limit: 1 });
+        if (dup.length) throw new Error("اسم الدخول مستخدم مسبقًا في أودو");
+        const vals = { name, login, role: params.role, status: "active" };
+        const empId = toEmpId(params?.odooEmployeeId ?? params?.employeeId);
+        if (empId) vals.employee_id = empId;
+        const id = await odoo.create("sharqia.portal.user", vals);
+        const recs = await odoo.searchRead("sharqia.portal.user", [["id", "=", id]],
+          ["name", "login", "role", "status", "employee_id", "department_id",
+           "last_login", "backend_id"], { limit: 1 });
+        return mapPortalUser(recs[0]);
+      },
+      async () => { throw new Error("إنشاء المستخدمين غير متاح في وضع الاختبار"); },
+      { forceLiveErrors: true }
+    );
+  },
+
+  // تعديل مستخدم: الدور أو الحالة (تفعيل/إيقاف) أو الموظف المرتبط
+  async "portalUser.update"(params) {
+    const id = toEmpId(params?.id);
+    if (!id) throw new Error("معرّف المستخدم مطلوب");
+    const vals = {};
+    if (params?.role !== undefined) {
+      if (!PORTAL_ROLES.includes(params.role)) throw new Error(`دور غير معروف: ${params.role}`);
+      vals.role = params.role;
+    }
+    if (params?.status !== undefined)
+      vals.status = params.status === "suspended" ? "suspended" : "active";
+    if (params?.odooEmployeeId !== undefined)
+      vals.employee_id = toEmpId(params.odooEmployeeId) || false;
+    if (!Object.keys(vals).length) throw new Error("لا يوجد ما يُحدَّث");
+    return withOdoo(
+      async () => {
+        await odoo.write("sharqia.portal.user", [id], vals);
+        const recs = await odoo.searchRead("sharqia.portal.user", [["id", "=", id]],
+          ["name", "login", "role", "status", "employee_id", "department_id",
+           "last_login", "backend_id"], { limit: 1 });
+        if (!recs.length) throw new Error("لم يُعثر على المستخدم في أودو");
+        return mapPortalUser(recs[0]);
+      },
+      async () => { throw new Error("تعديل المستخدمين غير متاح في وضع الاختبار"); },
+      { forceLiveErrors: true }
     );
   },
 
