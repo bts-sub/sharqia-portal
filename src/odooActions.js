@@ -303,7 +303,10 @@ const REQUEST_READ_BASE = ["name", "employee_id", "category", "service", "title"
   "priority", "confidential", "state", "current_stage", "create_date",
   // المرفقات ومقدّم الطلب: بدونهما لا يرى المدير ما أرفقه الموظف ولا يعرف
   // من قدّم الطلب حين يُقدَّم نيابةً عن غيره
-  "attachment_ids", "requested_by"];
+  "attachment_ids", "requested_by",
+  // مرجع السجل المُنشأ عند الاعتماد — به يعرف التطبيق أن نتيجة هذا الطلب
+  // خطابٌ فيعرض زر تنزيله. بدونه لا يصل المرجع للواجهة إطلاقًا.
+  "odoo_ref_model", "odoo_ref_id"];
 const REQUEST_READ_DETAILS = ["sub_type", "date_from", "date_to", "days", "amount", "quantity",
   "purpose", "reason", "extra_json"];
 
