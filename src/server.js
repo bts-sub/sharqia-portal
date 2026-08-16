@@ -29,6 +29,7 @@ import notificationRoutes from "./routes/notifications.js";
 import settingsRoutes from "./routes/settings.js";
 import permissionRoutes from "./routes/permissions.js";
 import userRoutes from "./routes/users.js";
+import letterRoutes from "./routes/letters.js";
 import integrationRoutes from "./routes/integration.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -113,6 +114,7 @@ app.use("/api", notificationRoutes);
 app.use("/api", settingsRoutes);
 app.use("/api", permissionRoutes);
 app.use("/api", userRoutes);
+app.use("/api", letterRoutes);
 
 // تقديم الواجهة (ملف HTML الواحد) — إن وُجد
 const frontendPath = path.resolve(__dirname, "..", config.frontendFile);

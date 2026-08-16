@@ -95,6 +95,16 @@ function imgDataUri(b64) {
   return `data:image/${mime};base64,${b64}`;
 }
 
+// أنواع الخطابات وحالاتها → عربي (مطابقة لـ portal_letter.py في الأدون)
+const LETTER_TYPE_AR = {
+  salary_def: "تعريف بالراتب", emp_def: "تعريف موظف", experience: "شهادة خبرة",
+  bank: "خطاب للبنك", embassy: "خطاب للسفارة", traffic: "خطاب للمرور",
+  noc: "خطاب عدم ممانعة", custom: "خطاب مخصّص",
+};
+const LETTER_STATE_AR = {
+  draft: "مسودة", submitted: "مُرسَل", hr: "لدى الموارد البشرية", done: "صادر",
+};
+
 // نصّ مقروء من HTML المحرّر: نزع الوسوم وحده يلصق الكلمات عبر الفقرات
 // («...الدوام<p>اعتباراً» → «الدوامعتباراً»)، فنحوّل نهايات الكتل إلى مسافات.
 function htmlToText(html) {
@@ -1310,6 +1320,65 @@ const actions = {
         return { odooAttachmentId: id };
       },
       async () => ({ odooAttachmentId: Math.floor(Math.random() * 9999) }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  // خطابات الموظف الصادرة (sharqia.portal.letter)
+  async "letter.list"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        if (!empId) return { records: [] };
+        if (!(await modelFieldNames("sharqia.portal.letter"))) return { records: [] };
+        const fields = await availableFields("sharqia.portal.letter",
+          ["name", "letter_type", "to_entity", "lang", "state", "pdf_name",
+           "create_date", "request_id"]);
+        const recs = await odoo.searchRead("sharqia.portal.letter",
+          [["employee_id", "=", empId]], fields, { limit: 100, order: "create_date desc" });
+        return {
+          records: recs.map((r) => ({
+            id: r.id,
+            ref: r.name || "",
+            type: LETTER_TYPE_AR[r.letter_type] || r.letter_type || "خطاب",
+            to: r.to_entity || "من يهمه الأمر",
+            status: LETTER_STATE_AR[r.state] || r.state || "",
+            issued: r.state === "done",
+            at: r.create_date || "",
+            // الرابط يُبنى هنا لا في الواجهة، فمصدر واحد للحقيقة
+            pdfUrl: r.state === "done" ? `/api/letters/${r.id}/pdf` : "",
+            fileName: r.pdf_name || "",
+          })),
+        };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  // ملف الخطاب — بفحص ملكية على الخادم لا على الواجهة
+  async "letter.pdf"(params, ctx) {
+    const id = toEmpId(params?.id);
+    if (!id) throw new Error("معرّف الخطاب مطلوب");
+    const empId = ctx?.user?.odooEmployeeId;
+    const role = ctx?.user?.role || "employee";
+    return withOdoo(
+      async () => {
+        const recs = await odoo.searchRead("sharqia.portal.letter", [["id", "=", id]],
+          ["employee_id", "state", "pdf_file", "pdf_name", "letter_type"], { limit: 1 });
+        const l = recs[0];
+        if (!l) throw new Error("الخطاب غير موجود");
+        // خطاب الراتب يحمل بيانات أجر — لا يُفتح إلا لصاحبه أو للموارد البشرية
+        if (!["hr", "finance", "admin"].includes(role) && l.employee_id?.[0] !== empId)
+          throw new Error("لا تملك صلاحية فتح هذا الخطاب");
+        if (l.state !== "done") throw new Error("الخطاب لم يُصدَر بعد");
+        if (!l.pdf_file) throw new Error("لم يُولَّد ملف لهذا الخطاب — راجع الموارد البشرية");
+        return {
+          base64: l.pdf_file,
+          name: l.pdf_name || `${LETTER_TYPE_AR[l.letter_type] || "خطاب"}.pdf`,
+        };
+      },
+      async () => { throw new Error("الخطابات غير متاحة في وضع الاختبار"); },
       { forceLiveErrors: true }
     );
   },
