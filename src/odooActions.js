@@ -1328,8 +1328,18 @@ const actions = {
           ["name", "mimetype", "res_model", "res_id", "datas"], { limit: 1 });
         const a = recs[0];
         if (!a) throw new Error("المرفق غير موجود");
-        if (a.res_model !== "sharqia.portal.request")
-          throw new Error("هذا المرفق ليس مرفق طلب");
+
+        // صور التعاميم مُذاعة على الموظفين أصلًا — تُفتح بلا فحص ملكية.
+        // المرفق المرتبط بتعميم قد يصل بلا res_model (يُربط عبر m2m)، فنتحقّق
+        // من ارتباطه بتعميم فعلًا لا من كونه مجهول النسب.
+        if (a.res_model !== "sharqia.portal.request") {
+          const inAnn = await odoo.searchRead("sharqia.portal.announcement",
+            [["image_ids", "in", [id]]], ["id"], { limit: 1 }).catch(() => []);
+          if (inAnn.length) {
+            return { name: a.name, mimetype: a.mimetype || "image/jpeg", base64: a.datas };
+          }
+          throw new Error("هذا المرفق غير متاح عبر التطبيق");
+        }
 
         if (!["hr", "finance", "it", "admin"].includes(role)) {
           const owner = await odoo.searchRead("sharqia.portal.request",
@@ -1357,7 +1367,7 @@ const actions = {
         // availableFields: الصورة والمقتطف أُضيفا لاحقًا — طلبهما من أدون قديم
         // كان سيُفشل قراءة التعاميم كلها فتختفي من الشاشة الرئيسية
         const fields = await availableFields("sharqia.portal.announcement",
-          ["title", "body_html", "summary", "image", "priority", "pinned",
+          ["title", "body_html", "summary", "image", "image_ids", "priority", "pinned",
            "publish_date", "require_ack", "audience", "department_id"]);
         const recs = await odoo.searchRead("sharqia.portal.announcement", [], fields,
           { limit: 50, order: "pinned desc, publish_date desc" });
@@ -1371,6 +1381,10 @@ const actions = {
               bodyHtml: r.body_html || "",
               summary: r.summary || text.slice(0, 140),
               image: imgDataUri(r.image),
+              // الصور الإضافية كروابط لا كمحتوى: ألبوم من عشر صور داخل رد
+              // قائمة التعاميم يعني عشرات الميغابايت عند كل فتح للرئيسية
+              images: (Array.isArray(r.image_ids) ? r.image_ids : [])
+                .map((id) => `/api/attachments/${id}`),
               priority: r.priority === "important" ? "مهم" : "عادي",
               pinned: !!r.pinned,
               requireAck: !!r.require_ack,
