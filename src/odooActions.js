@@ -1329,13 +1329,16 @@ const actions = {
     const empId = ctx?.user?.odooEmployeeId;
     return withOdoo(
       async () => {
-        if (!empId) return { records: [] };
         if (!(await modelFieldNames("sharqia.portal.letter"))) return { records: [] };
+        // الموارد البشرية والإدارة يرون خطابات الجميع ليوقّعوها؛ غيرهم خطاباته
+        const wide = ["hr", "admin"].includes(ctx?.user?.role);
+        if (!wide && !empId) return { records: [] };
         const fields = await availableFields("sharqia.portal.letter",
           ["name", "letter_type", "to_entity", "lang", "state", "pdf_name",
-           "create_date", "request_id"]);
+           "create_date", "request_id", "employee_id", "is_signed", "signed_by", "signed_at"]);
         const recs = await odoo.searchRead("sharqia.portal.letter",
-          [["employee_id", "=", empId]], fields, { limit: 100, order: "create_date desc" });
+          wide ? [] : [["employee_id", "=", empId]], fields,
+          { limit: 100, order: "create_date desc" });
         return {
           records: recs.map((r) => ({
             id: r.id,
@@ -1348,11 +1351,40 @@ const actions = {
             // الرابط يُبنى هنا لا في الواجهة، فمصدر واحد للحقيقة
             pdfUrl: r.state === "done" ? `/api/letters/${r.id}/pdf` : "",
             fileName: r.pdf_name || "",
+            employee: r.employee_id?.[1] || "",
+            signed: !!r.is_signed,
+            signedBy: r.signed_by || "",
+            signedAt: r.signed_at || "",
           })),
         };
       },
       async () => ({ records: [] }),
       { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  // توقيع الخطاب من التطبيق — الموارد البشرية والإدارة فقط
+  async "letter.sign"(params, ctx) {
+    const id = toEmpId(params?.id);
+    const role = ctx?.user?.role || "employee";
+    if (!id) throw new Error("معرّف الخطاب مطلوب");
+    if (!["hr", "admin"].includes(role))
+      throw new Error("التوقيع على الخطابات من صلاحية الموارد البشرية");
+    const raw = String(params?.image || "");
+    const m = raw.match(/^data:image\/(png|jpe?g|webp);base64,(.+)$/i);
+    if (!m) throw new Error("التوقيع يجب أن يكون صورة (PNG أو JPG)");
+    const b64 = m[2];
+    if (b64.length < 200) throw new Error("التوقيع فارغ — ارسمه أو ارفع صورته");
+    if (b64.length > 2 * 1024 * 1024 * 1.37) throw new Error("حجم التوقيع كبير — الحد 2 ميجابايت");
+    return withOdoo(
+      async () => {
+        const done = await odoo.execKw("sharqia.portal.letter", "apply_signature", [],
+          { letter_id: id, image_b64: b64, signer_name: ctx?.user?.name || "" });
+        if (!done) throw new Error("لم يُعثر على الخطاب في أودو");
+        return { ok: true, id: done };
+      },
+      async () => { throw new Error("التوقيع غير متاح في وضع الاختبار"); },
+      { forceLiveErrors: true }
     );
   },
 
