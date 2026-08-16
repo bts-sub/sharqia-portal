@@ -20,6 +20,14 @@ router.get("/letters", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// POST /api/me/signature { image } → توقيع المعتمِد المحفوظ في ملفه
+router.post("/me/signature", async (req, res, next) => {
+  try {
+    const { data } = await runAction("me.signature", { image: req.body?.image }, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
 // POST /api/letters/:id/sign { image } → توقيع الموارد البشرية من التطبيق
 router.post("/letters/:id/sign", async (req, res, next) => {
   try {

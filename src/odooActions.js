@@ -1289,8 +1289,12 @@ const actions = {
   async "request.approve"(params, ctx) {
     return withOdoo(
       async () => {
+        // اسم المعتمِد للسجل، وحسابه ليُطبع توقيعه المحفوظ على الخطاب الصادر
         await odoo.execKw("sharqia.portal.request", "action_approve", [[params.id]],
-          { context: { portal_actor: ctx?.user?.name || "" } });
+          { context: {
+            portal_actor: ctx?.user?.name || "",
+            portal_actor_login: ctx?.user?.login || "",
+          } });
         return { ok: true };
       },
       async () => ({ ok: true }),
@@ -1360,6 +1364,31 @@ const actions = {
       },
       async () => ({ records: [] }),
       { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  // توقيع المعتمِد المحفوظ في ملفه — يُطبع تلقائيًّا على ما يعتمده من خطابات
+  async "me.signature"(params, ctx) {
+    const login = ctx?.user?.login;
+    const role = ctx?.user?.role || "employee";
+    if (!login) throw new Error("جلسة بلا اسم دخول");
+    if (!["hr", "admin", "manager", "finance"].includes(role))
+      throw new Error("حفظ التوقيع متاح لمن يعتمد الطلبات فقط");
+    const m = String(params?.image || "").match(/^data:image\/(png|jpe?g|webp);base64,(.+)$/i);
+    if (!m) throw new Error("التوقيع يجب أن يكون صورة (PNG أو JPG)");
+    const b64 = m[2];
+    if (b64.length < 200) throw new Error("التوقيع فارغ — ارسمه أو ارفع صورته");
+    if (b64.length > 2 * 1024 * 1024 * 1.37) throw new Error("حجم التوقيع كبير — الحد 2 ميجابايت");
+    return withOdoo(
+      async () => {
+        const pu = await odoo.searchRead("sharqia.portal.user",
+          [["login", "=ilike", login]], ["id"], { limit: 1 });
+        if (!pu.length) throw new Error("لا يوجد مستخدم مطابق في أودو");
+        await odoo.write("sharqia.portal.user", pu[0].id, { signature: b64 });
+        return { ok: true };
+      },
+      async () => { throw new Error("حفظ التوقيع غير متاح في وضع الاختبار"); },
+      { forceLiveErrors: true }
     );
   },
 
