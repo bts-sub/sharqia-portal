@@ -19,4 +19,21 @@ router.post("/attachments", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /api/attachments/:id → الملف نفسه (تنزيل/عرض)
+//   المدير يفتح ما أرفقه مرؤوسه؛ الفحص على الخادم لا على الواجهة.
+router.get("/attachments/:id", async (req, res, next) => {
+  try {
+    const { data } = await runAction("attachment.read", { id: req.params.id }, { user: req.user });
+    if (!data?.base64) throw badRequest("المرفق فارغ");
+    const buf = Buffer.from(data.base64, "base64");
+    res.setHeader("Content-Type", data.mimetype);
+    // اسم الملف قد يكون عربيًّا — filename* بترميز RFC 5987
+    res.setHeader("Content-Disposition",
+      `inline; filename*=UTF-8''${encodeURIComponent(data.name || "attachment")}`);
+    res.setHeader("Content-Length", buf.length);
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.send(buf);
+  } catch (e) { next(e); }
+});
+
 export default router;

@@ -290,7 +290,10 @@ let reqFieldsCache = { at: 0, names: null };
 
 // الحقول التي نقرأها للطلب — مفلترة على ما يوجد فعلًا في الموديل
 const REQUEST_READ_BASE = ["name", "employee_id", "category", "service", "title", "description",
-  "priority", "confidential", "state", "current_stage", "create_date"];
+  "priority", "confidential", "state", "current_stage", "create_date",
+  // المرفقات ومقدّم الطلب: بدونهما لا يرى المدير ما أرفقه الموظف ولا يعرف
+  // من قدّم الطلب حين يُقدَّم نيابةً عن غيره
+  "attachment_ids", "requested_by"];
 const REQUEST_READ_DETAILS = ["sub_type", "date_from", "date_to", "days", "amount", "quantity",
   "purpose", "reason", "extra_json"];
 
@@ -309,10 +312,16 @@ function mapRequestRecord(rec) {
   try { extra = JSON.parse(rec.extra_json || "{}") || {}; } catch { extra = {}; }
   if (typeof extra !== "object" || Array.isArray(extra)) extra = {};
   const emp = Array.isArray(rec.employee_id) ? rec.employee_id : null;
+  // attachment_ids تصل معرّفات فقط. نحوّلها لروابط تنزيل عبر الباك إند —
+  // لا نُرسل محتوى الملفات في قائمة الطلبات (رد بعشرات الميغابايت لكل فتحة).
+  const attachments = (Array.isArray(rec.attachment_ids) ? rec.attachment_ids : [])
+    .map((id) => ({ id, name: `مرفق ${id}`, url: `/api/attachments/${id}` }));
   return {
     ...rec,
     empId: emp ? "E" + emp[0] : "",
     empName: emp ? emp[1] : "",
+    requestedBy: rec.requested_by || "",
+    attachments,
     extra,
     details: pickDetailValues(rec),
   };
@@ -1151,6 +1160,10 @@ const actions = {
           priority: { "عادية": "0", "متوسطة": "1", "عاجلة": "2" }[params.priority] || "0",
           confidential: !!params.confidential,
           extra_json: JSON.stringify(details),         // التفاصيل كاملة دائمًا
+          // مقدّم الطلب الفعلي: صاحب الجلسة. حين يُقدَّم الطلب نيابةً عن موظف
+          // آخر يبقى employee_id هو المستفيد، فبدون هذا الحقل لا يظهر في أودو
+          // من قدّمه إطلاقًا.
+          requested_by: [ctx?.user?.name, ctx?.user?.login].filter(Boolean).join(" · ") || "",
           ...detailVals,
         };
 
@@ -1297,6 +1310,42 @@ const actions = {
         return { odooAttachmentId: id };
       },
       async () => ({ odooAttachmentId: Math.floor(Math.random() * 9999) }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  // تنزيل مرفق — بفحص ملكية على الخادم.
+  //   الموظف يفتح مرفقات طلبه هو؛ المدير مرفقات مرؤوسيه؛ الأدوار الإدارية الكل.
+  //   بدون هذا الفحص يقرأ أي موظف أي مرفق في أودو برقمه فقط.
+  async "attachment.read"(params, ctx) {
+    const id = toEmpId(params?.id);
+    if (!id) throw new Error("معرّف المرفق مطلوب");
+    const empId = ctx?.user?.odooEmployeeId;
+    const role = ctx?.user?.role || "employee";
+    return withOdoo(
+      async () => {
+        const recs = await odoo.searchRead("ir.attachment", [["id", "=", id]],
+          ["name", "mimetype", "res_model", "res_id", "datas"], { limit: 1 });
+        const a = recs[0];
+        if (!a) throw new Error("المرفق غير موجود");
+        if (a.res_model !== "sharqia.portal.request")
+          throw new Error("هذا المرفق ليس مرفق طلب");
+
+        if (!["hr", "finance", "it", "admin"].includes(role)) {
+          const owner = await odoo.searchRead("sharqia.portal.request",
+            [["id", "=", a.res_id]], ["employee_id"], { limit: 1 });
+          const ownerEmp = owner[0]?.employee_id?.[0];
+          let allowed = ownerEmp === empId;
+          if (!allowed && role === "manager" && empId) {
+            const sub = await odoo.searchRead("hr.employee",
+              [["id", "=", ownerEmp], ["parent_id", "=", empId]], ["id"], { limit: 1 });
+            allowed = sub.length > 0;
+          }
+          if (!allowed) throw new Error("لا تملك صلاحية فتح هذا المرفق");
+        }
+        return { name: a.name, mimetype: a.mimetype || "application/octet-stream", base64: a.datas };
+      },
+      async () => { throw new Error("المرفقات غير متاحة في وضع الاختبار"); },
       { forceLiveErrors: true }
     );
   },
