@@ -18,6 +18,13 @@ router.get("/announcements", async (req, res, next) => {
 // إشعار حالة (لا يُخزَّن): يظهر ما دام الموظف في إجازة معتمدة سارية، ويختفي
 // وحده بعد عودته. أُضيف كإشعار لأن الواجهة تعرض الإشعارات في الرئيسية
 // وفي تبويب الإشعارات معًا — فيصل التنبيه بلا تعديل في الواجهة.
+// الإشعار المشتقّ ليس سجلًّا في notifs، فلا مكان لحفظ «قُرئ» عليه. مفتاحه
+// (الإجازة نفسها) يُحفظ في مجموعة مستقلة، وإلا بقي غير مقروء إلى الأبد
+// يتصدّر القائمة مهما ضغط عليه الموظف.
+const noticeKey = (data) => `on-leave:${data.from}:${data.to}`;
+const noticeIsRead = (userId, key) =>
+  readAll("noticeReads").some((r) => r.userId === userId && r.key === key);
+
 async function onLeaveNotice(user) {
   try {
     const { data } = await runAction("leave.current", {}, { user });
@@ -30,10 +37,18 @@ async function onLeaveNotice(user) {
       type: "system",
       title: `أنت حاليًا في ${data.type}`,
       body: `من ${data.from} إلى ${data.to} · ${tail}`,
-      read: false,
+      read: noticeIsRead(user.id, noticeKey(data)),
       at: new Date().toISOString(),
+      noticeKey: noticeKey(data),
     };
   } catch { return null; }
+}
+
+function markNoticeRead(user, key) {
+  if (!key || noticeIsRead(user.id, key)) return;
+  const all = readAll("noticeReads");
+  all.unshift({ userId: user.id, key, at: new Date().toISOString() });
+  writeAll("noticeReads", all);
 }
 
 router.get("/notifications", async (req, res, next) => {
@@ -63,19 +78,30 @@ function reportRead(user, notif) {
     .catch((e) => console.warn("⚠️ تعذّر إبلاغ أودو بقراءة الإشعار:", e.message));
 }
 
-router.post("/notifications/:id/read", (req, res) => {
-  const all = readAll("notifs");
-  const n = all.find((x) => String(x.id) === req.params.id && x.userId === req.user.id);
-  if (n) { n.read = true; writeAll("notifs", all); reportRead(req.user, n); }
-  res.json({ ok: true });
+router.post("/notifications/:id/read", async (req, res, next) => {
+  try {
+    if (req.params.id === "on-leave") {
+      const notice = await onLeaveNotice(req.user);
+      markNoticeRead(req.user, notice?.noticeKey);
+      return res.json({ ok: true });
+    }
+    const all = readAll("notifs");
+    const n = all.find((x) => String(x.id) === req.params.id && x.userId === req.user.id);
+    if (n) { n.read = true; writeAll("notifs", all); reportRead(req.user, n); }
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });
 
-router.post("/notifications/read-all", (req, res) => {
-  const all = readAll("notifs");
-  const mineUnread = all.filter((n) => n.userId === req.user.id && !n.read);
-  writeAll("notifs", all.map((n) => (n.userId === req.user.id ? { ...n, read: true } : n)));
-  for (const n of mineUnread) reportRead(req.user, n);
-  res.json({ ok: true });
+router.post("/notifications/read-all", async (req, res, next) => {
+  try {
+    const all = readAll("notifs");
+    const mineUnread = all.filter((n) => n.userId === req.user.id && !n.read);
+    writeAll("notifs", all.map((n) => (n.userId === req.user.id ? { ...n, read: true } : n)));
+    for (const n of mineUnread) reportRead(req.user, n);
+    const notice = await onLeaveNotice(req.user);
+    markNoticeRead(req.user, notice?.noticeKey);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });
 
 export default router;

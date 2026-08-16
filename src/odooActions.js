@@ -184,6 +184,8 @@ const CONTROL_KEYS = new Set([
   "service", "category", "title", "desc", "description", "priority", "confidential",
   "extra", "attachments", "idempotencyKey", "ack",
   "id", "odooId", "status", "state", "flow", "stageIndex", "audit", "at", "emp", "employee",
+  // المستفيد ليس تفصيلًا من تفاصيل الطلب بل هو صاحبه — يُعيَّن على employee_id
+  "beneficiaryId", "beneficiaryName", "onBehalf",
 ]);
 
 const isEmpty = (v) =>
@@ -478,6 +480,29 @@ function mapLeave(rec) {
     lastActor: rec.first_approver_id?.[1] || rec.second_approver_id?.[1] || "",
     balanceAfter: null,
   };
+}
+
+// صاحب الطلب الفعلي: الموظف المستفيد لا مَن ضغط الزر.
+//   المدير يقدّم نيابةً عن مرؤوسيه المباشرين فقط، والموارد البشرية/الأدمن عن
+//   أي موظف. الصلاحية تُفحص هنا على الخادم لأن الواجهة قابلة للتزوير.
+async function resolveBeneficiary(params, ctx) {
+  const me = ctx?.user?.odooEmployeeId;
+  const want = toEmpId(params?.beneficiaryId);
+  if (!want || want === me) return me;
+
+  const role = ctx?.user?.role || "employee";
+  if (["hr", "admin"].includes(role)) {
+    const ok = await odoo.searchRead("hr.employee", [["id", "=", want]], ["name"], { limit: 1 });
+    if (!ok.length) throw new Error(`لا يوجد موظف بالرقم ${want} في أودو`);
+    return want;
+  }
+  if (role === "manager") {
+    const sub = await odoo.searchRead("hr.employee",
+      [["id", "=", want], ["parent_id", "=", me]], ["name"], { limit: 1 });
+    if (!sub.length) throw new Error("لا يمكنك تقديم طلب نيابةً عن موظف ليس ضمن فريقك المباشر.");
+    return want;
+  }
+  throw new Error("لا تملك صلاحية تقديم طلب نيابةً عن موظف آخر.");
 }
 
 // ---- تعريف الـ actions ----
@@ -1049,13 +1074,23 @@ const actions = {
 
         const near = nearestLocation(lat, lng, locs);
         if (!near) throw new Error("تعذّر مطابقة موقعك بأي نطاق عمل.");
-        const maxAcc = near.location.max_accuracy_m || 50;
+        // 150م هو ما يعطيه جهاز حقيقي داخل مبنى أو على شبكة الجوال. الحد
+        // القديم (50) كان يرفض معظم البصمات الصادقة برسالة «دقة الموقع ضعيفة».
+        const maxAcc = near.location.max_accuracy_m || 150;
         const acc = Number(params.accuracy);
         if (Number.isFinite(acc) && acc > maxAcc) {
-          throw new Error(`دقة الموقع ضعيفة (${Math.round(acc)}م). اخرج لمكان مكشوف وحاول مرة أخرى.`);
+          throw new Error(
+            `دقة تحديد موقعك ${Math.round(acc)}م والحد المسموح ${maxAcc}م. ` +
+            "اخرج قرب نافذة أو مكان مكشوف، وفعّل «الموقع الدقيق» في إعدادات التطبيق، ثم أعد المحاولة.");
         }
-        if (!near.within) {
-          throw new Error(`أنت خارج نطاق «${near.location.name}» بمسافة ${near.distance} متر.`);
+        // هامش عدم اليقين: من يقف على حدّ النطاق وجهازه يخطئ ±40م يُرفض ظلمًا.
+        // المسافة المؤكَّدة = المسافة المقيسة ناقص خطأ القياس.
+        const slack = Number.isFinite(acc) ? Math.min(Math.round(acc), maxAcc) : 0;
+        const inRange = near.within || near.distance - slack <= (near.location.radius_m || 0);
+        if (!inRange) {
+          throw new Error(
+            `أنت خارج نطاق «${near.location.name}» بمسافة ${near.distance} متر ` +
+            `(النطاق ${near.location.radius_m || 0}م).`);
         }
 
         // وقت الخادم دائمًا — لا نثق بوقت الجهاز
@@ -1164,8 +1199,13 @@ const actions = {
     const detailVals = mapDetailFields(details);       // ما يُعيَّن منه على أعمدة
     return withOdoo(
       async () => {
+        // ⚠️ كان employee_id = صاحب الجلسة دائمًا، فطلبُ المدير نيابةً عن
+        // موظفه يظهر في أودو باسم المدير: الإجازة تُخصم من رصيد المدير،
+        // والخطاب يصدر باسمه، والموظف المستفيد لا أثر له إطلاقًا.
+        const owner = await resolveBeneficiary(params, ctx);
+
         const vals = {
-          employee_id: empId,
+          employee_id: owner,
           category: params.category || "general",
           service: params.service,
           title: params.title || params.service,
@@ -1495,6 +1535,7 @@ const actions = {
 
   // ---- التعاميم (sharqia.portal.announcement) — تُقرأ من Odoo ----
   async "announcement.list"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
     return withOdoo(
       async () => {
         // availableFields: الصورة والمقتطف أُضيفا لاحقًا — طلبهما من أدون قديم
@@ -1504,6 +1545,22 @@ const actions = {
            "publish_date", "require_ack", "audience", "department_id"]);
         const recs = await odoo.searchRead("sharqia.portal.announcement", [], fields,
           { limit: 50, order: "pinned desc, publish_date desc" });
+
+        // حالة القراءة لهذا الموظف. بدونها كانت الواجهة تُولّد إشعارًا لكل
+        // تعميم بـ read=false في كل تحميل، فيعود المقروء غير مقروء أبدًا.
+        const readAt = new Map();
+        if (empId && recs.length) {
+          try {
+            const acks = await odoo.searchRead("sharqia.portal.announcement.ack",
+              [["employee_id", "=", empId], ["announcement_id", "in", recs.map((r) => r.id)]],
+              ["announcement_id", "read_at", "is_read"], { limit: 200 });
+            for (const a of acks)
+              if (a.is_read || a.read_at) readAt.set(a.announcement_id?.[0], a.read_at || true);
+          } catch (e) {
+            console.warn("⚠️ تعذّرت قراءة إقرارات التعاميم:", e.message);
+          }
+        }
+
         return {
           records: recs.map((r) => {
             const text = htmlToText(r.body_html);
@@ -1524,6 +1581,8 @@ const actions = {
               audience: r.audience === "dept"
                 ? (r.department_id?.[1] || "قسم محدّد") : "جميع الموظفين",
               at: r.publish_date || null,
+              read: readAt.has(r.id),
+              readAt: typeof readAt.get(r.id) === "string" ? readAt.get(r.id) : null,
             };
           }),
         };
