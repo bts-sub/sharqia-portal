@@ -12,7 +12,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import * as wf from "../lib/workflow.js";
-import { runAction, FLOW, producesLetter } from "../odooActions.js";
+import { runAction, FLOW, producesLetter, managerStageIsVacant } from "../odooActions.js";
 import { isTestMode } from "../lib/settings.js";
 import { badRequest, notFound, forbidden } from "../lib/errors.js";
 
@@ -88,9 +88,15 @@ async function assertCanAct(user, id, verb = "الاعتماد") {
   // state يحمل اسم المرحلة بعد أول اعتماد، و"submitted" تعني المرحلة الأولى
   const stage = rec.state === "submitted" ? flow[0] : rec.state;
   if (stage === "manager") {
-    if (user.role !== "manager") throw forbidden("هذا الطلب بانتظار المدير المباشر");
-    if (String(rec.empId) === "E" + user.odooEmployeeId) throw forbidden("لا يمكنك اعتماد طلبك بنفسك");
-    return;
+    if (user.role === "manager") {
+      if (String(rec.empId) === "E" + user.odooEmployeeId) throw forbidden("لا يمكنك اعتماد طلبك بنفسك");
+      return;
+    }
+    // مرحلةٌ بلا صاحب (الموظف بلا مدير، أو مديره بلا حساب يعتمد) تحبس الطلب
+    // إلى الأبد: صاحبه لا يعتمد لنفسه وغيره ليست مرحلته. الموارد البشرية
+    // والإدارة يفكّان الاحتباس — وهما من يقع عليهما البديل تنظيميًّا.
+    if (["hr", "admin"].includes(user.role) && await managerStageIsVacant(rec.empId)) return;
+    throw forbidden("هذا الطلب بانتظار المدير المباشر");
   }
   if (user.role !== stage) throw forbidden(`هذا الطلب في مرحلة «${stage}» وليست مرحلتك`);
 }

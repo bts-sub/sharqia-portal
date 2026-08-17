@@ -493,6 +493,49 @@ function mapLeave(rec) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// مرحلة «المدير المباشر» بلا صاحب.
+//   موظفٌ بلا مدير في أودو، أو مديرُه هو نفسه، أو مديره بلا حساب فعّال في
+//   التطبيق بدورٍ يعتمد — في كلٍّ منها لا أحد يستطيع اعتماد هذه المرحلة أبدًا:
+//   صاحب الطلب لا يعتمد لنفسه، والموارد البشرية تُمنع لأن المرحلة ليست
+//   مرحلتها. فيعلق الطلب في «بانتظار المدير المباشر» إلى الأبد.
+// ---------------------------------------------------------------------------
+const APPROVING_ROLES = ["manager", "hr", "finance", "it", "admin"];
+
+async function managerVacancy(empIds) {
+  const ids = [...new Set(empIds.filter(Boolean))];
+  const out = new Map();
+  if (!ids.length) return out;
+  const emps = await odoo.searchRead("hr.employee", [["id", "in", ids]], ["parent_id"], { limit: 500 });
+  const bossOf = new Map(emps.map((e) => [e.id, e.parent_id?.[0] || null]));
+  const bosses = [...new Set([...bossOf.values()].filter(Boolean))];
+  const able = new Set();
+  if (bosses.length) {
+    const accts = await odoo.searchRead("sharqia.portal.user",
+      [["employee_id", "in", bosses], ["status", "=", "active"]],
+      ["employee_id", "role"], { limit: 500 });
+    for (const a of accts)
+      if (APPROVING_ROLES.includes(a.role)) able.add(a.employee_id?.[0]);
+  }
+  for (const id of ids) {
+    const boss = bossOf.get(id);
+    out.set(id, !boss || boss === id || !able.has(boss));
+  }
+  return out;
+}
+
+export async function managerStageIsVacant(empId) {
+  const id = toEmpId(empId);
+  if (!id) return true;
+  try {
+    return (await managerVacancy([id])).get(id) !== false;
+  } catch (e) {
+    // تعذّرت القراءة: لا نفتح الاعتماد على مصراعيه بناءً على مجهول
+    console.warn("⚠️ تعذّر فحص وجود مدير مباشر:", e.message);
+    return false;
+  }
+}
+
 // صاحب الطلب الفعلي: الموظف المستفيد لا مَن ضغط الزر.
 //   المدير يقدّم نيابةً عن مرؤوسيه المباشرين فقط، والموارد البشرية/الأدمن عن
 //   أي موظف. الصلاحية تُفحص هنا على الخادم لأن الواجهة قابلة للتزوير.
@@ -1282,6 +1325,22 @@ const actions = {
           catch (e) { console.warn("تعذّر ربط المرفقات بالطلب", id, e.message); }
         }
 
+        // مرحلة أولى بلا صاحب تُتخطّى عند الإنشاء لا تُترك تعلق: طلب المدير
+        // لنفسه (ولا مدير فوقه بحساب فعّال) كان يقف في «بانتظار المدير
+        // المباشر» فلا يعتمده هو — لا اعتماد ذاتيًّا — ولا الموارد البشرية.
+        const flow = FLOW[payload.category] || FLOW.general;
+        if (flow[0] === "manager" && flow[1] && flow[1] !== "done"
+            && await managerStageIsVacant(owner)) {
+          const skip = { state: flow[1] };
+          if (!known || known.has("stage_index")) skip.stage_index = 1;
+          try {
+            await odoo.write("sharqia.portal.request", id, skip);
+            console.warn(`↷ الطلب ${id}: تُخطّيت مرحلة المدير (لا مدير مباشر يعتمد للموظف ${owner})`);
+          } catch (e) {
+            console.warn("⚠️ تعذّر تخطّي مرحلة المدير:", e.message);
+          }
+        }
+
         const recs = await odoo.searchRead("sharqia.portal.request", [["id", "=", id]],
           ["name", "state", "category", "service", "title"], { limit: 1 });
         return { odooId: id, ...recs[0] };
@@ -1319,7 +1378,18 @@ const actions = {
         // inbox=true تعلّم الطلب بأنه ينتظر إجراء صاحب الجلسة، فتعرضه شاشة
         // المدير حتى لو تعذّر تحميل قائمة الفريق.
         const inbox = params?.scope === "inbox";
-        return { records: recs.map((r) => ({ ...mapRequestRecord(r), inbox })) };
+        // mgrVacant: مرحلة المدير بلا صاحب — الواجهة تُظهر أزرار الاعتماد
+        // للموارد البشرية عندها بدل «هذا الطلب ليس ضمن مهامك الحالية».
+        let vacancy = new Map();
+        try {
+          vacancy = await managerVacancy(recs.map((r) => r.employee_id?.[0]));
+        } catch (e) { console.warn("⚠️ تعذّر فحص مرحلة المدير:", e.message); }
+        return {
+          records: recs.map((r) => ({
+            ...mapRequestRecord(r), inbox,
+            mgrVacant: vacancy.get(r.employee_id?.[0]) === true,
+          })),
+        };
       },
       async () => ({ records: [] })
     );
@@ -1338,7 +1408,11 @@ const actions = {
         const fields = await requestReadFields();
         const recs = await odoo.searchRead("sharqia.portal.request", domain, fields, { limit: 1 });
         if (!recs.length) return null;
-        return mapRequestRecord(recs[0]);
+        const owner = recs[0].employee_id?.[0];
+        let mgrVacant = false;
+        try { mgrVacant = (await managerVacancy([owner])).get(owner) === true; }
+        catch (e) { console.warn("⚠️ تعذّر فحص مرحلة المدير:", e.message); }
+        return { ...mapRequestRecord(recs[0]), mgrVacant };
       },
       async () => null
     );
