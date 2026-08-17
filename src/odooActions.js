@@ -487,6 +487,11 @@ function mapLeave(rec) {
 //   أي موظف. الصلاحية تُفحص هنا على الخادم لأن الواجهة قابلة للتزوير.
 async function resolveBeneficiary(params, ctx) {
   const me = ctx?.user?.odooEmployeeId;
+  // onBehalf هو إعلان الواجهة الصريح «هذا الطلب لغيري». بدونه لا يُنظر في
+  // beneficiaryId إطلاقًا: شاشات الطلب ترسله دائمًا، وقد يحمل معرّفًا لا
+  // يطابق الجلسة (كان يحمل ثابتًا تجريبيًّا للمدير)، فيُرفض طلب الموظف
+  // لنفسه برسالة «ليس ضمن فريقك» — وهو يطلب لنفسه.
+  if (!params?.onBehalf) return me;
   const want = toEmpId(params?.beneficiaryId);
   if (!want || want === me) return me;
 
