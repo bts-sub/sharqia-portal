@@ -7,7 +7,7 @@
 //   2) صفحة التطبيق تُطلب من الشبكة أولًا. لو خُدِّمت من الذاكرة أولًا لبقي
 //      الموظف على نسخة قديمة بعد كل نشر حتى يفرّغ ذاكرة متصفحه.
 // ===========================================================================
-const VERSION = "v23";
+const VERSION = "v24";
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 
@@ -65,15 +65,20 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // الأصول الثابتة: من الذاكرة فورًا مع تحديثها في الخلفية
+  // (3) الأصول: الشبكة أولًا كذلك، والذاكرة شبكة نجاة عند انقطاعها.
+  //   كانت «الذاكرة أولًا مع تحديث في الخلفية»، وهي تُخدّم النسخة السابقة
+  //   دائمًا: بعد كل نشر يبقى الموظف على i18n.js القديم حتى الفتحة التالية —
+  //   فيرى قاموس ترجمة متأخرًا بإصدار كامل ويظنّ أن الترجمة لم تُصلَح.
   e.respondWith((async () => {
-    const cached = await caches.match(req);
-    const network = fetch(req).then((res) => {
+    try {
+      const res = await fetch(req);
       if (res && res.status === 200 && res.type === "basic") {
-        caches.open(ASSETS).then((c) => c.put(req, res.clone()));
+        const c = await caches.open(ASSETS);
+        c.put(req, res.clone());
       }
       return res;
-    }).catch(() => cached);
-    return cached || network;
+    } catch {
+      return (await caches.match(req)) || Response.error();
+    }
   })());
 });

@@ -24,6 +24,10 @@
     /* التنقّل */
     "الرئيسية":            { en: "Home", ur: "ہوم", fr: "Accueil" },
     "الخدمات":             { en: "Services", ur: "خدمات", fr: "Services" },
+    /* شريط التنقّل يكتبها «خدماتي» لا «الخدمات» — وكان المدخل الخاطئ وحده
+       سببَ بقاء التبويب عربيًّا في كل اللغات. */
+    "خدماتي":              { en: "My Services", ur: "میری خدمات", fr: "Mes services" },
+    "تفضيل":               { en: "Favorite", ur: "پسندیدہ", fr: "Favori" },
     "طلباتي":              { en: "My Requests", ur: "میری درخواستیں", fr: "Mes demandes" },
     "الإشعارات":           { en: "Notifications", ur: "اطلاعات", fr: "Notifications" },
     "حسابي":               { en: "My Account", ur: "میرا اکاؤنٹ", fr: "Mon compte" },
@@ -754,6 +758,54 @@
   var mineOf = new WeakMap();     // العقدة → آخر ما كتبناه نحن فيها
   var observer = null;
 
+  /* نصوصٌ تعيش في خصائص العنصر لا في عقدة نصّية: نصّ الحقل الإرشادي،
+     وتلميح الزر، وبديل الصورة. كان المارّ على العقد النصّية وحدها يتركها
+     عربيةً أبدًا — 78 نصًّا منها «ابحث عن خدمة…» في أعلى شاشة الخدمات. */
+  var ATTRS = ["placeholder", "title", "alt", "aria-label"];
+  var attrBase = new WeakMap();
+  var attrMine = new WeakMap();
+  // المراقب يشمل الخصائص أيضًا، وإلا لم يُعِد الرسم حين يبدّل React نصّ
+  // حقل إرشادي. كتابتنا نحن لا توقظه لأننا نفصله أثناء الرسم.
+  var OBS = {
+    childList: true, subtree: true, characterData: true,
+    attributes: true, attributeFilter: ATTRS,
+  };
+
+  function paintAttrs(root) {
+    var w = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null);
+    var el;
+    while ((el = w.nextNode())) {
+      if (el.id === "sq-lang" || (el.closest && el.closest("#sq-lang"))) continue;
+      var bm = attrBase.get(el), mm = attrMine.get(el);
+      for (var i = 0; i < ATTRS.length; i++) {
+        var name = ATTRS[i];
+        if (!el.hasAttribute(name)) continue;
+        var cur = el.getAttribute(name);
+        if (!bm) { bm = {}; attrBase.set(el, bm); }
+        if (!mm) { mm = {}; attrMine.set(el, mm); }
+        if (cur !== mm[name]) bm[name] = cur;      // React كتب قيمة جديدة
+        var out = tr(bm[name]) || bm[name];
+        if (cur !== out) { el.setAttribute(name, out); mm[name] = out; }
+      }
+    }
+  }
+
+  function restoreAttrs(root) {
+    var w = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null);
+    var el;
+    while ((el = w.nextNode())) {
+      var bm = attrBase.get(el), mm = attrMine.get(el);
+      if (!bm || !mm) continue;
+      for (var i = 0; i < ATTRS.length; i++) {
+        var name = ATTRS[i];
+        if (mm[name] === undefined) continue;
+        if (el.getAttribute(name) === mm[name] && bm[name] !== undefined)
+          el.setAttribute(name, bm[name]);
+        delete mm[name];
+      }
+    }
+  }
+
   /* الفرق بين «ما كتبناه» و«ما فيها الآن» هو ما يميّز تحديث React عن كتابتنا.
      بدونه نُعيد كتابة أول نص رأيناه فنجمّد كل رقم وكل حالة تتغيّر — «0 موظفاً»
      تبقى صفرًا بعد وصول الفريق من أودو. */
@@ -776,8 +828,9 @@
         var out = tr(base) || base;
         if (cur !== out) { node.nodeValue = out; mineOf.set(node, out); }
       }
+      paintAttrs(root);
     } finally {
-      if (observer) observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+      if (observer) observer.observe(document.body, OBS);
     }
   }
 
@@ -794,8 +847,9 @@
           mineOf.delete(n);
         }
       }
+      restoreAttrs(root);
     } finally {
-      if (observer) observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+      if (observer) observer.observe(document.body, OBS);
     }
   }
 
@@ -894,9 +948,7 @@
     build();
     paint(document.body);
     observer = new MutationObserver(schedule);
-    observer.observe(document.body, {
-      childList: true, subtree: true, characterData: true,
-    });
+    observer.observe(document.body, OBS);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
