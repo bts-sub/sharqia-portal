@@ -6,6 +6,7 @@
 //   التحقق من النطاق يتم هنا لا في المتصفح — تحقّق الواجهة وحده يُتجاوَز.
 // ===========================================================================
 import { Router } from "express";
+
 import { requireAuth } from "../middleware/auth.js";
 import { runAction } from "../odooActions.js";
 import { badRequest } from "../lib/errors.js";
@@ -36,12 +37,21 @@ router.get("/attendance/monitor", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// حالة اليوم — تبدأ منها شاشة البصمة بدل ذاكرة المتصفح
+router.get("/attendance/today", async (req, res, next) => {
+  try {
+    const { data, warning } = await runAction("attendance.today", {}, { user: req.user });
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ ...(data || {}), ...(warning ? { warning } : {}) });
+  } catch (e) { next(e); }
+});
+
 router.post("/attendance/punch", async (req, res, next) => {
   try {
-    const { op, lat, lng, accuracy, mock, device } = req.body || {};
+    const { op, lat, lng, accuracy, mock, device, photo, verify } = req.body || {};
     if (!["in", "out"].includes(op)) throw badRequest("op يجب أن تكون in أو out");
     const { data } = await runAction("attendance.punch",
-      { op, lat, lng, accuracy, mock, device }, { user: req.user });
+      { op, lat, lng, accuracy, mock, device, photo, verify }, { user: req.user });
     res.json(data);
   } catch (e) { next(e); }
 });

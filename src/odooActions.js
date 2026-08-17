@@ -465,6 +465,53 @@ function mapLoan(rec) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// سجل الحضور → شكل الشاشة.
+//   أودو يخزّن check_in/check_out بتوقيت UTC، والموظف يقرأ ساعة الحائط عنده.
+//   بلا تحويل تظهر بصمة التاسعة صباحًا سادسةً — والشاشة تقرأ in/out/status.
+// ---------------------------------------------------------------------------
+const WORK_TZ = process.env.PORTAL_TZ || "Asia/Riyadh";
+const tzFmt = new Intl.DateTimeFormat("en-GB", {
+  timeZone: WORK_TZ, hour12: false,
+  year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+});
+function localParts(utc) {
+  if (!utc) return null;
+  // "2026-08-17 10:05:50" من أودو = UTC، وJS يحتاج صيغة ISO ليقرأها كذلك
+  const d = new Date(String(utc).replace(" ", "T") + "Z");
+  if (Number.isNaN(d.getTime())) return null;
+  const p = Object.fromEntries(tzFmt.formatToParts(d).map((x) => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, hhmm: `${p.hour}:${p.minute}` };
+}
+
+// حدّ التأخير: بعده تُعدّ البصمة متأخرة (ساعة الحائط في مقر العمل)
+const LATE_AFTER = "08:15";
+const SHIFT_END = "16:00";
+const toMin = (s) => { const [h, m] = String(s).split(":").map(Number); return h * 60 + m; };
+
+function mapAttendance(rec) {
+  const i = localParts(rec.check_in);
+  const o = localParts(rec.check_out);
+  let status = "منتظم";
+  if (!o) status = "لم يسجل انصراف";
+  else if (i && toMin(i.hhmm) > toMin(LATE_AFTER)) status = "تأخّر";
+  return {
+    id: rec.id,
+    date: i?.date || "",
+    in: i?.hhmm || "—",
+    out: o?.hhmm || "—",
+    hours: typeof rec.worked_hours === "number" ? Math.round(rec.worked_hours * 100) / 100 : null,
+    status,
+    manual: !!rec.x_manual,
+    branch: rec.x_location_id?.[1] || "",
+    within: !!rec.x_in_range,
+    accuracy: rec.x_accuracy_m || 0,
+    dist: rec.x_distance_m || 0,
+    // الشاشة تحسب التأخير من 08:00 والخروج المبكّر من 16:00 — نمرّرهما معًا
+    shiftStart: "08:00", shiftEnd: SHIFT_END,
+  };
+}
+
 // حالة الإجازة في Odoo → نص عربي متوافق مع الواجهة
 const LEAVE_STATE_AR = {
   draft: "مسودة", confirm: "في انتظار المدير", validate1: "بانتظار الموارد البشرية",
@@ -487,7 +534,12 @@ function mapLeave(rec) {
     // شاشة سجل الإجازات تقرأ هذه الأربعة. غياب submitted كان يجعلها تنادي
     // Gt(undefined).split("-") فيسقط التطبيق كله إلى «حدث خطأ مؤقت».
     submitted: (rec.create_date || "").slice(0, 10) || from || "",
-    reason: rec.private_name || rec.name || "",
+    // ⚠️ reason تعرضه الشاشة تحت عنوان «سبب الرفض» بخلفية حمراء. كان يحمل
+    // وصف الإجازة دائمًا، فتظهر إجازةٌ معتمدة ومعها «سبب الرفض: طلب إجازة
+    // اضطرارية». صار لا يُملأ إلا عند رفضٍ أو إلغاءٍ فعليّ.
+    reason: ["refuse", "cancel"].includes(rec.state)
+      ? (rec.private_name || rec.name || "بلا سبب مذكور") : "",
+    note: rec.private_name || rec.name || "",
     lastActor: rec.first_approver_id?.[1] || rec.second_approver_id?.[1] || "",
     balanceAfter: null,
   };
@@ -718,17 +770,56 @@ const actions = {
     return withOdoo(
       async () => {
         if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo");
+        // المصدر الأول: حساب أودو نفسه — وهو ما يظهر في زر «Time Off» على
+        // بطاقة الموظف (20/30). أودو يخصم من الرصيد أنواعَ الإجازات ذات
+        // المخصَّص وحدها، فالإجازة الاضطرارية أو بدون راتب لا تنقص السنوية.
+        // قراءته مباشرةً تُغني عن إعادة الحساب وتضمن رقمًا واحدًا في النظامين.
+        const empFields = await availableFields("hr.employee",
+          ["allocation_display", "allocation_remaining_display", "allocation_count"]);
+        if (empFields.includes("allocation_remaining_display")) {
+          const e = (await odoo.searchRead("hr.employee", [["id", "=", empId]], empFields, { limit: 1 }))[0];
+          const num = (v) => { const n = parseFloat(String(v ?? "").replace(/[^\d.\-]/g, "")); return Number.isFinite(n) ? n : null; };
+          const remaining = num(e?.allocation_remaining_display);
+          const total = num(e?.allocation_display) ?? num(e?.allocation_count);
+          if (remaining !== null && total !== null)
+            return { balance: remaining, allocated: total, used: Math.max(0, total - remaining), source: "odoo-employee" };
+        }
+
         // نداءان مستقلان → بالتوازي (كانا متتابعين فيتضاعف زمن الانتظار)
         const [allocs, taken] = await Promise.all([
           odoo.searchRead("hr.leave.allocation",
-            [["employee_id", "=", empId], ["state", "=", "validate"]], ["number_of_days"]),
+            [["employee_id", "=", empId], ["state", "=", "validate"]],
+            ["number_of_days", "holiday_status_id"]),
           odoo.searchRead("hr.leave",
-            [["employee_id", "=", empId], ["state", "=", "validate"]], ["number_of_days"]),
+            [["employee_id", "=", empId], ["state", "=", "validate"]],
+            ["number_of_days", "holiday_status_id"]),
         ]);
-        const allocated = allocs.reduce((s, a) => s + (a.number_of_days || 0), 0);
-        const used = taken.reduce((s, a) => s + (a.number_of_days || 0), 0);
+        // ⚠️ كان يطرح مجموع كل الإجازات من مجموع كل المخصَّصات بلا نظرٍ للنوع،
+        // فإجازةٌ بدون راتب (نوعٌ بلا رصيد مخصَّص أصلًا) تُنقص الرصيد السنوي.
+        // الرصيد يُحسب لكل نوع على حدة، ولا يُخصم من نوعٍ إلا ما أُخذ منه.
+        const byType = new Map();
+        const slot = (r) => {
+          const id = r.holiday_status_id?.[0] || 0;
+          if (!byType.has(id))
+            byType.set(id, { id, name: r.holiday_status_id?.[1] || "غير محدّد", allocated: 0, used: 0 });
+          return byType.get(id);
+        };
+        for (const a of allocs) slot(a).allocated += a.number_of_days || 0;
+        for (const t of taken) slot(t).used += t.number_of_days || 0;
+
+        let balance = 0, allocated = 0, used = 0, usedUnallocated = 0;
+        for (const t of byType.values()) {
+          allocated += t.allocated;
+          if (t.allocated > 0) {
+            balance += Math.max(0, t.allocated - t.used);
+            used += t.used;
+          } else {
+            // نوعٌ بلا رصيد مخصَّص: أيامه تُحصى وتُعرض، ولا تُخصم من غيره
+            usedUnallocated += t.used;
+          }
+        }
         // allocated/used يُعرضان في «ملفي الوظيفي» — كانا رقمين ثابتين في الواجهة
-        return { balance: Math.max(0, allocated - used), allocated, used };
+        return { balance, allocated, used, usedUnallocated };
       },
       async () => ({ balance: FX.FX_LEAVE_BALANCE }),
       { emptyOnError: () => ({ balance: null, allocated: null, used: null, unavailable: true }) }
@@ -1032,17 +1123,56 @@ const actions = {
   },
 
   // سجل الحضور
+  //   ⚠️ كان يرجع سجلات أودو خامًّا (check_in/check_out بتوقيت UTC)، والشاشة
+  //   تقرأ in/out/status/manual — فتظهر كل الأيام «—» والعدّادات أصفارًا.
   async "attendance.log"(params, ctx) {
+    const empId = toEmpId(params?.employeeId) || ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo");
+        const fields = await availableFields("hr.attendance",
+          ["check_in", "check_out", "worked_hours", "x_manual", "x_location_id",
+           "x_in_range", "x_accuracy_m", "x_distance_m"]);
+        const recs = await odoo.searchRead("hr.attendance",
+          [["employee_id", "=", empId]], fields, { limit: 60, order: "check_in desc" });
+        return { records: recs.map(mapAttendance) };
+      },
+      async () => ({ records: FX.FX_ATTENDANCE }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  // حالة اليوم: هل سجّل حضوره؟ هل أغلقه؟ — تُقرأ من أودو لا من ذاكرة المتصفح.
+  //   بدونها كانت شاشة البصمة تبدأ دائمًا بـ«لم يسجّل بعد»، فزر «انصراف»
+  //   يردّ «لا يمكن تسجيل الانصراف قبل تسجيل الحضور» ولا يصل الخادم أصلًا.
+  async "attendance.today"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
     return withOdoo(
       async () => {
         if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo");
+        const today = new Date().toISOString().slice(0, 10);
+        const fields = await availableFields("hr.attendance",
+          ["check_in", "check_out", "worked_hours", "x_location_id", "x_in_range"]);
+        // بصمة اليوم، أو بصمة مفتوحة من يوم سابق (نُسي إغلاقها) — كلتاهما
+        // تعنيان أن الانصراف هو الإجراء التالي لا الحضور.
         const recs = await odoo.searchRead("hr.attendance",
-          [["employee_id", "=", empId]], ["check_in", "check_out"], { limit: 30, order: "check_in desc" });
-        return { records: recs };
+          ["|", ["check_in", ">=", `${today} 00:00:00`], ["check_out", "=", false],
+            ["employee_id", "=", empId]],
+          fields, { limit: 5, order: "check_in desc" });
+        const open = recs.find((r) => !r.check_out) || null;
+        const todays = recs.filter((r) => String(r.check_in || "").slice(0, 10) === today);
+        const last = todays[0] || null;
+        return {
+          checkedIn: !!(open || last),
+          checkedOut: !!(last && last.check_out && !open),
+          open: open ? mapAttendance(open) : null,
+          last: last ? mapAttendance(last) : null,
+          // بصمة معلّقة من يوم سابق: الواجهة تنبّه صاحبها بدل أن تحيّره
+          staleOpen: !!(open && String(open.check_in || "").slice(0, 10) !== today),
+        };
       },
-      async () => ({ records: FX.FX_ATTENDANCE }),
-      { emptyOnError: () => ({ records: [], unavailable: true }) }
+      async () => ({ checkedIn: false, checkedOut: false, open: null, last: null, staleOpen: false }),
+      { emptyOnError: () => ({ checkedIn: false, checkedOut: false, open: null, last: null, staleOpen: false, unavailable: true }) }
     );
   },
 
@@ -1156,12 +1286,30 @@ const actions = {
         const now = new Date().toISOString().slice(0, 19).replace("T", " ");
         const geo = {
           x_in_range: true, x_location_id: near.location.id,
-          x_accuracy_m: Number.isFinite(acc) ? Math.round(acc) : 0,
-          x_distance_m: near.distance,
           ...(params.device ? { x_device: String(params.device).slice(0, 80) } : {}),
+          ...(params.verify ? { x_verify: String(params.verify).slice(0, 60) } : {}),
         };
         const known = await modelFieldNames("hr.attendance");
         const only = (o) => (known ? Object.fromEntries(Object.entries(o).filter(([k]) => known.has(k))) : {});
+
+        // صورة لحظة البصمة (اختيارية): دليلٌ على حضور الشخص لا جهازه وحده
+        const photo = (() => {
+          const m = String(params.photo || "").match(/^data:image\/(png|jpe?g|webp);base64,(.+)$/i);
+          if (!m) return null;
+          if (m[2].length > 3 * 1024 * 1024) return null;   // ~2.2 ميجابايت
+          return m[2];
+        })();
+
+        // أودو 19 يحمل حقول موقع قياسية تعرضها شاشة الحضور نفسها. كانت
+        // البوابة تتجاهلها وتكتب حقولها الخاصة فقط — فلا يظهر مكان البصمة
+        // في موديول الحضور إطلاقًا مهما سُجّل.
+        const native = (dir) => ({
+          [`${dir}_latitude`]: lat,
+          [`${dir}_longitude`]: lng,
+          [`${dir}_location`]: near.location.name || "",
+          [`${dir}_mode`]: "systray",
+          ...(params.device ? { [`${dir}_browser`]: String(params.device).slice(0, 120) } : {}),
+        });
 
         if (params.op === "in") {
           const openNow = await odoo.searchRead("hr.attendance",
@@ -1183,7 +1331,13 @@ const actions = {
           }
           const id = await odoo.create("hr.attendance", {
             employee_id: empId, check_in: now,
-            ...only({ ...geo, x_geo_lat: lat, x_geo_lng: lng }),
+            ...only({
+              ...geo, ...native("in"),
+              x_geo_lat: lat, x_geo_lng: lng,
+              x_accuracy_m: Number.isFinite(acc) ? Math.round(acc) : 0,
+              x_distance_m: near.distance,
+              ...(photo ? { x_photo: photo } : {}),
+            }),
           });
           return { odooId: id, op: "in", at: now, location: near.location.name, distance: near.distance };
         }
@@ -1192,7 +1346,15 @@ const actions = {
           [["employee_id", "=", empId], ["check_out", "=", false]], ["id"], { limit: 1, order: "check_in desc" });
         if (!open.length) throw new Error("لا يوجد سجل حضور مفتوح لتسجيل الانصراف.");
         await odoo.write("hr.attendance", open[0].id, {
-          check_out: now, ...only({ ...geo, x_out_lat: lat, x_out_lng: lng }),
+          check_out: now,
+          ...only({
+            ...geo, ...native("out"),
+            x_out_lat: lat, x_out_lng: lng,
+            // ⚠️ دقة/مسافة الانصراف كانت تُكتب فوق قيم الحضور فتضيع بيانات الدخول
+            x_out_accuracy_m: Number.isFinite(acc) ? Math.round(acc) : 0,
+            x_out_distance_m: near.distance,
+            ...(photo ? { x_out_photo: photo } : {}),
+          }),
         });
         return { odooId: open[0].id, op: "out", at: now, location: near.location.name, distance: near.distance };
       },
