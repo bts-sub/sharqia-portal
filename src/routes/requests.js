@@ -12,7 +12,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import * as wf from "../lib/workflow.js";
-import { runAction, FLOW } from "../odooActions.js";
+import { runAction, FLOW, producesLetter } from "../odooActions.js";
 import { isTestMode } from "../lib/settings.js";
 import { badRequest, notFound, forbidden } from "../lib/errors.js";
 
@@ -121,10 +121,29 @@ router.get("/requests/:id", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// ---------------------------------------------------------------------------
+// «الاعتماد يوقّع»: طلبُ خطابٍ أو شهادةٍ يصدر مستندًا رسميًّا باسم المعتمِد،
+// والأدون يطبع توقيعه المحفوظ لحظةَ إصدار المستند. فالاعتماد بلا توقيع محفوظ
+// يُخرج ورقةً بسطر توقيع فارغ لا تنفع الموظف — ومن ثمّ يُمنع.
+// ---------------------------------------------------------------------------
+async function assertSignedIfLetter(user, id) {
+  const { data } = await runAction("request.read", { id, scope: "all" }, { user });
+  if (!producesLetter(data)) return;
+  const { data: sig } = await runAction("me.signature.read", {}, { user });
+  if (!sig?.hasSignature)
+    throw badRequest("هذا الطلب يُصدر خطابًا رسميًّا فلا يُعتمد بلا توقيع. "
+      + "ارسم توقيعك أو ارفع صورته من شاشة الاعتماد، ثم أعد المحاولة.");
+}
+
 router.post("/requests/:id/approve", async (req, res, next) => {
   try {
     if (!isTestMode()) {
       await assertCanAct(req.user, req.params.id, "الاعتماد");
+      // التوقيع يُحفظ قبل الاعتماد لا بعده: الخطاب يُولَّد داخل الاعتماد نفسه،
+      // فتوقيعٌ يُحفظ بعده يأتي متأخرًا عن المستند الذي صدر بلا توقيع.
+      if (req.body?.signature)
+        await runAction("me.signature", { image: req.body.signature }, { user: req.user });
+      await assertSignedIfLetter(req.user, req.params.id);
       const { data } = await runAction("request.approve", { id: Number(req.params.id) }, { user: req.user });
       return res.json(data);
     }

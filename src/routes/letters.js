@@ -20,6 +20,16 @@ router.get("/letters", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /api/me/signature → التوقيع المحفوظ ليعرضه التطبيق قبل الاعتماد
+router.get("/me/signature", async (req, res, next) => {
+  try {
+    const { data } = await runAction("me.signature.read", {}, { user: req.user });
+    // توقيعٌ شخصي — لا يُخزَّن في وسيط مشترك
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
 // POST /api/me/signature { image } → توقيع المعتمِد المحفوظ في ملفه
 router.post("/me/signature", async (req, res, next) => {
   try {

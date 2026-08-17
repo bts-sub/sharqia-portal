@@ -408,6 +408,17 @@ const CLOSED_STATES = ["done", "rejected", "cancelled"];
 
 // مسارات الاعتماد — مطابقة لـ FLOW في الأدون (models/portal_request.py)
 // وتُستخدم لفرض المرحلة على الخادم قبل تمرير الاعتماد إلى Odoo.
+// خدمات تُصدر خطابًا رسميًّا — نفس قائمة الأدون بالضبط.
+//   التصنيف وحده لا يكفي: «تعريف راتب» يعيش في «الطلبات المالية» في التطبيق
+//   وهو شهادة راتب، فلو اعتُمد بلا توقيع خرجت الورقة بسطر توقيع فارغ.
+const LETTER_SERVICE_TOKENS = ["تعريف بالراتب", "تعريف راتب", "تعريف موظف", "شهادة خبرة",
+  "خطاب للبنك", "خطاب للسفارة", "خطاب للمرور", "عدم ممانعة"];
+export function producesLetter(rec) {
+  if (rec?.category === "letters") return true;
+  const svc = String(rec?.service || "");
+  return LETTER_SERVICE_TOKENS.some((t) => svc.includes(t));
+}
+
 export const FLOW = {
   leave: ["manager", "hr", "done"], attend: ["manager", "hr", "done"],
   finance: ["manager", "hr", "finance", "done"], custody: ["manager", "it", "done"],
@@ -1412,6 +1423,23 @@ const actions = {
       },
       async () => ({ records: [] }),
       { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  // قراءة التوقيع المحفوظ. بدونها لم يكن للتطبيق سبيلٌ لعرض ما حُفظ، فتفتح
+  // لوحة التوقيع فارغة في كل مرة ويظنّ صاحبها أن توقيعه مُسح — وهو محفوظ.
+  async "me.signature.read"(params, ctx) {
+    const login = ctx?.user?.login;
+    if (!login) throw new Error("جلسة بلا اسم دخول");
+    return withOdoo(
+      async () => {
+        const pu = await odoo.searchRead("sharqia.portal.user",
+          [["login", "=ilike", login]], ["signature", "name"], { limit: 1 });
+        const sig = pu[0]?.signature || "";
+        return { hasSignature: !!sig, image: sig ? imgDataUri(sig) : "", name: pu[0]?.name || "" };
+      },
+      async () => ({ hasSignature: false, image: "", name: "" }),
+      { emptyOnError: () => ({ hasSignature: false, image: "", name: "" }) }
     );
   },
 
