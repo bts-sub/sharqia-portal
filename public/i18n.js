@@ -1267,6 +1267,12 @@
     "ثبّت البوابة على جهازك لتفتحها كتطبيق مستقل.": { en: "Install the portal on your device to open it as a standalone app.", ur: "پورٹل کو ڈیوائس پر انسٹال کریں تاکہ الگ ایپ کی طرح کھلے۔", fr: "Installez le portail sur votre appareil pour l'ouvrir comme une application autonome." },
     "للتثبيت على الآيفون: اضغط زر المشاركة ثم «إضافة إلى الشاشة الرئيسية».": { en: "To install on iPhone: tap Share, then \"Add to Home Screen\".", ur: "آئی فون پر انسٹال کرنے کے لیے: شیئر دبائیں پھر «ہوم اسکرین میں شامل کریں»۔", fr: "Pour installer sur iPhone : appuyez sur Partager, puis « Sur l'écran d'accueil »." },
     "بوابة الموارد البشرية": { en: "HR Portal", ur: "ایچ آر پورٹل", fr: "Portail RH" },
+
+    /* عدّادات سجل الإجازات */
+    "إجمالي الإجازات":     { en: "Total Leaves", ur: "کل چھٹیاں", fr: "Total des congés" },
+    "منفّذة":               { en: "Completed", ur: "مکمل شدہ", fr: "Effectués" },
+    "حالة الإجازة — كل إجازة في خانة واحدة، ومجموع الخانات الأربع يساوي الإجمالي.": { en: "Leave status — each leave falls in exactly one bucket; the four add up to the total.", ur: "چھٹی کی حالت — ہر چھٹی ایک ہی خانے میں، اور چاروں کا مجموع کل کے برابر۔", fr: "Statut du congé — chaque congé appartient à une seule catégorie ; les quatre totalisent l'ensemble." },
+    "تفصيل المعتمدة حسب تاريخها — مجموعها يساوي «معتمدة» أعلاه.": { en: "Approved leaves broken down by date — they add up to \"Approved\" above.", ur: "منظور شدہ چھٹیوں کی تاریخ کے مطابق تفصیل — مجموعہ اوپر کے «منظور شدہ» کے برابر۔", fr: "Répartition des congés approuvés par date — leur somme égale « Approuvés » ci-dessus." },
   };
 
   var KEY_LANG = "sq.lang", KEY_DARK = "sq.dark";
