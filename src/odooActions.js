@@ -790,8 +790,22 @@ const actions = {
           const num = (v) => { const n = parseFloat(String(v ?? "").replace(/[^\d.\-]/g, "")); return Number.isFinite(n) ? n : null; };
           const remaining = num(e?.allocation_remaining_display);
           const total = num(e?.allocation_display) ?? num(e?.allocation_count);
-          if (remaining !== null && total !== null)
-            return { balance: remaining, allocated: total, used: Math.max(0, total - remaining), source: "odoo-employee" };
+          if (remaining !== null && total !== null) {
+            // المستهلك = المعتمد وحده، والمحجوز = المعلّق. أودو يطرحهما معًا
+            // من المتبقّي، وفصلُهما هنا يجعل شاشة الرصيد تشرح الرقم لا تناقضه.
+            let used = 0, pending = 0;
+            try {
+              const ls = await odoo.searchRead("hr.leave",
+                [["employee_id", "=", empId], ["state", "in", ["validate", ...LEAVE_PENDING]],
+                  ["holiday_status_id.requires_allocation", "=", true]],
+                ["number_of_days", "state"], { limit: 300 });
+              for (const l of ls) {
+                if (l.state === "validate") used += l.number_of_days || 0;
+                else pending += l.number_of_days || 0;
+              }
+            } catch (e2) { used = Math.max(0, total - remaining); }
+            return { balance: remaining, allocated: total, used, pending, source: "odoo-employee" };
+          }
         }
 
         // نداءان مستقلان → بالتوازي (كانا متتابعين فيتضاعف زمن الانتظار)
@@ -843,29 +857,37 @@ const actions = {
     return withOdoo(
       async () => {
         if (!empId) return { records: [] };
-        const [allocs, taken] = await Promise.all([
+        // ⚠️ كانت تقرأ الإجازات المعتمدة وحدها، فتقول «25 متبقٍ» بينما زر
+        // Time Off في أودو يقول 13: أودو يخصم المعتمدة **والمعلّقة** معًا،
+        // لأن أيامًا حُجزت بطلبٍ لم يُبتّ فيه ليست متاحة للحجز مرة أخرى.
+        // الشاشتان كانتا تقولان رقمين مختلفين للشيء نفسه.
+        const [allocs, leaves] = await Promise.all([
           odoo.searchRead("hr.leave.allocation",
             [["employee_id", "=", empId], ["state", "=", "validate"]],
             ["holiday_status_id", "number_of_days"]),
           odoo.searchRead("hr.leave",
-            [["employee_id", "=", empId], ["state", "=", "validate"]],
-            ["holiday_status_id", "number_of_days"]),
+            [["employee_id", "=", empId], ["state", "in", ["validate", ...LEAVE_PENDING]]],
+            ["holiday_status_id", "number_of_days", "state"], { limit: 300 }),
         ]);
         const by = new Map();
         const slot = (r) => {
           const id = r.holiday_status_id?.[0] || 0;
           if (!by.has(id))
-            by.set(id, { id, name: r.holiday_status_id?.[1] || "غير محدّد", allocated: 0, used: 0 });
+            by.set(id, { id, name: r.holiday_status_id?.[1] || "غير محدّد", allocated: 0, used: 0, pending: 0 });
           return by.get(id);
         };
         for (const a of allocs) slot(a).allocated += a.number_of_days || 0;
-        for (const t of taken) slot(t).used += t.number_of_days || 0;
+        for (const t of leaves) {
+          const s = slot(t);
+          if (t.state === "validate") s.used += t.number_of_days || 0;
+          else s.pending += t.number_of_days || 0;
+        }
         const records = [...by.values()].map((x) => ({
           ...x,
           // النوع بلا رصيد مخصّص ليس رصيده صفرًا بل «بلا سقف» — وهو حال
           // كل الأنواع التي ينشئها الأدون (requires_allocation=False)
           unlimited: x.allocated <= 0,
-          remaining: x.allocated > 0 ? Math.max(0, x.allocated - x.used) : null,
+          remaining: x.allocated > 0 ? Math.max(0, x.allocated - x.used - x.pending) : null,
         })).sort((a, b) => b.allocated - a.allocated);
         return { records };
       },
