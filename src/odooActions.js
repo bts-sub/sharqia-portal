@@ -513,10 +513,14 @@ function mapAttendance(rec) {
 }
 
 // حالة الإجازة في Odoo → نص عربي متوافق مع الواجهة
+// «في انتظار المدير» كانت تُقال لكل حالة confirm، وهي في أودو تعني
+// «بانتظار الاعتماد» أيًّا كان المعتمِد — قد يكون الموارد البشرية لا المدير.
 const LEAVE_STATE_AR = {
-  draft: "مسودة", confirm: "في انتظار المدير", validate1: "بانتظار الموارد البشرية",
+  draft: "مسودة", confirm: "بانتظار الاعتماد", validate1: "بانتظار الموارد البشرية",
   validate: "معتمدة", refuse: "مرفوضة", cancel: "ملغاة",
 };
+// الحالات الثلاث التي تعني «لم يُبتّ فيها بعد» — الواجهة تعدّها في «قيد الانتظار»
+const LEAVE_PENDING = ["draft", "confirm", "validate1"];
 function mapLeave(rec) {
   const from = rec.request_date_from || rec.date_from;
   const to = rec.request_date_to || rec.date_to;
@@ -534,12 +538,17 @@ function mapLeave(rec) {
     // شاشة سجل الإجازات تقرأ هذه الأربعة. غياب submitted كان يجعلها تنادي
     // Gt(undefined).split("-") فيسقط التطبيق كله إلى «حدث خطأ مؤقت».
     submitted: (rec.create_date || "").slice(0, 10) || from || "",
-    // ⚠️ reason تعرضه الشاشة تحت عنوان «سبب الرفض» بخلفية حمراء. كان يحمل
-    // وصف الإجازة دائمًا، فتظهر إجازةٌ معتمدة ومعها «سبب الرفض: طلب إجازة
-    // اضطرارية». صار لا يُملأ إلا عند رفضٍ أو إلغاءٍ فعليّ.
-    reason: ["refuse", "cancel"].includes(rec.state)
-      ? (rec.private_name || rec.name || "بلا سبب مذكور") : "",
+    // ⚠️ reason تعرضه الشاشة تحت عنوان «سبب الرفض» بخلفية حمراء، وكان يحمل
+    // وصف الإجازة — فتقرأ «سبب الرفض: طلب إجازة اضطرارية»، وهو عنوان الطلب
+    // لا سببَ رفضه. السبب الحقيقي في أودو حقلٌ اسمه notes («Reasons»)،
+    // ولا يُملأ إلا حين يكتبه من رفض أو ألغى.
+    reason: ["refuse", "cancel"].includes(rec.state) ? String(rec.notes || "").trim() : "",
     note: rec.private_name || rec.name || "",
+    // decided/pending: الشاشة كانت تستنتج الحالة من النص العربي، فيكفي
+    // تغيير كلمة ليختلّ العدّ. الحقل صريح ولا يعتمد على صياغة.
+    pending: LEAVE_PENDING.includes(rec.state),
+    closed: ["refuse", "cancel"].includes(rec.state),
+    approved: rec.state === "validate",
     lastActor: rec.first_approver_id?.[1] || rec.second_approver_id?.[1] || "",
     balanceAfter: null,
   };
@@ -881,7 +890,8 @@ const actions = {
             "number_of_days", "state", "first_approver_id", "second_approver_id",
             // شاشة «سجل إجازاتي» تعرض تاريخ التقديم والسبب — وغيابهما كان
             // يُسقط التطبيق كله لا الشاشة وحدها (Gt(undefined).split)
-            "create_date", "name", "private_name"]),
+            // notes هو حقل «Reasons» في أودو: سبب الرفض أو الإلغاء الحقيقي
+            "create_date", "name", "private_name", "notes"]),
           { order: "request_date_from desc" });
         return { records: recs.map(mapLeave) };
       },
