@@ -597,6 +597,35 @@ export async function managerStageIsVacant(empId) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// إجازةٌ فوق إجازة: يُمنع الطلب قبل إنشائه لا بعد اعتماده.
+//   أودو يرفض إجازةً تتداخل مع أخرى قائمة، لكن الرفض كان يقع متأخرًا — عند
+//   الاعتماد — فيمرّ الطلب في المسار كله ثم تفشل المزامنة، ويبقى في أودو
+//   سجلٌّ بمدة صفر لا يُعتمد أبدًا ولا يفهم الموظف سببه.
+// ---------------------------------------------------------------------------
+const LEAVE_BLOCKING = ["draft", "confirm", "validate1", "validate"];
+
+async function assertNoLeaveOverlap(params, empId) {
+  if (String(params?.category || "") !== "leave" || !empId) return;
+  // خدمة «تعديل إجازة معتمدة» تُغيّر إجازةً قائمة، فتداخلها معها متوقَّع
+  if (/تعديل\s*إجازة/.test(String(params?.service || ""))) return;
+  const ex = params?.extra || {};
+  const from = String(params?.from || ex.from || "").slice(0, 10);
+  const to = String(params?.to || ex.to || from).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return;
+
+  const clash = await odoo.searchRead("hr.leave",
+    [["employee_id", "=", empId], ["state", "in", LEAVE_BLOCKING],
+      ["request_date_from", "<=", to], ["request_date_to", ">=", from]],
+    ["holiday_status_id", "request_date_from", "request_date_to", "state"], { limit: 1 });
+  if (!clash.length) return;
+  const c = clash[0];
+  const how = c.state === "validate" ? "معتمدة" : "قيد الانتظار";
+  throw new Error(
+    `لديك ${c.holiday_status_id?.[1] || "إجازة"} ${how} من ${c.request_date_from} إلى ${c.request_date_to} ` +
+    "تتداخل مع هذه الفترة. اختر تواريخ أخرى، أو عدّل الإجازة القائمة من «تعديل إجازة معتمدة».");
+}
+
 // صاحب الطلب الفعلي: الموظف المستفيد لا مَن ضغط الزر.
 //   المدير يقدّم نيابةً عن مرؤوسيه المباشرين فقط، والموارد البشرية/الأدمن عن
 //   أي موظف. الصلاحية تُفحص هنا على الخادم لأن الواجهة قابلة للتزوير.
@@ -1141,9 +1170,23 @@ const actions = {
   },
 
   // أنواع الإجازات
+  //   requiresAllocation: هل يستهلك هذا النوع رصيدًا مخصَّصًا؟ بدونه كانت
+  //   شاشة الطلب تقارن أيام أي إجازة برصيد الإجازة السنوية، فتُحذّر «الرصيد
+  //   غير كافٍ» على إجازة دراسية أو مرضية — وهي لا تُخصم من رصيد أصلًا.
   async "leaveType.list"() {
     return withOdoo(
-      async () => ({ records: await odoo.searchRead("hr.leave.type", [], ["name"]) }),
+      async () => {
+        const fields = await availableFields("hr.leave.type",
+          ["name", "requires_allocation", "leave_validation_type"]);
+        const recs = await odoo.searchRead("hr.leave.type", [], fields, { limit: 100 });
+        return {
+          records: recs.map((r) => ({
+            id: r.id, name: r.name,
+            requiresAllocation: r.requires_allocation === true,
+            validation: r.leave_validation_type || "",
+          })),
+        };
+      },
       async () => ({ records: FX.FX_LEAVE_TYPES })
     );
   },
@@ -1469,6 +1512,7 @@ const actions = {
         // موظفه يظهر في أودو باسم المدير: الإجازة تُخصم من رصيد المدير،
         // والخطاب يصدر باسمه، والموظف المستفيد لا أثر له إطلاقًا.
         const owner = await resolveBeneficiary(params, ctx);
+        await assertNoLeaveOverlap(params, owner);
 
         const vals = {
           employee_id: owner,
