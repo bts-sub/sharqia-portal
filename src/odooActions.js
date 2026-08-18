@@ -882,7 +882,20 @@ const actions = {
           if (t.state === "validate") s.used += t.number_of_days || 0;
           else s.pending += t.number_of_days || 0;
         }
-        const records = [...by.values()].map((x) => ({
+        // نوعٌ أُرشِف في أودو (سُحب من الخدمة) يبقى مذكورًا في إجازات قديمة،
+        // فيظلّ له سطر في شاشة الرصيد إلى الأبد. الشاشة تعرض ما هو معمولٌ به،
+        // والسجل التاريخي يبقى في «سجل إجازاتي».
+        let retired = new Set();
+        try {
+          const ids = [...by.keys()].filter(Boolean);
+          if (ids.length) {
+            const types = await odoo.searchRead("hr.leave.type",
+              [["id", "in", ids]], ["active"], { context: { active_test: false } });
+            retired = new Set(types.filter((t) => t.active === false).map((t) => t.id));
+          }
+        } catch (e) { console.warn("⚠️ تعذّر فحص أنواع الإجازات المؤرشفة:", e.message); }
+
+        const records = [...by.values()].filter((x) => !retired.has(x.id)).map((x) => ({
           ...x,
           // النوع بلا رصيد مخصّص ليس رصيده صفرًا بل «بلا سقف» — وهو حال
           // كل الأنواع التي ينشئها الأدون (requires_allocation=False)
