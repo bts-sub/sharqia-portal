@@ -424,7 +424,7 @@ r.jsx("button",{onClick:send,disabled:Zq3,style:{width:"100%",marginTop:10,paddi
   // نسخة هذه الحزمة. التطبيق يقارنها بنسخة الخادم فيكتشف أنه عالق على
   // نسخة قديمة — وهو ما يحدث في تطبيق مثبّت على iOS: إغلاقه لا يُنهي
   // الصفحة، فتُستعاد من الذاكرة بلا إعادة تحميل مهما نُشر جديد.
-  window.SQ_BUILD = "1.38.0";
+  window.SQ_BUILD = "1.38.1";
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {
       navigator.serviceWorker.register("/sw.js").then(function (reg) {
@@ -450,6 +450,18 @@ r.jsx("button",{onClick:send,disabled:Zq3,style:{width:"100%",marginTop:10,paddi
     });
   }
   // مقارنة النسخة مع الخادم — /api/me خفيف ولا يُخزَّن
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", function (ev) {
+      if (ev.data !== "RELOAD") return;
+      try { if (sessionStorage.getItem("sq.swReload")) return; sessionStorage.setItem("sq.swReload", "1"); } catch (e) {}
+      location.reload();
+    });
+    var swapped = false;
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (swapped) return; swapped = true;
+      location.reload();
+    });
+  }
   window.SQ_checkBuild = function () {
     fetch("/api/employee/me", { credentials: "include", cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : null; })

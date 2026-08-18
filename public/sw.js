@@ -7,7 +7,7 @@
 //   2) صفحة التطبيق تُطلب من الشبكة أولًا. لو خُدِّمت من الذاكرة أولًا لبقي
 //      الموظف على نسخة قديمة بعد كل نشر حتى يفرّغ ذاكرة متصفحه.
 // ===========================================================================
-const VERSION = "v31";
+const VERSION = "v32";
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 
@@ -34,6 +34,18 @@ self.addEventListener("activate", (e) => {
     const keys = await caches.keys();
     await Promise.all(keys.filter((k) => k !== SHELL && k !== ASSETS).map((k) => caches.delete(k)));
     await self.clients.claim();
+
+    // (3) تطبيقٌ مثبّت على iOS لا تنتهي صفحته بإغلاقه — تُستعاد من الذاكرة
+    //     بلا إعادة تحميل، فيبقى الموظف على حزمةٍ قديمة إلى الأبد مهما نُشر
+    //     جديد. حين يُفعَّل عاملٌ جديد نُعيد تحميل كل نافذة مفتوحة بأنفسنا،
+    //     فلا يحتاج أحد إلى إغلاق التطبيق يدويًّا.
+    const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const c of wins) {
+      try {
+        if (typeof c.navigate === "function") await c.navigate(c.url);
+        else c.postMessage("RELOAD");
+      } catch { c.postMessage("RELOAD"); }
+    }
   })());
 });
 
