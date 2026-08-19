@@ -484,6 +484,13 @@ function localParts(utc) {
   return { date: `${p.year}-${p.month}-${p.day}`, hhmm: `${p.hour}:${p.minute}` };
 }
 
+// تاريخ اليوم بتوقيت العمل لا بتوقيت UTC — الفارق ثلاث ساعات، وبه تُنسب
+// بصمةُ أول الليل إلى اليوم السابق.
+function todayLocal() {
+  const p = Object.fromEntries(tzFmt.formatToParts(new Date()).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
 // حدّ التأخير: بعده تُعدّ البصمة متأخرة (ساعة الحائط في مقر العمل)
 const LATE_AFTER = "08:15";
 const SHIFT_END = "16:00";
@@ -1279,32 +1286,54 @@ const actions = {
   //   يردّ «لا يمكن تسجيل الانصراف قبل تسجيل الحضور» ولا يصل الخادم أصلًا.
   async "attendance.today"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
+    const empty = { checkedIn: false, checkedOut: false, open: null, last: null, closedStale: 0 };
     return withOdoo(
       async () => {
         if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo");
-        const today = new Date().toISOString().slice(0, 10);
         const fields = await availableFields("hr.attendance",
-          ["check_in", "check_out", "worked_hours", "x_location_id", "x_in_range"]);
-        // بصمة اليوم، أو بصمة مفتوحة من يوم سابق (نُسي إغلاقها) — كلتاهما
-        // تعنيان أن الانصراف هو الإجراء التالي لا الحضور.
-        const recs = await odoo.searchRead("hr.attendance",
-          ["|", ["check_in", ">=", `${today} 00:00:00`], ["check_out", "=", false],
-            ["employee_id", "=", empId]],
-          fields, { limit: 5, order: "check_in desc" });
+          ["check_in", "check_out", "worked_hours", "x_location_id", "x_in_range", "x_manual"]);
+        const known = await modelFieldNames("hr.attendance");
+        const only = (o) => (known ? Object.fromEntries(Object.entries(o).filter(([k]) => known.has(k))) : {});
+        const today = todayLocal();
+
+        // ⚠️ كل يوم يقف بنفسه: بصمةٌ من أمسِ نُسي إغلاقها كانت تُحسب حضورًا
+        // لليوم، فيجد الموظف زر «انصراف» صباحًا قبل أن يحضر. تُغلق هنا
+        // بساعات دوامها وتُعلَّم يدوية ليصحّحها المسؤول، ولا تخصّ يومه.
+        let closedStale = 0;
+        try {
+          const stale = (await odoo.searchRead("hr.attendance",
+            [["employee_id", "=", empId], ["check_out", "=", false]],
+            ["id", "check_in"], { limit: 20, order: "check_in desc" }))
+            .filter((r) => localParts(r.check_in)?.date !== today);
+          for (const r of stale) {
+            try {
+              await odoo.write("hr.attendance", r.id,
+                { check_out: await autoCloseStamp(empId, r.check_in), ...only({ x_manual: true }) });
+              closedStale++;
+            } catch (e) { console.warn("⚠️ تعذّر إغلاق بصمة معلّقة", r.id, e.message); }
+          }
+        } catch (e) { console.warn("⚠️ تعذّر فحص البصمات المعلّقة:", e.message); }
+
+        // نافذة أوسع من اليوم ثم تصفية بالتوقيت المحلّي: حدود اليوم بتوقيت
+        // العمل لا بتوقيت UTC، وإلا زاحت بثلاث ساعات فاختلط آخر الليل بأمس.
+        const since = new Date(Date.now() - 36 * 3600 * 1000).toISOString().slice(0, 19).replace("T", " ");
+        const recs = (await odoo.searchRead("hr.attendance",
+          [["employee_id", "=", empId], ["check_in", ">=", since]],
+          fields, { limit: 20, order: "check_in desc" }))
+          .filter((r) => localParts(r.check_in)?.date === today);
+
         const open = recs.find((r) => !r.check_out) || null;
-        const todays = recs.filter((r) => String(r.check_in || "").slice(0, 10) === today);
-        const last = todays[0] || null;
+        const last = recs[0] || null;
         return {
-          checkedIn: !!(open || last),
+          checkedIn: !!last,
           checkedOut: !!(last && last.check_out && !open),
           open: open ? mapAttendance(open) : null,
           last: last ? mapAttendance(last) : null,
-          // بصمة معلّقة من يوم سابق: الواجهة تنبّه صاحبها بدل أن تحيّره
-          staleOpen: !!(open && String(open.check_in || "").slice(0, 10) !== today),
+          closedStale,
         };
       },
-      async () => ({ checkedIn: false, checkedOut: false, open: null, last: null, staleOpen: false }),
-      { emptyOnError: () => ({ checkedIn: false, checkedOut: false, open: null, last: null, staleOpen: false, unavailable: true }) }
+      async () => ({ ...empty }),
+      { emptyOnError: () => ({ ...empty, unavailable: true }) }
     );
   },
 
