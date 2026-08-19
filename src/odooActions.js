@@ -1435,7 +1435,11 @@ const actions = {
         }
         // هامش عدم اليقين: من يقف على حدّ النطاق وجهازه يخطئ ±40م يُرفض ظلمًا.
         // المسافة المؤكَّدة = المسافة المقيسة ناقص خطأ القياس.
-        const slack = Number.isFinite(acc) ? Math.min(Math.round(acc), maxAcc) : 0;
+        //   ⚠️ والهامش مسقوف بخمسين مترًا: كان مسقوفًا بحدّ الدقة (150م)،
+        //   فمن يقف على 400م من نطاقٍ نصفُ قطره 300 يُحسب داخله لأن جهازه
+        //   يخطئ 150 — وهو خارجه يقينًا.
+        const SLACK_MAX = 50;
+        const slack = Number.isFinite(acc) ? Math.min(Math.round(acc), SLACK_MAX) : 0;
         const inRange = near.within || near.distance - slack <= (near.location.radius_m || 0);
         if (!inRange) {
           throw new Error(
