@@ -627,6 +627,21 @@ async function managerVacancy(empIds) {
   return out;
 }
 
+// مرحلةٌ لا يحمل دورَها أحدٌ فعّال في التطبيق (مالية أو تقنية معلومات بلا
+// مستخدم) تحبس الطلب كما تحبسه مرحلة المدير الشاغرة. الموارد البشرية
+// والإدارة يفكّان الاحتباس، وهما البديل تنظيميًّا.
+export async function stageRoleIsVacant(role) {
+  if (!["finance", "it", "hr"].includes(role)) return false;
+  try {
+    const users = await odoo.searchRead("sharqia.portal.user",
+      [["role", "=", role], ["status", "=", "active"]], ["id"], { limit: 1 });
+    return users.length === 0;
+  } catch (e) {
+    console.warn("⚠️ تعذّر فحص مستخدمي المرحلة:", e.message);
+    return false;
+  }
+}
+
 export async function managerStageIsVacant(empId) {
   const id = toEmpId(empId);
   if (!id) return true;

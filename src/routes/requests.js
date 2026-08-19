@@ -12,7 +12,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import * as wf from "../lib/workflow.js";
-import { runAction, FLOW, producesLetter, managerStageIsVacant } from "../odooActions.js";
+import { runAction, FLOW, producesLetter, managerStageIsVacant, stageRoleIsVacant } from "../odooActions.js";
 import { isTestMode } from "../lib/settings.js";
 import { badRequest, notFound, forbidden } from "../lib/errors.js";
 
@@ -98,7 +98,12 @@ async function assertCanAct(user, id, verb = "الاعتماد") {
     if (["hr", "admin"].includes(user.role) && await managerStageIsVacant(rec.empId)) return;
     throw forbidden("هذا الطلب بانتظار المدير المباشر");
   }
-  if (user.role !== stage) throw forbidden(`هذا الطلب في مرحلة «${stage}» وليست مرحلتك`);
+  if (user.role !== stage) {
+    // مرحلةٌ لا يحمل دورَها أحد (لا مستخدم مالية مثلًا) تحبس الطلب كما
+    // تحبسه مرحلة المدير الشاغرة — والموارد البشرية والإدارة يفكّانها.
+    if (["hr", "admin"].includes(user.role) && await stageRoleIsVacant(stage)) return;
+    throw forbidden(`هذا الطلب في مرحلة «${stage}» وليست مرحلتك`);
+  }
 }
 
 router.get("/requests", async (req, res, next) => {
