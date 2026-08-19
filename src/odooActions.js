@@ -521,6 +521,41 @@ const LEAVE_STATE_AR = {
 };
 // الحالات الثلاث التي تعني «لم يُبتّ فيها بعد» — الواجهة تعدّها في «قيد الانتظار»
 const LEAVE_PENDING = ["draft", "confirm", "validate1"];
+// طلبات الإجازة التي لم تكتمل موافقتها بعد — تُعرض في «سجل إجازاتي» بصفة
+// «قيد الاعتماد» حتى لا يختفي طلبُ الموظف من سجله بين إرساله واعتماده.
+async function pendingLeaveRequests(empId) {
+  if (!empId) return [];
+  const recs = await odoo.searchRead("sharqia.portal.request",
+    [["employee_id", "=", empId], ["category", "=", "leave"],
+      ["state", "not in", CLOSED_STATES]],
+    await availableFields("sharqia.portal.request",
+      ["name", "service", "sub_type", "date_from", "date_to", "days",
+        "create_date", "current_stage", "description", "odoo_ref_id"]),
+    { limit: 100, order: "create_date desc" });
+  return recs
+    // ما صار له سجل إجازة فعليّ يُقرأ من hr.leave لا من هنا (وإلا ظهر مرتين)
+    .filter((r) => !r.odoo_ref_id)
+    .map((r) => {
+      const from = r.date_from || "";
+      const to = r.date_to || from;
+      const today = new Date().toISOString().slice(0, 10);
+      return {
+        id: r.name, odooId: null, requestId: r.name,
+        type: r.sub_type || r.service || "إجازة",
+        from, to,
+        days: r.days || (from && to ? Math.round((new Date(to) - new Date(from)) / 864e5) + 1 : 0),
+        status: r.current_stage ? `قيد الاعتماد · ${r.current_stage}` : "قيد الاعتماد",
+        approver: "", started: !!(from && from <= today),
+        ongoing: !!(from && to && from <= today && to >= today),
+        submitted: (r.create_date || "").slice(0, 10) || from,
+        reason: "", note: r.description || "",
+        pending: true, closed: false, approved: false,
+        fromRequest: true,          // الواجهة تفتح تفاصيل الطلب لا الإجازة
+        lastActor: "", balanceAfter: null,
+      };
+    });
+}
+
 function mapLeave(rec) {
   const from = rec.request_date_from || rec.date_from;
   const to = rec.request_date_to || rec.date_to;
@@ -957,7 +992,16 @@ const actions = {
             // notes هو حقل «Reasons» في أودو: سبب الرفض أو الإلغاء الحقيقي
             "create_date", "name", "private_name", "notes"]),
           { order: "request_date_from desc" });
-        return { records: recs.map(mapLeave) };
+        const out = recs.map(mapLeave);
+
+        // طلبُ إجازةٍ ما زال في مسار الاعتماد لا يوجد له hr.leave بعدُ —
+        // الأدون لا ينشئها إلا عند اكتمال الاعتماد. فكان الموظف يرسل طلبه
+        // ثم لا يجد له أثرًا في «سجل إجازاتي»، و«قيد الانتظار» صفرٌ عنده.
+        if (!params?.onlyApproved) {
+          try { out.push(...await pendingLeaveRequests(empId)); }
+          catch (e) { console.warn("⚠️ تعذّرت قراءة طلبات الإجازة المعلّقة:", e.message); }
+        }
+        return { records: out };
       },
       async () => ({ records: params?.onlyApproved ? FX.FX_LEAVES.filter((l) => l.status === "معتمدة") : FX.FX_LEAVES }),
       { emptyOnError: () => ({ records: [], unavailable: true }) }
