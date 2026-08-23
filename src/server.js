@@ -31,6 +31,7 @@ import permissionRoutes from "./routes/permissions.js";
 import userRoutes from "./routes/users.js";
 import letterRoutes from "./routes/letters.js";
 import integrationRoutes from "./routes/integration.js";
+import learningRoutes from "./routes/learning.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -115,6 +116,7 @@ app.use("/api", settingsRoutes);
 app.use("/api", permissionRoutes);
 app.use("/api", userRoutes);
 app.use("/api", letterRoutes);
+app.use("/api", learningRoutes);
 
 // تقديم الواجهة (ملف HTML الواحد) — إن وُجد
 const frontendPath = path.resolve(__dirname, "..", config.frontendFile);

@@ -425,6 +425,41 @@ function mapEmployee(rec) {
 // حالات الطلب المغلقة — لا تظهر في صندوق وارد أحد
 const CLOSED_STATES = ["done", "rejected", "cancelled"];
 
+// تصنيف الدورة يُخزَّن مفتاحًا ويُعرَض عربيًّا — والترجمة هنا لا في الواجهة
+// حتى لا يتكرّر القاموس في موضعين ويفترقا.
+const COURSE_CAT_AR = {
+  orientation: "تعريفية", safety: "السلامة", skills: "مهارات",
+  systems: "أنظمة وسياسات", service: "خدمة العملاء",
+  technical: "تقنية", other: "أخرى",
+};
+const APPRAISAL_STATE_AR = {
+  draft: "مسودة", submitted: "مُعتمَد", acknowledged: "اطّلعت عليه",
+};
+
+/** بطاقة تقييم بالشكل الذي يقرؤه التطبيق. */
+function mapAppraisal(rec) {
+  const pct = Number(rec.percent || 0);
+  return {
+    id: rec.id, ref: rec.name || "",
+    employeeName: rec.employee_id?.[1] || "",
+    employeeId: rec.employee_id?.[0] || 0,
+    managerName: rec.manager_id?.[1] || "",
+    period: rec.period === "weekly" ? "أسبوعي" : "شهري",
+    periodKey: rec.period || "monthly",
+    from: rec.date_from || "", to: rec.date_to || "",
+    percent: Math.round(pct * 10) / 10,
+    rating: rec.rating || "—",
+    score: Number(rec.score || 0), maxScore: Number(rec.max_score || 0),
+    rated: rec.rated_count || 0,
+    state: rec.state || "draft",
+    stateAr: APPRAISAL_STATE_AR[rec.state] || rec.state || "",
+    strengths: rec.strengths || "", improvements: rec.improvements || "",
+    managerNote: rec.manager_note || "", employeeNote: rec.employee_note || "",
+    submittedAt: rec.submitted_at || null,
+    acknowledgedAt: rec.acknowledged_at || null,
+  };
+}
+
 // دمج نطاقين بـ «أو». نطاق أودو بادئيّ التدوين: قائمةُ n شرطًا تعني ضمنًا
 // «و»، فلجمعها بـ «أو» يلزم إظهار الـ n-1 عاملَ «&» أولًا.
 const andAll = (leaves) =>
@@ -2090,6 +2125,340 @@ const actions = {
       },
       async () => ({ records: [] }),
       { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // التدريب: دورات وأسئلة
+  // ═══════════════════════════════════════════════════════════════════
+
+  /** دورات هذا الموظف مع حالة تسجيله في كلٍّ منها. */
+  async "course.list"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        if (!empId) return { records: [] };
+        const [emp] = await odoo.searchRead("hr.employee",
+          [["id", "=", empId]], ["department_id"], { limit: 1 });
+        const deptId = emp?.department_id?.[0] || 0;
+        // التوجيه يُصفّى في أودو لا في التطبيق: دورةٌ لقسمٍ آخر لا تُرسَل
+        // أصلًا، فلا تُقرأ من أدوات المتصفّح.
+        const domain = ["|", "|",
+          ["audience", "=", "all"],
+          "&", ["audience", "=", "department"], ["department_ids", "in", [deptId]],
+          "&", ["audience", "=", "employee"], ["employee_ids", "in", [empId]]];
+        const fields = await availableFields("sharqia.portal.course",
+          ["name", "summary", "category", "duration_min", "mandatory", "pass_score",
+            "deadline", "lesson_count", "question_count", "total_points", "sequence"]);
+        const recs = await odoo.searchRead("sharqia.portal.course", domain, fields,
+          { limit: 100, order: "mandatory desc, sequence, id" });
+        if (!recs.length) return { records: [] };
+
+        const enrolls = await odoo.searchRead("sharqia.portal.course.enrollment",
+          [["employee_id", "=", empId], ["course_id", "in", recs.map((r) => r.id)]],
+          ["course_id", "state", "score", "attempts", "lessons_done", "finished_at"],
+          { limit: 200 });
+        const byCourse = new Map(enrolls.map((e) => [e.course_id?.[0], e]));
+        return {
+          records: recs.map((r) => {
+            const e = byCourse.get(r.id);
+            return {
+              id: r.id, name: r.name, summary: r.summary || "",
+              category: COURSE_CAT_AR[r.category] || r.category || "",
+              minutes: r.duration_min || 0, mandatory: !!r.mandatory,
+              passScore: r.pass_score || 0, deadline: r.deadline || null,
+              lessons: r.lesson_count || 0, questions: r.question_count || 0,
+              points: r.total_points || 0,
+              state: e?.state || "assigned",
+              score: e?.score || 0, attempts: e?.attempts || 0,
+              lessonsDone: e?.lessons_done || 0,
+              finishedAt: e?.finished_at || null,
+            };
+          }),
+        };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  /** دورة واحدة بدروسها وأسئلتها — بلا الإجابات الصحيحة. */
+  async "course.read"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!id) return null;
+        const cf = await availableFields("sharqia.portal.course",
+          ["name", "summary", "description", "category", "duration_min", "mandatory",
+            "pass_score", "deadline"]);
+        const [c] = await odoo.searchRead("sharqia.portal.course",
+          [["id", "=", id]], cf, { limit: 1 });
+        if (!c) return null;
+
+        const lessons = await odoo.searchRead("sharqia.portal.course.lesson",
+          [["course_id", "=", id]],
+          ["name", "content", "video_url", "duration_min", "sequence"],
+          { order: "sequence, id", limit: 100 });
+        // ⚠️ is_correct لا يُقرأ هنا إطلاقًا. لو أُرسل مع الخيارات لظهر في
+        // استجابة الشبكة، وحُلَّ الاختبار من لوحة أدوات المطوّر قبل تسليمه.
+        const questions = await odoo.searchRead("sharqia.portal.course.question",
+          [["course_id", "=", id]], ["name", "qtype", "points", "sequence"],
+          { order: "sequence, id", limit: 200 });
+        let options = [];
+        if (questions.length) {
+          options = await odoo.searchRead("sharqia.portal.course.option",
+            [["question_id", "in", questions.map((q) => q.id)]],
+            ["question_id", "name", "sequence"], { order: "sequence, id", limit: 800 });
+        }
+        const optsByQ = new Map();
+        for (const o of options) {
+          const qid = o.question_id?.[0];
+          if (!optsByQ.has(qid)) optsByQ.set(qid, []);
+          optsByQ.get(qid).push({ id: o.id, text: o.name });
+        }
+
+        let enrollment = null;
+        if (empId) {
+          const [e] = await odoo.searchRead("sharqia.portal.course.enrollment",
+            [["course_id", "=", id], ["employee_id", "=", empId]],
+            ["state", "score", "points", "attempts", "lessons_done", "finished_at"],
+            { limit: 1 });
+          if (e) enrollment = {
+            state: e.state, score: e.score, points: e.points,
+            attempts: e.attempts, lessonsDone: e.lessons_done,
+            finishedAt: e.finished_at || null,
+          };
+        }
+        return {
+          id: c.id, name: c.name, summary: c.summary || "",
+          description: htmlToText(c.description || ""),
+          category: COURSE_CAT_AR[c.category] || c.category || "",
+          minutes: c.duration_min || 0, mandatory: !!c.mandatory,
+          passScore: c.pass_score || 0, deadline: c.deadline || null,
+          lessons: lessons.map((l) => ({
+            id: l.id, name: l.name, minutes: l.duration_min || 0,
+            content: htmlToText(l.content || ""), video: l.video_url || "",
+          })),
+          questions: questions.map((q) => ({
+            id: q.id, text: q.name, type: q.qtype, points: q.points || 1,
+            options: optsByQ.get(q.id) || [],
+          })),
+          enrollment,
+        };
+      },
+      async () => null
+    );
+  },
+
+  /** يفتح تسجيل الموظف أو يحدّث عدد دروسه المنجزة. */
+  async "course.progress"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!empId || !id) throw new Error("بيانات ناقصة");
+        const [e] = await odoo.searchRead("sharqia.portal.course.enrollment",
+          [["course_id", "=", id], ["employee_id", "=", empId]],
+          ["state", "lessons_done"], { limit: 1 });
+        const done = Math.max(0, Number(params?.lessonsDone || 0));
+        if (!e) {
+          const newId = await odoo.create("sharqia.portal.course.enrollment", {
+            course_id: id, employee_id: empId, state: "in_progress",
+            lessons_done: done,
+          });
+          return { ok: true, enrollmentId: newId, state: "in_progress" };
+        }
+        const vals = { lessons_done: Math.max(done, e.lessons_done || 0) };
+        // النجاح لا يُنقَض بإعادة فتح درس
+        if (e.state === "assigned") vals.state = "in_progress";
+        await odoo.write("sharqia.portal.course.enrollment", [e.id], vals);
+        return { ok: true, enrollmentId: e.id, state: vals.state || e.state };
+      },
+      async () => ({ ok: false })
+    );
+  },
+
+  /** تسليم الاختبار — التصحيح كله في أودو. */
+  async "course.submit"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const id = Number(params?.id || 0);
+    const answers = params?.answers && typeof params.answers === "object"
+      ? params.answers : {};
+    return withOdoo(
+      async () => {
+        if (!empId || !id) throw new Error("بيانات ناقصة");
+        const [e] = await odoo.searchRead("sharqia.portal.course.enrollment",
+          [["course_id", "=", id], ["employee_id", "=", empId]], ["id"], { limit: 1 });
+        let enrollId = e?.id;
+        if (!enrollId) {
+          enrollId = await odoo.create("sharqia.portal.course.enrollment", {
+            course_id: id, employee_id: empId, state: "in_progress",
+          });
+        }
+        const res = await odoo.execKw("sharqia.portal.course.enrollment",
+          "submit_answers", [[enrollId], answers]);
+        return res || { ok: false };
+      },
+      async () => ({ ok: false })
+    );
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // تقييم الأداء
+  // ═══════════════════════════════════════════════════════════════════
+
+  /** تقييمات الموظف نفسه — المُعتمَدة منها فقط.
+   *
+   *  المسوّدة لا تُعرض له: هي ورقةُ عملٍ عند مديره لم تُقَل بعد، وإظهارها
+   *  يجعل كل تعديل عابرٍ رسالةً للموظف.
+   */
+  async "appraisal.mine"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        if (!empId) return { records: [] };
+        const recs = await odoo.searchRead("sharqia.portal.appraisal",
+          [["employee_id", "=", empId], ["state", "in", ["submitted", "acknowledged"]]],
+          ["name", "period", "date_from", "date_to", "percent", "rating", "state",
+            "score", "max_score", "rated_count", "manager_id", "employee_id",
+            "strengths", "improvements", "manager_note", "submitted_at"],
+          { limit: 60, order: "date_to desc, id desc" });
+        return { records: recs.map(mapAppraisal) };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  /** بطاقات المدير: ما ينتظر تقييمه وما اعتمده. */
+  async "appraisal.team"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const role = ctx?.user?.role || "employee";
+    return withOdoo(
+      async () => {
+        let domain;
+        if (["hr", "admin"].includes(role)) domain = [];
+        else if (empId) {
+          domain = ["|", ["manager_id", "=", empId],
+            ["employee_id.parent_id", "=", empId]];
+        } else return { records: [] };
+        if (params?.state) {
+          domain = domain.length
+            ? ["&", ...domain, ["state", "=", params.state]]
+            : [["state", "=", params.state]];
+        }
+        const recs = await odoo.searchRead("sharqia.portal.appraisal", domain,
+          ["name", "employee_id", "manager_id", "period", "date_from", "date_to",
+            "percent", "rating", "state", "score", "max_score", "rated_count"],
+          { limit: 150, order: "state, date_to desc, id desc" });
+        return { records: recs.map(mapAppraisal) };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  /** بطاقة واحدة بمعاييرها مجمّعةً في محاورها. */
+  async "appraisal.read"(params, ctx) {
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!id) return null;
+        const [a] = await odoo.searchRead("sharqia.portal.appraisal",
+          [["id", "=", id]],
+          ["name", "employee_id", "manager_id", "period", "date_from", "date_to",
+            "percent", "rating", "state", "score", "max_score", "rated_count",
+            "strengths", "improvements", "manager_note", "employee_note",
+            "submitted_at", "acknowledged_at"], { limit: 1 });
+        if (!a) return null;
+        const lines = await odoo.searchRead("sharqia.portal.appraisal.line",
+          [["appraisal_id", "=", id]],
+          ["criterion_id", "section_id", "score", "note", "sequence", "section_sequence"],
+          { limit: 300, order: "section_sequence, sequence, id" });
+        const sections = [];
+        const bySection = new Map();
+        for (const l of lines) {
+          const sid = l.section_id?.[0] || 0;
+          if (!bySection.has(sid)) {
+            const sec = { id: sid, name: l.section_id?.[1] || "أخرى", items: [] };
+            bySection.set(sid, sec); sections.push(sec);
+          }
+          bySection.get(sid).items.push({
+            id: l.id, name: l.criterion_id?.[1] || "",
+            score: l.score ? Number(l.score) : 0, note: l.note || "",
+          });
+        }
+        return { ...mapAppraisal(a), sections };
+      },
+      async () => null
+    );
+  },
+
+  /** حفظ درجات المدير من غير اعتماد. */
+  async "appraisal.save"(params, ctx) {
+    const id = Number(params?.id || 0);
+    const scores = params?.scores && typeof params.scores === "object"
+      ? params.scores : {};
+    return withOdoo(
+      async () => {
+        if (!id) throw new Error("بيانات ناقصة");
+        for (const [lineId, raw] of Object.entries(scores)) {
+          const n = Math.round(Number(raw) || 0);
+          if (!(n >= 1 && n <= 5)) continue;
+          await odoo.write("sharqia.portal.appraisal.line",
+            [Number(lineId)], { score: String(n) });
+        }
+        const head = {};
+        if (typeof params?.strengths === "string") head.strengths = params.strengths;
+        if (typeof params?.improvements === "string") head.improvements = params.improvements;
+        if (typeof params?.note === "string") head.manager_note = params.note;
+        if (Object.keys(head).length) {
+          await odoo.write("sharqia.portal.appraisal", [id], head);
+        }
+        return { ok: true };
+      },
+      async () => ({ ok: false })
+    );
+  },
+
+  /** اعتماد المدير للبطاقة — يُخطَر الموظف بعده. */
+  async "appraisal.submit"(params, ctx) {
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!id) throw new Error("بيانات ناقصة");
+        if (params?.scores) await runAction("appraisal.save", params, ctx);
+        await odoo.execKw("sharqia.portal.appraisal", "action_submit", [[id]]);
+        return { ok: true };
+      },
+      async () => ({ ok: false })
+    );
+  },
+
+  /** إقرار الموظف باطّلاعه — ومعه ردّه إن كتبه. */
+  async "appraisal.acknowledge"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!id || !empId) throw new Error("بيانات ناقصة");
+        // الإقرار لصاحب البطاقة وحده — يُتحقَّق في الخادم لا في الواجهة
+        const [a] = await odoo.searchRead("sharqia.portal.appraisal",
+          [["id", "=", id]], ["employee_id", "state"], { limit: 1 });
+        if (!a || a.employee_id?.[0] !== empId) {
+          throw new Error("هذا التقييم ليس تقييمك");
+        }
+        if (typeof params?.reply === "string" && params.reply.trim()) {
+          await odoo.write("sharqia.portal.appraisal", [id],
+            { employee_note: params.reply.trim() });
+        }
+        if (a.state === "submitted") {
+          await odoo.execKw("sharqia.portal.appraisal", "action_acknowledge", [[id]]);
+        }
+        return { ok: true };
+      },
+      async () => ({ ok: false })
     );
   },
 };
