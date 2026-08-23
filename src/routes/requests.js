@@ -12,7 +12,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import * as wf from "../lib/workflow.js";
-import { runAction, FLOW, producesLetter, managerStageIsVacant, stageRoleIsVacant } from "../odooActions.js";
+import { runAction, flowFor, producesLetter, managerStageIsVacant, stageRoleIsVacant } from "../odooActions.js";
 import { isTestMode } from "../lib/settings.js";
 import { badRequest, notFound, forbidden } from "../lib/errors.js";
 
@@ -60,7 +60,9 @@ const APPROVER_ROLES = ["manager", "hr", "finance", "it", "admin"];
 //   inbox = ما ينتظر إجراء صاحب الجلسة (كل الأدوار المعتمِدة)
 function allowedScope(user, asked) {
   if (asked === "all") return ["hr", "admin"].includes(user.role) ? "all" : "mine";
-  if (asked === "inbox") return APPROVER_ROLES.includes(user.role) ? "inbox" : "mine";
+  // صندوق الوارد مفتوح لكل دور: النطاق في odooActions هو الحارس، وهو يضع
+  // في وارد الموظف العادي شيئًا واحدًا — مخالصته حين تبلغ مرحلة إقراره.
+  if (asked === "inbox") return "inbox";
   return "mine";
 }
 
@@ -78,15 +80,26 @@ function readScope(user) {
 //   ما لا يظهر في inbox لا يجوز اعتماده.
 // ---------------------------------------------------------------------------
 async function assertCanAct(user, id, verb = "الاعتماد") {
-  if (!APPROVER_ROLES.includes(user.role)) throw forbidden(`لا تملك صلاحية ${verb}`);
-  if (user.role === "admin") return;
+  // صندوق الوارد يُقرأ أولًا: مرحلة «إقرار الموظف» يعتمدها موظفٌ عادي لا
+  // يحمل أي دور معتمِد، فحصرُ البوابة في APPROVER_ROLES قبل قراءة الطلب
+  // كان سيمنع صاحب المخالصة من الإقرار بها — وهو وحده صاحبها.
   const { data } = await runAction("request.list", { scope: "inbox" }, { user });
   const rec = (data?.records || []).find(
     (x) => String(x.id) === String(id) || x.name === String(id));
-  if (!rec) throw forbidden("هذا الطلب ليس ضمن الطلبات التي تنتظر إجراءك");
-  const flow = FLOW[rec.category] || FLOW.general;
+  const flow = rec ? flowFor(rec.category, rec.service) : null;
   // state يحمل اسم المرحلة بعد أول اعتماد، و"submitted" تعني المرحلة الأولى
-  const stage = rec.state === "submitted" ? flow[0] : rec.state;
+  const stage = rec ? (rec.state === "submitted" ? flow[0] : rec.state) : null;
+
+  if (stage === "employee") {
+    // لا ينوب عن الموظف في إقراره أحد — ولا الأدمن. وصولُ الطلب إلى صندوق
+    // وارده هو البرهان: النطاق لا يضع مخالصةً في وارد غير صاحبها.
+    if (String(rec.empId) === "E" + user.odooEmployeeId) return;
+    throw forbidden("هذه المرحلة إقرارٌ شخصي لصاحب الطلب وحده");
+  }
+
+  if (!APPROVER_ROLES.includes(user.role)) throw forbidden(`لا تملك صلاحية ${verb}`);
+  if (user.role === "admin") return;
+  if (!rec) throw forbidden("هذا الطلب ليس ضمن الطلبات التي تنتظر إجراءك");
   if (stage === "manager") {
     if (user.role === "manager") {
       if (String(rec.empId) === "E" + user.odooEmployeeId) throw forbidden("لا يمكنك اعتماد طلبك بنفسك");

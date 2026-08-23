@@ -322,6 +322,25 @@ async function requestReadFields() {
 //   ⚠️ empId ضروري: شاشة «طلباتي» تفلتر بـ (request.empId === employee.id)
 //   وصيغة معرّف الموظف في التطبيق هي "E"+رقم أودو (انظر mapEmployee).
 //   بدونه تظهر الشاشة فارغة تمامًا مهما كان عدد الطلبات.
+// ---------------------------------------------------------------------------
+// البلاغ السري: الهوية تُحجب عمّن يعتمده.
+//   الغرض من البلاغ السري أن يُقال ما لا يُقال باسم — فإبقاء اسم المُبلِّغ
+//   ظاهرًا لمن يستقبل البلاغ يُبطله من أصله. الهوية تبقى محفوظة في سجلّ أودو
+//   لمن يملك صلاحيةَ السجلّ نفسِه عند حاجة تحقيق، ولا تخرج إلى التطبيق لأحد
+//   سوى صاحبها. والحجب هنا — عند تشكيل الرد — لا في الواجهة: ما لا يُرسَل
+//   لا يُكشف بفتح أدوات المتصفّح.
+// ---------------------------------------------------------------------------
+const CONFIDENTIAL_MASK = "بلاغ سري — الهوية محجوبة";
+function maskConfidential(out, viewerEmpKey) {
+  if (!out?.confidential) return out;
+  if (viewerEmpKey && out.empId && out.empId === viewerEmpKey) return out;
+  return {
+    ...out,
+    empId: "", empName: CONFIDENTIAL_MASK, employee_id: false,
+    requestedBy: "", requested_by: "", beneficiaryName: "",
+  };
+}
+
 function mapRequestRecord(rec) {
   let extra = {};
   try { extra = JSON.parse(rec.extra_json || "{}") || {}; } catch { extra = {}; }
@@ -406,6 +425,16 @@ function mapEmployee(rec) {
 // حالات الطلب المغلقة — لا تظهر في صندوق وارد أحد
 const CLOSED_STATES = ["done", "rejected", "cancelled"];
 
+// دمج نطاقين بـ «أو». نطاق أودو بادئيّ التدوين: قائمةُ n شرطًا تعني ضمنًا
+// «و»، فلجمعها بـ «أو» يلزم إظهار الـ n-1 عاملَ «&» أولًا.
+const andAll = (leaves) =>
+  leaves.length <= 1 ? [...leaves] : [...Array(leaves.length - 1).fill("&"), ...leaves];
+const orDomains = (a, b) => {
+  if (!a?.length) return b?.length ? b : null;
+  if (!b?.length) return a;
+  return ["|", ...andAll(a), ...andAll(b)];
+};
+
 // مسارات الاعتماد — مطابقة لـ FLOW في الأدون (models/portal_request.py)
 // وتُستخدم لفرض المرحلة على الخادم قبل تمرير الاعتماد إلى Odoo.
 // خدمات تُصدر خطابًا رسميًّا — نفس قائمة الأدون بالضبط.
@@ -426,6 +455,19 @@ export const FLOW = {
   training: ["manager", "hr", "done"], insurance: ["hr", "done"], complaint: ["hr", "done"],
   offboard: ["manager", "hr", "done"], general: ["manager", "hr", "done"],
 };
+
+// مسار خاص بخدمة بعينها — يتقدّم على مسار تصنيفها. مطابق لما في الموديول
+// (models/portal_request.py) وفي محرّك الاختبار (lib/workflow.js): ثلاثة
+// مواضع تصف المسار نفسه، فأي تعديل هنا يلزم أخويه.
+export const SERVICE_FLOW = {
+  "استئذان بالساعات": ["manager", "done"],
+  "ترقية": ["manager", "done"],
+  "مستحقات نهاية الخدمة": ["manager", "hr", "finance", "employee", "hr", "done"],
+};
+
+/** مسار الطلب: الخدمة أولًا ثم التصنيف — الأخصّ يغلب الأعمّ. */
+export const flowFor = (category, service) =>
+  SERVICE_FLOW[String(service || "").trim()] || FLOW[category] || FLOW.general;
 
 // حالات العهدة (hr.custody من Open HRMS + موديل الأدون) → نص عربي
 const CUSTODY_STATE_AR = {
@@ -1696,6 +1738,7 @@ const actions = {
   async "request.list"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
     const role = ctx?.user?.role || "employee";
+    const viewerKey = empId ? "E" + empId : "";
     // inbox = ما ينتظر إجراء صاحب الجلسة.
     //   المدير: مرؤوسوه المباشرون عبر hr.employee.parent_id (أودو يدعم المسار
     //   المنقّط في الـ domain، فلا حاجة لتخزين شجرة الإدارة في users.json).
@@ -1703,15 +1746,22 @@ const actions = {
     let domain;
     if (params?.scope === "all") domain = [];
     else if (params?.scope === "inbox") {
+      // مرحلة «إقرار الموظف» تقلب القاعدة: صاحب الطلب هو المعتمِد. فلكل
+      // موظف — مهما كان دوره — صندوقُ واردٍ يضمّ مخالصته حين تبلغ إقراره،
+      // ويُستثنى غيرُه منها فلا تظهر للموارد البشرية كأنها تنتظرهم.
+      const ownAck = empId
+        ? [["employee_id", "=", empId], ["state", "=", "employee"]] : null;
+      let roleDomain = null;
       if (role === "manager" && empId) {
-        domain = [["employee_id.parent_id", "=", empId],
+        roleDomain = [["employee_id.parent_id", "=", empId],
           ["employee_id", "!=", empId],              // لا اعتماد ذاتي
-          ["state", "not in", CLOSED_STATES]];
+          ["state", "not in", CLOSED_STATES],
+          ["state", "!=", "employee"]];
       } else if (["hr", "finance", "it", "admin"].includes(role)) {
-        domain = [["state", "not in", CLOSED_STATES]];
-      } else {
-        domain = [["id", "=", 0]];                   // لا صندوق وارد لهذا الدور
+        roleDomain = [["state", "not in", CLOSED_STATES],
+          ["state", "!=", "employee"]];
       }
+      domain = orDomains(ownAck, roleDomain) || [["id", "=", 0]];
     } else domain = [["employee_id", "=", empId]];
     return withOdoo(
       async () => {
@@ -1729,7 +1779,7 @@ const actions = {
         } catch (e) { console.warn("⚠️ تعذّر فحص مرحلة المدير:", e.message); }
         return {
           records: recs.map((r) => ({
-            ...mapRequestRecord(r), inbox,
+            ...maskConfidential(mapRequestRecord(r), viewerKey), inbox,
             mgrVacant: vacancy.get(r.employee_id?.[0]) === true,
           })),
         };
@@ -1741,6 +1791,7 @@ const actions = {
   // قراءة طلب واحد بالتفاصيل — يقبل رقم Odoo أو رقم الطلب النصي (HR-REQ-000x)
   async "request.read"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
+    const viewerKey = empId ? "E" + empId : "";
     const raw = String(params?.id ?? "");
     const numeric = /^\d+$/.test(raw) ? Number(raw) : null;
     return withOdoo(
@@ -1755,7 +1806,7 @@ const actions = {
         let mgrVacant = false;
         try { mgrVacant = (await managerVacancy([owner])).get(owner) === true; }
         catch (e) { console.warn("⚠️ تعذّر فحص مرحلة المدير:", e.message); }
-        return { ...mapRequestRecord(recs[0]), mgrVacant };
+        return maskConfidential({ ...mapRequestRecord(recs[0]), mgrVacant }, viewerKey);
       },
       async () => null
     );

@@ -21,11 +21,30 @@ export const FLOW = {
   offboard: { flow: ["manager", "hr", "done"], sla: 7 },
   general: { flow: ["manager", "hr", "done"], sla: 3 },
 };
-const flowOf = (cat) => FLOW[cat] || FLOW.general;
+// مسار خاص بخدمة بعينها — يتقدّم على مسار تصنيفها.
+//   التصنيف وحدةٌ خشنة: «الدوام والحضور» يضمّ تصحيح بصمة تحتاجه الموارد
+//   البشرية، ويضمّ استئذان ساعتين لا يعرف أثره إلا مديرٌ يرى جدول فريقه.
+export const SERVICE_FLOW = {
+  "استئذان بالساعات": { flow: ["manager", "done"], sla: 1 },
+  "ترقية": { flow: ["manager", "done"], sla: 5 },
+  // المخالصة: المدير يقرّ ترك العامل، والموارد البشرية تحسب المستحق وتحرّر
+  // الخطاب بالمبلغ، والمالية تعتمد الصرف، ثم يقرّ العامل بالمبلغ بنفسه قبل
+  // أن يعود الطلب للموارد البشرية للإغلاق.
+  "مستحقات نهاية الخدمة": {
+    flow: ["manager", "hr", "finance", "employee", "hr", "done"], sla: 10,
+  },
+};
+
+// خدمات لا تغادر مرحلة الموارد البشرية قبل تسجيل المبلغ المستحق
+const AMOUNT_REQUIRED = new Set(["مستحقات نهاية الخدمة"]);
+
+const flowOf = (cat, service) =>
+  SERVICE_FLOW[String(service || "").trim()] || FLOW[cat] || FLOW.general;
 
 const STATUS_AR = {
   submitted: "تم الإرسال", manager: "بانتظار المدير المباشر", hr: "بانتظار الموارد البشرية",
   finance: "بانتظار الإدارة المالية", it: "بانتظار تقنية المعلومات",
+  employee: "بانتظار إقرار الموظف",
   approved: "تمت الموافقة", rejected: "تم الرفض", cancelled: "تم الإلغاء", done: "تم التنفيذ",
 };
 
@@ -48,14 +67,39 @@ const roleForStage = (stage) => ({ manager: "manager", hr: "hr", finance: "finan
 
 export function canActOnStage(user, req) {
   if (!req || req.status === "done" || req.status === "rejected" || req.status === "cancelled") return false;
-  if (user.role === "admin") return true;
   const stage = req.flow[req.stageIndex];
+  // إقرار الموظف لا ينوب عنه فيه أحد — ولا الأدمن. لو ناب عنه أحدٌ لفقد
+  // الإقرارُ معناه كلَّه، وهو الغرض الوحيد من وجود هذه المرحلة.
+  if (stage === "employee") return req.empId === user.id;
+  if (user.role === "admin") return true;
   return roleForStage(stage) === user.role;
+}
+
+// المبلغ يصل داخل extra بأحد مرادفاته — نفس ما تقرأه odooActions.js
+const amountOf = (req) => {
+  const e = req.extra || {};
+  const raw = e.amount ?? e.settlement ?? e.value ?? req.amount;
+  const n = Number(String(raw ?? "").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** المخالصة لا تغادر الموارد البشرية بلا مبلغ.
+ *
+ *  المالية تعتمد صرفًا والموظف يقرّ برقم — فإن مرّ الطلب بلا مبلغ فما الذي
+ *  يعتمده هذا ويقرّ به ذاك؟ الإلزام في الخادم لا في الواجهة: المسار يُقاد
+ *  من هنا، والواجهة قد تُتجاوَز.
+ */
+function assertAmountReady(req) {
+  if (!AMOUNT_REQUIRED.has(String(req.service || "").trim())) return;
+  if (req.flow[req.stageIndex] !== "hr") return;
+  if (!amountOf(req)) {
+    throw new Error("سجّل مبلغ المستحقات قبل تحويل المخالصة إلى الإدارة المالية");
+  }
 }
 
 export function createRequest({ user, payload }) {
   const category = payload.category || "general";
-  const f = flowOf(category);
+  const f = flowOf(category, payload.service);
   const id = nextId();
   const now = new Date().toISOString();
   const req = {
@@ -79,18 +123,33 @@ export async function approveRequest({ user, id, note = "", onSyncToOdoo }) {
   const req = findById("requests", id);
   if (!req) throw new Error("الطلب غير موجود");
   if (!canActOnStage(user, req)) throw new Error("لا تملك صلاحية اعتماد هذه المرحلة");
+  assertAmountReady(req);
   const idx = Math.min(req.stageIndex + 1, req.flow.length - 1);
   const to = req.flow[idx];
   const status = to === "done" ? "done" : to;
+  const wasEmployeeAck = req.flow[req.stageIndex] === "employee";
   const updated = updateById("requests", id, (r) => ({
     ...r, stageIndex: idx, status,
-    audit: [...r.audit, { user: user.name, action: "موافقة", from: STATUS_AR[r.flow[r.stageIndex]] || "-", to: STATUS_AR[status], at: new Date().toISOString(), note }],
+    audit: [...r.audit, {
+      user: user.name, action: wasEmployeeAck ? "إقرار الموظف بالمبلغ" : "موافقة",
+      from: STATUS_AR[r.flow[r.stageIndex]] || "-", to: STATUS_AR[status],
+      at: new Date().toISOString(), note,
+    }],
   }));
-  notify(updated.empId, {
-    type: "approval",
-    title: status === "done" ? "تم تنفيذ طلبك وإغلاقه" : "تمت الموافقة على مرحلة من طلبك",
-    body: `${updated.title} — رقم ${updated.id}`, reqId: updated.id,
-  });
+  // مرحلة «إقرار الموظف» يكون فيها صاحب الطلب هو المعتمِد نفسه، فلا معنى
+  // لإشعاره بأن طلبه تقدّم — يُشعَر حين يحين دوره لا حين ينتهي.
+  if (to === "employee") {
+    notify(updated.empId, {
+      type: "approval", title: "مخالصتك بانتظار إقرارك",
+      body: `${updated.title} — المبلغ: ${amountOf(updated)}`, reqId: updated.id,
+    });
+  } else {
+    notify(updated.empId, {
+      type: "approval",
+      title: status === "done" ? "تم تنفيذ طلبك وإغلاقه" : "تمت الموافقة على مرحلة من طلبك",
+      body: `${updated.title} — رقم ${updated.id}`, reqId: updated.id,
+    });
+  }
   // مزامنة النتيجة النهائية إلى Odoo عند الاكتمال (مثلاً إنشاء إجازة معتمدة)
   if (status === "done" && typeof onSyncToOdoo === "function") {
     try { updated.odooSync = await onSyncToOdoo(updated); updateById("requests", id, { odooSync: updated.odooSync }); }
