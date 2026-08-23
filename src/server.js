@@ -52,6 +52,15 @@ app.use(helmet({
       "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       "style-src-elem": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       "font-src": ["'self'", "data:", "https://fonts.gstatic.com", "https:"],
+      // مشغّلات الفيديو التدريبي داخل الشاشة. بدون frame-src صريح يرث
+      // default-src 'self' فيُحجب كل إطار خارجي — والدرس يبقى بلا فيديو.
+      // والقائمة محصورة في مشغّلَين معروفَين لا "https:" مفتوحة: الإطار
+      // يُنفّذ سكربتات، فتوسيعه يوسّع سطح الهجوم بلا داعٍ.
+      "frame-src": ["'self'", "https://www.youtube.com",
+        "https://www.youtube-nocookie.com", "https://player.vimeo.com"],
+      // ملفات الفيديو المرفوعة على أي مستضيف تُشغَّل بوسم video لا بإطار،
+      // فلا تُنفِّذ شيئًا — ويكفيها https.
+      "media-src": ["'self'", "data:", "blob:", "https:"],
     },
   },
   crossOriginEmbedderPolicy: false,
