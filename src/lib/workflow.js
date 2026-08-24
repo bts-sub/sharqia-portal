@@ -33,10 +33,16 @@ export const SERVICE_FLOW = {
   "مستحقات نهاية الخدمة": {
     flow: ["manager", "hr", "finance", "employee", "hr", "done"], sla: 3,
   },
+  // «مخالصة» بنصّ الإدارة: العامل يطلبها، ومديره يقرّ تركه العمل، والموارد
+  // البشرية تحسب المستحق، والمالية تؤكّد الصرف، ثم يوقّعها العامل بنفسه
+  // فتعود إلى الموارد البشرية للإغلاق.
+  "مخالصة": {
+    flow: ["manager", "hr", "finance", "employee", "hr", "done"], sla: 3,
+  },
 };
 
 // خدمات لا تغادر مرحلة الموارد البشرية قبل تسجيل المبلغ المستحق
-const AMOUNT_REQUIRED = new Set(["مستحقات نهاية الخدمة"]);
+const AMOUNT_REQUIRED = new Set(["مستحقات نهاية الخدمة", "مخالصة"]);
 
 const flowOf = (cat, service) =>
   SERVICE_FLOW[String(service || "").trim()] || FLOW[cat] || FLOW.general;

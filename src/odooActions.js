@@ -498,7 +498,12 @@ export const SERVICE_FLOW = {
   "استئذان بالساعات": ["manager", "done"],
   "ترقية": ["manager", "done"],
   "مستحقات نهاية الخدمة": ["manager", "hr", "finance", "employee", "hr", "done"],
+  "مخالصة": ["manager", "hr", "finance", "employee", "hr", "done"],
 };
+
+// خدماتٌ يوقّعها العامل بيده عند مرحلته، لا يكتفى منه بضغطة إقرار.
+// المخالصة إبراءُ ذمّة: توقيعُها هو ما يُحتجّ به، وضغطةٌ في تطبيق ليست توقيعًا.
+export const SIGN_ON_EMPLOYEE_STAGE = new Set(["مخالصة", "مستحقات نهاية الخدمة"]);
 
 /** مسار الطلب: الخدمة أولًا ثم التصنيف — الأخصّ يغلب الأعمّ. */
 export const flowFor = (category, service) =>
@@ -1953,10 +1958,11 @@ const actions = {
   // توقيع المعتمِد المحفوظ في ملفه — يُطبع تلقائيًّا على ما يعتمده من خطابات
   async "me.signature"(params, ctx) {
     const login = ctx?.user?.login;
-    const role = ctx?.user?.role || "employee";
     if (!login) throw new Error("جلسة بلا اسم دخول");
-    if (!["hr", "admin", "manager", "finance"].includes(role))
-      throw new Error("حفظ التوقيع متاح لمن يعتمد الطلبات فقط");
+    // كان الحفظ محصورًا في من يعتمد الطلبات، لأن التوقيع لم يكن يُستعمل إلا
+    // على الخطابات الصادرة. ثم صارت المخالصة تُوقَّع من العامل نفسه — وهو
+    // موظف لا معتمِد — فحصرُه يمنع صاحب الحقّ من توقيع مخالصته.
+    // وتوقيعُ كلٍّ في ملفه هو، فلا يُوقّع أحدٌ عن أحد.
     const m = String(params?.image || "").match(/^data:image\/(png|jpe?g|webp);base64,(.+)$/i);
     if (!m) throw new Error("التوقيع يجب أن يكون صورة (PNG أو JPG)");
     const b64 = m[2];

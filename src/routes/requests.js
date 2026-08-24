@@ -12,7 +12,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import * as wf from "../lib/workflow.js";
-import { runAction, flowFor, producesLetter, managerStageIsVacant, stageRoleIsVacant } from "../odooActions.js";
+import { runAction, flowFor, producesLetter, managerStageIsVacant, stageRoleIsVacant, SIGN_ON_EMPLOYEE_STAGE } from "../odooActions.js";
 import { isTestMode } from "../lib/settings.js";
 import { badRequest, notFound, forbidden } from "../lib/errors.js";
 
@@ -159,6 +159,24 @@ async function assertSignedIfLetter(user, id) {
       + "ارسم توقيعك أو ارفع صورته من شاشة الاعتماد، ثم أعد المحاولة.");
 }
 
+// ---------------------------------------------------------------------------
+// المخالصة يوقّعها العامل بيده. وضغطةُ زرٍّ في تطبيق ليست توقيعًا: المخالصة
+// إبراءُ ذمّة، وما يُحتجّ به عند الخلاف هو الخطّ لا سجلّ نقرة. فمرحلةُ العامل
+// فيها لا تمرّ إلا بتوقيع محفوظ باسمه.
+// ---------------------------------------------------------------------------
+async function assertSignedIfSettlement(user, id) {
+  const { data } = await runAction("request.read", { id, scope: "all" }, { user });
+  if (!data) return;
+  const flow = flowFor(data.category, data.service);
+  const stage = data.state === "submitted" ? flow[0] : data.state;
+  if (stage !== "employee") return;
+  if (!SIGN_ON_EMPLOYEE_STAGE.has(String(data.service || "").trim())) return;
+  const { data: sig } = await runAction("me.signature.read", {}, { user });
+  if (!sig?.hasSignature)
+    throw badRequest("المخالصة إبراءُ ذمّة فلا تُقَرّ بلا توقيعك. "
+      + "ارسم توقيعك أو ارفع صورته، ثم أعد المحاولة.");
+}
+
 router.post("/requests/:id/approve", async (req, res, next) => {
   try {
     if (!isTestMode()) {
@@ -168,6 +186,7 @@ router.post("/requests/:id/approve", async (req, res, next) => {
       if (req.body?.signature)
         await runAction("me.signature", { image: req.body.signature }, { user: req.user });
       await assertSignedIfLetter(req.user, req.params.id);
+      await assertSignedIfSettlement(req.user, req.params.id);
       const { data } = await runAction("request.approve", { id: Number(req.params.id) }, { user: req.user });
       return res.json(data);
     }
