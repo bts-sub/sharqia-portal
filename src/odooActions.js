@@ -1320,13 +1320,17 @@ const actions = {
     return withOdoo(
       async () => {
         const fields = await availableFields("hr.leave.type",
-          ["name", "requires_allocation", "leave_validation_type"]);
+          ["name", "requires_allocation", "leave_validation_type",
+            "sharqia_max_days"]);
         const recs = await odoo.searchRead("hr.leave.type", [], fields, { limit: 100 });
         return {
           records: recs.map((r) => ({
             id: r.id, name: r.name,
             requiresAllocation: r.requires_allocation === true,
             validation: r.leave_validation_type || "",
+            // Ø³ÙÙ Ø§ÙØ£ÙØ§Ù ÙØµÙ Ø§ÙØªØ·Ø¨ÙÙ ÙÙÙÙØ¹ Ø§ÙØ·ÙØ¨ ÙØ¨Ù Ø¥Ø±Ø³Ø§ÙÙ. ÙØ§ÙØ­Ø¯Ù ÙÙØ³Ù
+            // ÙÙØ±ÙØ¶ ÙÙ Ø£ÙØ¯ÙØ ÙØ§ÙÙØ§Ø¬ÙØ© ØªÙØ­Ø³ÙÙ Ø§ÙØªØ¬Ø±Ø¨Ø© ÙÙØ§ ØªØ­Ø±Ø³ ÙØ­Ø¯ÙØ§.
+            maxDays: Number(r.sharqia_max_days || 0),
           })),
         };
       },
@@ -2149,7 +2153,8 @@ const actions = {
           "&", ["audience", "=", "employee"], ["employee_ids", "in", [empId]]];
         const fields = await availableFields("sharqia.portal.course",
           ["name", "summary", "category", "duration_min", "mandatory", "pass_score",
-            "deadline", "lesson_count", "question_count", "total_points", "sequence"]);
+            "deadline", "lesson_count", "question_count", "total_points", "sequence",
+            "max_attempts"]);
         const recs = await odoo.searchRead("sharqia.portal.course", domain, fields,
           { limit: 100, order: "mandatory desc, sequence, id" });
         if (!recs.length) return { records: [] };
@@ -2167,6 +2172,7 @@ const actions = {
               category: COURSE_CAT_AR[r.category] || r.category || "",
               minutes: r.duration_min || 0, mandatory: !!r.mandatory,
               passScore: r.pass_score || 0, deadline: r.deadline || null,
+              maxAttempts: Number(r.max_attempts || 0),
               lessons: r.lesson_count || 0, questions: r.question_count || 0,
               points: r.total_points || 0,
               state: e?.state || "assigned",
@@ -2191,7 +2197,7 @@ const actions = {
         if (!id) return null;
         const cf = await availableFields("sharqia.portal.course",
           ["name", "summary", "description", "category", "duration_min", "mandatory",
-            "pass_score", "deadline"]);
+            "pass_score", "deadline", "max_attempts"]);
         const [c] = await odoo.searchRead("sharqia.portal.course",
           [["id", "=", id]], cf, { limit: 1 });
         if (!c) return null;
@@ -2236,6 +2242,7 @@ const actions = {
           category: COURSE_CAT_AR[c.category] || c.category || "",
           minutes: c.duration_min || 0, mandatory: !!c.mandatory,
           passScore: c.pass_score || 0, deadline: c.deadline || null,
+          maxAttempts: Number(c.max_attempts || 0),
           lessons: lessons.map((l) => ({
             id: l.id, name: l.name, minutes: l.duration_min || 0,
             content: htmlToText(l.content || ""), video: l.video_url || "",

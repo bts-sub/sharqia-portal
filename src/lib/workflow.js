@@ -8,30 +8,30 @@ import { readAll, writeAll, insert, updateById, findById } from "./store.js";
 
 // مسارات الموافقة و SLA حسب التصنيف (مطابقة للواجهة)
 export const FLOW = {
-  leave: { flow: ["manager", "hr", "done"], sla: 2 },
-  attend: { flow: ["manager", "hr", "done"], sla: 2 },
-  finance: { flow: ["manager", "hr", "finance", "done"], sla: 5 },
+  leave: { flow: ["manager", "hr", "done"], sla: 3 },
+  attend: { flow: ["manager", "hr", "done"], sla: 3 },
+  finance: { flow: ["manager", "hr", "finance", "done"], sla: 3 },
   custody: { flow: ["manager", "it", "done"], sla: 3 },
-  transfer: { flow: ["manager", "hr", "done"], sla: 5 },
-  personal: { flow: ["hr", "done"], sla: 2 },
-  letters: { flow: ["hr", "done"], sla: 1 },
-  training: { flow: ["manager", "hr", "done"], sla: 4 },
+  transfer: { flow: ["manager", "hr", "done"], sla: 3 },
+  personal: { flow: ["hr", "done"], sla: 3 },
+  letters: { flow: ["hr", "done"], sla: 3 },
+  training: { flow: ["manager", "hr", "done"], sla: 3 },
   insurance: { flow: ["hr", "done"], sla: 3 },
   complaint: { flow: ["hr", "done"], sla: 3 },
-  offboard: { flow: ["manager", "hr", "done"], sla: 7 },
+  offboard: { flow: ["manager", "hr", "done"], sla: 3 },
   general: { flow: ["manager", "hr", "done"], sla: 3 },
 };
 // مسار خاص بخدمة بعينها — يتقدّم على مسار تصنيفها.
 //   التصنيف وحدةٌ خشنة: «الدوام والحضور» يضمّ تصحيح بصمة تحتاجه الموارد
 //   البشرية، ويضمّ استئذان ساعتين لا يعرف أثره إلا مديرٌ يرى جدول فريقه.
 export const SERVICE_FLOW = {
-  "استئذان بالساعات": { flow: ["manager", "done"], sla: 1 },
-  "ترقية": { flow: ["manager", "done"], sla: 5 },
+  "استئذان بالساعات": { flow: ["manager", "done"], sla: 3 },
+  "ترقية": { flow: ["manager", "done"], sla: 3 },
   // المخالصة: المدير يقرّ ترك العامل، والموارد البشرية تحسب المستحق وتحرّر
   // الخطاب بالمبلغ، والمالية تعتمد الصرف، ثم يقرّ العامل بالمبلغ بنفسه قبل
   // أن يعود الطلب للموارد البشرية للإغلاق.
   "مستحقات نهاية الخدمة": {
-    flow: ["manager", "hr", "finance", "employee", "hr", "done"], sla: 10,
+    flow: ["manager", "hr", "finance", "employee", "hr", "done"], sla: 3,
   },
 };
 
