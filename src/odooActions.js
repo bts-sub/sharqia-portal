@@ -425,6 +425,46 @@ function mapEmployee(rec) {
 // حالات الطلب المغلقة — لا تظهر في صندوق وارد أحد
 const CLOSED_STATES = ["done", "rejected", "cancelled"];
 
+// أبواب لائحة الجزاءات ومراحلها بالعربية
+const DISC_CATEGORY_AR = {
+  timing: "مواعيد العمل", organization: "تنظيم العمل", conduct: "سلوك العامل",
+};
+const DISC_STATE_AR = {
+  draft: "مسودة", investigation: "قيد التحقيق", decided: "معتمَد",
+  applied: "نُفِّذ", dismissed: "حُفظت بلا جزاء", cancelled: "ملغاة",
+};
+const DISC_FIELDS = ["name", "employee_id", "violation_id", "category",
+  "occurred_on", "discovered_on", "occurrence", "penalty_label",
+  "deduction_days", "state", "description", "employee_statement",
+  "statement_taken", "investigation_notes", "decision_notes", "grievance",
+  "decided_on", "applied_on", "reported_by_id"];
+
+const nowOdooDate = () => new Date().toISOString().slice(0, 10);
+
+/** جزاء بالشكل الذي يقرؤه التطبيق. */
+function mapPenalty(rec) {
+  return {
+    id: rec.id, ref: rec.name || "",
+    employeeName: rec.employee_id?.[1] || "",
+    employeeId: rec.employee_id?.[0] || 0,
+    violation: rec.violation_id?.[1] || "",
+    category: DISC_CATEGORY_AR[rec.category] || rec.category || "",
+    occurredOn: rec.occurred_on || "", discoveredOn: rec.discovered_on || "",
+    occurrence: rec.occurrence || 1,
+    penalty: rec.penalty_label || "", days: Number(rec.deduction_days || 0),
+    state: rec.state || "draft",
+    stateAr: DISC_STATE_AR[rec.state] || rec.state || "",
+    description: rec.description || "",
+    statement: rec.employee_statement || "",
+    statementTaken: !!rec.statement_taken,
+    investigation: rec.investigation_notes || "",
+    decision: rec.decision_notes || "",
+    grievance: rec.grievance || "",
+    decidedOn: rec.decided_on || null, appliedOn: rec.applied_on || null,
+    reportedBy: rec.reported_by_id?.[1] || "",
+  };
+}
+
 // تصنيف الدورة يُخزَّن مفتاحًا ويُعرَض عربيًّا — والترجمة هنا لا في الواجهة
 // حتى لا يتكرّر القاموس في موضعين ويفترقا.
 const COURSE_CAT_AR = {
@@ -2469,6 +2509,116 @@ const actions = {
         if (a.state === "submitted") {
           await odoo.execKw("sharqia.portal.appraisal", "action_acknowledge", [[id]]);
         }
+        return { ok: true };
+      },
+      async () => ({ ok: false })
+    );
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // المخالفات والجزاءات
+  // ═══════════════════════════════════════════════════════════════════
+
+  /** لائحة المخالفات — يقرؤها المدير ليختار منها عند الرفع. */
+  async "discipline.violations"(params, ctx) {
+    return withOdoo(
+      async () => {
+        const recs = await odoo.searchRead("sharqia.discipline.violation", [],
+          ["code", "name", "category", "sequence"],
+          { order: "category, sequence, id", limit: 300 });
+        return {
+          records: recs.map((r) => ({
+            id: r.id, code: r.code, name: r.name,
+            category: DISC_CATEGORY_AR[r.category] || r.category || "",
+            categoryKey: r.category || "",
+          })),
+        };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  /** جزاءات الموظف نفسه — والمسودة تُخفى عنه.
+   *
+   *  المسودة اتّهامٌ لم يُحقَّق فيه بعد، وإظهارها للعامل قبل التحقيق يجعل كل
+   *  اتّهامٍ عقوبةً بذاته. يراها حين يُفتح التحقيق ويُطلب منه قولُه.
+   */
+  async "discipline.mine"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        if (!empId) return { records: [] };
+        const recs = await odoo.searchRead("sharqia.discipline.penalty",
+          [["employee_id", "=", empId], ["state", "!=", "draft"]],
+          DISC_FIELDS, { limit: 100, order: "occurred_on desc, id desc" });
+        return { records: recs.map(mapPenalty) };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  /** جزاءات الفريق — للمدير المباشر، وكلُّها للموارد البشرية. */
+  async "discipline.team"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const role = ctx?.user?.role || "employee";
+    return withOdoo(
+      async () => {
+        let domain;
+        if (["hr", "admin"].includes(role)) domain = [];
+        else if (empId) domain = [["employee_id.parent_id", "=", empId]];
+        else return { records: [] };
+        const recs = await odoo.searchRead("sharqia.discipline.penalty", domain,
+          DISC_FIELDS, { limit: 200, order: "state, occurred_on desc, id desc" });
+        return { records: recs.map(mapPenalty) };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  /** رفع مخالفة على موظف. */
+  async "discipline.create"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const target = Number(params?.employeeId || 0);
+        const violation = Number(params?.violationId || 0);
+        if (!target || !violation) throw new Error("الموظف والمخالفة مطلوبان");
+        if (!String(params?.description || "").trim())
+          throw new Error("وصف الواقعة مطلوب");
+        const id = await odoo.create("sharqia.discipline.penalty", {
+          employee_id: target,
+          violation_id: violation,
+          reported_by_id: empId || false,
+          occurred_on: params?.occurredOn || undefined,
+          discovered_on: params?.discoveredOn || undefined,
+          description: String(params.description).trim(),
+        });
+        return { ok: true, id };
+      },
+      async () => ({ ok: false })
+    );
+  },
+
+  /** أقوال العامل — يكتبها هو، ولا يكتبها عنه أحد. */
+  async "discipline.statement"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!id || !empId) throw new Error("بيانات ناقصة");
+        const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
+          [["id", "=", id]], ["employee_id", "state"], { limit: 1 });
+        if (!rec || rec.employee_id?.[0] !== empId)
+          throw new Error("هذه المخالفة ليست عليك");
+        const text = String(params?.text || "").trim();
+        if (!text) throw new Error("اكتب أقوالك قبل الإرسال");
+        const field = params?.grievance ? "grievance" : "employee_statement";
+        const vals = { [field]: text };
+        if (params?.grievance) vals.grievance_on = nowOdooDate();
+        await odoo.write("sharqia.discipline.penalty", [id], vals);
         return { ok: true };
       },
       async () => ({ ok: false })
