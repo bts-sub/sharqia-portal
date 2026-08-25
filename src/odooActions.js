@@ -1987,10 +1987,9 @@ const actions = {
           if (!e || e.parent_id?.[0] !== empId)
             throw new Error("هذه الإجازة ليست في فريقك");
         }
-        // _render_qweb_pdf يعيد (bytes, type) — وJSON-RPC يمرّر البايتات base64
-        const out = await odoo.execKw("ir.actions.report", "_render_qweb_pdf",
-          ["sharqia_portal.report_hr_leave_form", [id]]);
-        const b64 = Array.isArray(out) ? out[0] : out;
+        // غلافٌ عامّ في الأدون: أودو يمنع نداء _render_qweb_pdf عن بُعد لأنها
+        // خاصّة، وقد ردّها فعلًا حين ناديتُها مباشرةً.
+        const b64 = await odoo.execKw("hr.leave", "sharqia_form_pdf", [[id]]);
         if (!b64) throw new Error("تعذّر إخراج النموذج");
         return { base64: b64, name: `طلب-إجازة-${id}.pdf` };
       },
