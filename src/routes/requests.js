@@ -210,6 +210,19 @@ router.post("/requests/:id/reject", async (req, res, next) => {
 });
 
 // التعليق يذهب إلى محادثة الطلب في Odoo فيصل متابعيه، لا إلى ذاكرة المتصفح
+// تسجيل مبلغ المستحقات — الموارد البشرية تحسبه قبل تحويل المخالصة للمالية
+router.post("/requests/:id/amount", async (req, res, next) => {
+  try {
+    if (isTestMode()) throw badRequest("غير متاح في وضع الاختبار");
+    await assertCanAct(req.user, req.params.id, "تسجيل المبلغ");
+    const { data } = await runAction("request.setAmount",
+      { id: Number(req.params.id), amount: req.body?.amount }, { user: req.user });
+    res.json(data);
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر تسجيل المبلغ"));
+  }
+});
+
 router.post("/requests/:id/comment", async (req, res, next) => {
   try {
     if (!req.body?.text) throw badRequest("text مطلوب");

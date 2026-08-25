@@ -552,6 +552,11 @@ export const SERVICE_FLOW = {
 // المخالصة إبراءُ ذمّة: توقيعُها هو ما يُحتجّ به، وضغطةٌ في تطبيق ليست توقيعًا.
 export const SIGN_ON_EMPLOYEE_STAGE = new Set(["مخالصة", "مستحقات نهاية الخدمة"]);
 
+// خدماتٌ لا تغادر الموارد البشرية بلا مبلغ — تحسبه هي وتُحرّر به الخطاب.
+// وأودو يمنع تحويلها بدونه، فبلا حقلٍ لإدخاله يُحبس الطلب عند الموارد
+// البشرية إلى الأبد. وهذا ما كان يقع: الدالّة موجودة في التطبيق ولا تُستدعى.
+export const AMOUNT_REQUIRED = new Set(["مخالصة", "مستحقات نهاية الخدمة"]);
+
 /** مسار الطلب: الخدمة أولًا ثم التصنيف — الأخصّ يغلب الأعمّ. */
 export const flowFor = (category, service) =>
   SERVICE_FLOW[String(service || "").trim()] || FLOW[category] || FLOW.general;
@@ -944,8 +949,10 @@ const actions = {
         // الوسوم خامًّا في المحادثة («&lt;p&gt;&lt;b&gt;…»).
         let msgId;
         try {
+          // معرّف الموظف الكاتب يُمرَّر ليُستبعد من إشعار التعليق: كل التعليقات
+          // تصل أودو من حساب خدمة واحد، فلا يميّزها env.user.
           msgId = await odoo.execKw("sharqia.portal.request", "post_app_comment",
-            [[id], author, text]);
+            [[id], author, text, empId || false]);
         } catch (e) {
           // أدون أقدم من 19.0.1.11.0 — نصٌّ صِرف أسلم من HTML مهرَّب
           if (!/post_app_comment/i.test(e.message || "")) throw e;
@@ -1919,6 +1926,41 @@ const actions = {
       { forceLiveErrors: true }
     );
   },
+  /** تسجيل مبلغ المستحقات على الطلب — للموارد البشرية عند مرحلتها.
+   *
+   *  حدودُه ثلاثة، وكلُّها على الخادم: الدور، والمرحلة، والخدمة. المبلغ يُطبع
+   *  في خطابٍ يوقّعه العامل إبراءً لذمّة المنشأة، فمن يكتبه ومتى ليسا تفصيلًا
+   *  في الشاشة.
+   */
+  async "request.setAmount"(params, ctx) {
+    const id = Number(params?.id || 0);
+    const amount = Number(params?.amount);
+    const role = ctx?.user?.role || "employee";
+    return withOdoo(
+      async () => {
+        if (!id) throw new Error("معرّف الطلب مطلوب");
+        if (!Number.isFinite(amount) || amount <= 0)
+          throw new Error("اكتب مبلغ المستحقات — رقمًا أكبر من صفر");
+        if (!["hr", "admin"].includes(role))
+          throw new Error("تسجيل المبلغ للموارد البشرية");
+        const [rec] = await odoo.searchRead("sharqia.portal.request",
+          [["id", "=", id]], ["service", "category", "state"], { limit: 1 });
+        if (!rec) throw new Error("الطلب غير موجود");
+        const service = String(rec.service || "").trim();
+        if (!AMOUNT_REQUIRED.has(service))
+          throw new Error("هذه الخدمة لا مبلغ لها");
+        const flow = flowFor(rec.category, service);
+        const stage = rec.state === "submitted" ? flow[0] : rec.state;
+        if (stage !== "hr")
+          throw new Error("المبلغ يُسجَّل في مرحلة الموارد البشرية");
+        await odoo.write("sharqia.portal.request", [id], { amount });
+        return { ok: true, amount };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
   async "request.reject"(params, ctx) {
     return withOdoo(
       async () => {
