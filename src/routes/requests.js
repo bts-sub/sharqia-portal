@@ -210,6 +210,22 @@ router.post("/requests/:id/reject", async (req, res, next) => {
 });
 
 // التعليق يذهب إلى محادثة الطلب في Odoo فيصل متابعيه، لا إلى ذاكرة المتصفح
+// GET /api/requests/:id/letter → مستند الطلب الصادر (المخالصة/الخطاب) PDF
+router.get("/requests/:id/letter", async (req, res, next) => {
+  try {
+    const { data } = await runAction("request.letterPdf",
+      { id: req.params.id }, { user: req.user });
+    const buf = Buffer.from(data.base64, "base64");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition",
+      `inline; filename*=UTF-8''${encodeURIComponent(data.name)}`);
+    res.setHeader("Content-Length", buf.length);
+    res.send(buf);
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر فتح المستند"));
+  }
+});
+
 // تسجيل مبلغ المستحقات — الموارد البشرية تحسبه قبل تحويل المخالصة للمالية
 router.post("/requests/:id/amount", async (req, res, next) => {
   try {

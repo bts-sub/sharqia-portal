@@ -85,6 +85,22 @@ router.post("/discipline/:id/statement", async (req, res, next) => {
   }
 });
 
+// GET /api/discipline/:id/pdf → محضر التحقيق وقرار الجزاء
+router.get("/discipline/:id/pdf", async (req, res, next) => {
+  try {
+    const { data } = await runAction("discipline.pdf",
+      { id: req.params.id }, { user: req.user });
+    const buf = Buffer.from(data.base64, "base64");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition",
+      `inline; filename*=UTF-8''${encodeURIComponent(data.name)}`);
+    res.setHeader("Content-Length", buf.length);
+    res.send(buf);
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر فتح المحضر"));
+  }
+});
+
 // توقيع المحضر. الطرف يُستنتج على الخادم من صاحب المخالفة ودور الموقّع،
 // فلا يقول العميل من هو.
 router.post("/discipline/:id/sign", async (req, res, next) => {

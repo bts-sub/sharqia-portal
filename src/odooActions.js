@@ -2769,6 +2769,68 @@ const actions = {
     );
   },
 
+  /** مستند الطلب (المخالصة أو الخطاب) الصادر عنه — يفتحه صاحبه قبل التوقيع. */
+  async "request.letterPdf"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const role = ctx?.user?.role || "employee";
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!id) throw new Error("معرّف الطلب مطلوب");
+        const [req] = await odoo.searchRead("sharqia.portal.request",
+          [["id", "=", id]], ["employee_id"], { limit: 1 });
+        if (!req) throw new Error("الطلب غير موجود");
+        const mine = req.employee_id?.[0] === empId;
+        if (!mine && !["hr", "admin", "manager", "finance"].includes(role))
+          throw new Error("هذا الطلب ليس لك");
+        const [lt] = await odoo.searchRead("sharqia.portal.letter",
+          [["request_id", "=", id]], ["pdf_file", "pdf_name"],
+          { limit: 1, order: "id desc" });
+        if (!lt?.pdf_file) throw new Error("لا مستند صادر عن هذا الطلب بعد");
+        return { base64: lt.pdf_file, name: lt.pdf_name || `مستند-${id}.pdf` };
+      },
+      async () => { throw new Error("غير متاح في وضع الاختبار"); },
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** محضر التحقيق PDF — يقرؤه العامل قبل أن يوقّع، وتحفظه الموارد البشرية.
+   *
+   *  العامل يوقّع على أقواله، وتوقيعٌ على ورقةٍ لم يقرأها ليس إقرارًا. فالمحضر
+   *  يُفتح له كاملًا: الواقعة وأقواله والسُّلَّم والقرار.
+   */
+  async "discipline.pdf"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const role = ctx?.user?.role || "employee";
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!id) throw new Error("معرّف المخالفة مطلوب");
+        const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
+          [["id", "=", id]], ["employee_id", "state"], { limit: 1 });
+        if (!rec) throw new Error("المخالفة غير موجودة");
+        const mine = rec.employee_id?.[0] === empId;
+        // المسودة اتّهامٌ لم يُحقَّق فيه — لا تُطبع للعامل قبل فتح التحقيق
+        if (mine && rec.state === "draft")
+          throw new Error("لا يوجد محضر بعد");
+        if (!mine && !["hr", "admin", "manager"].includes(role))
+          throw new Error("هذا المحضر ليس لك");
+        if (!mine && role === "manager") {
+          const [e] = await odoo.searchRead("hr.employee",
+            [["id", "=", rec.employee_id[0]]], ["parent_id"], { limit: 1 });
+          if (!e || e.parent_id?.[0] !== empId)
+            throw new Error("هذا الموظف ليس في فريقك");
+        }
+        const b64 = await odoo.execKw("sharqia.discipline.penalty",
+          "sharqia_form_pdf", [[id]]);
+        if (!b64) throw new Error("تعذّر إخراج المحضر");
+        return { base64: b64, name: `محضر-${id}.pdf` };
+      },
+      async () => { throw new Error("غير متاح في وضع الاختبار"); },
+      { forceLiveErrors: true }
+    );
+  },
+
   /** توقيع المحضر — من العامل على أقواله، ومن الموارد البشرية إقرارًا بقراءتها.
    *
    *  الطرف يُستنتج من العلاقة لا من وسيطٍ يرسله العميل: صاحب المخالفة يوقّع
