@@ -101,6 +101,19 @@ router.get("/discipline/:id/pdf", async (req, res, next) => {
   }
 });
 
+// اعتماد الجزاء ثم تنفيذه — للموارد البشرية، وأودو يفرض سقوف المواد 69/71/72
+router.post("/discipline/:id/decide", async (req, res, next) => {
+  try {
+    if (!["hr", "admin"].includes(req.user.role))
+      throw forbidden("اعتماد الجزاء للموارد البشرية");
+    const { data } = await runAction("discipline.decide",
+      { id: req.params.id, apply: !!req.body?.apply }, { user: req.user });
+    res.json(data);
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر إتمام الإجراء"));
+  }
+});
+
 // توقيع المحضر. الطرف يُستنتج على الخادم من صاحب المخالفة ودور الموقّع،
 // فلا يقول العميل من هو.
 router.post("/discipline/:id/sign", async (req, res, next) => {

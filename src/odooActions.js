@@ -2831,6 +2831,33 @@ const actions = {
     );
   },
 
+  /** اعتماد الجزاء أو تنفيذه من التطبيق.
+   *
+   *  الحُرّاس كلُّها في أودو ولا تُكرَّر هنا: المادة 71 تمنع الاعتماد قبل سماع
+   *  الأقوال، و72 تمنعه بعد ثلاثين يومًا، و69 تمنع تجاوز أجر خمسة أيام في
+   *  الشهر. ونسخُها في الـ backend يعني حارسَين يفترقان — ويبقى الأضعف هو
+   *  العامل. فهنا صلاحية الفاعل فقط، والباقي يردّه أودو برسالته.
+   */
+  async "discipline.decide"(params, ctx) {
+    const role = ctx?.user?.role || "employee";
+    const id = Number(params?.id || 0);
+    const apply = !!params?.apply;
+    return withOdoo(
+      async () => {
+        if (!id) throw new Error("معرّف المخالفة مطلوب");
+        if (!["hr", "admin"].includes(role))
+          throw new Error("اعتماد الجزاء للموارد البشرية");
+        await odoo.callButton("sharqia.discipline.penalty",
+          apply ? "action_apply" : "action_decide", [id]);
+        const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
+          [["id", "=", id]], ["state"], { limit: 1 });
+        return { ok: true, state: rec?.state || "" };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
   /** توقيع المحضر — من العامل على أقواله، ومن الموارد البشرية إقرارًا بقراءتها.
    *
    *  الطرف يُستنتج من العلاقة لا من وسيطٍ يرسله العميل: صاحب المخالفة يوقّع
