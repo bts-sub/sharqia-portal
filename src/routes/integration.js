@@ -47,7 +47,8 @@ router.post("/integration/users/:login/reset-password", async (req, res, next) =
 // إرسال إشعار لمستخدم (يظهر في التطبيق عبر /api/notifications)
 router.post("/integration/notifications", (req, res, next) => {
   try {
-    const { login, title, body = "", type = "system", reqId = "" } = req.body || {};
+    const { login, title, body = "", type = "system", reqId = "",
+      link = "", penaltyId = 0 } = req.body || {};
     if (!login || !title) throw badRequest("login و title مطلوبان");
     const user = findByLogin(login);
     if (!user) throw notFound("المستخدم غير موجود");
@@ -57,6 +58,10 @@ router.post("/integration/notifications", (req, res, next) => {
       // reqId = رقم الطلب النصّي؛ التطبيق يفتح تفاصيل الطلب عند الضغط عليه.
       // بدونه يصل الإشعار بلا رابط فلا يفتح شيئًا.
       ...(reqId ? { reqId } : {}),
+      // link = الشاشة التي يفتحها الضغط على الإشعار، وpenaltyId المخالفة
+      // بعينها. تُخزَّن فقط حين تصل، فلا تتضخّم إشعارات الطلبات بمفاتيح فارغة.
+      ...(link ? { link } : {}),
+      ...(penaltyId ? { penaltyId: Number(penaltyId) } : {}),
       at: new Date().toISOString(), source: "odoo",
     });
     res.json({ ok: true, id: notif.id });

@@ -437,7 +437,8 @@ const DISC_FIELDS = ["name", "employee_id", "violation_id", "category",
   "occurred_on", "discovered_on", "occurrence", "penalty_label",
   "deduction_days", "state", "description", "employee_statement",
   "statement_taken", "investigation_notes", "decision_notes", "grievance",
-  "decided_on", "applied_on", "reported_by_id"];
+  "decided_on", "applied_on", "reported_by_id",
+  "employee_signed_on", "hr_signed_on", "hr_signed_by_id"];
 
 const nowOdooDate = () => new Date().toISOString().slice(0, 10);
 
@@ -462,6 +463,11 @@ function mapPenalty(rec) {
     grievance: rec.grievance || "",
     decidedOn: rec.decided_on || null, appliedOn: rec.applied_on || null,
     reportedBy: rec.reported_by_id?.[1] || "",
+    signedByEmployee: !!rec.employee_signed_on,
+    employeeSignedOn: rec.employee_signed_on || null,
+    signedByHr: !!rec.hr_signed_on,
+    hrSignedOn: rec.hr_signed_on || null,
+    hrSignedBy: rec.hr_signed_by_id?.[1] || "",
   };
 }
 
@@ -2674,8 +2680,60 @@ const actions = {
         const field = params?.grievance ? "grievance" : "employee_statement";
         const vals = { [field]: text };
         if (params?.grievance) vals.grievance_on = nowOdooDate();
+        else vals.statement_on = nowOdooDate();
         await odoo.write("sharqia.discipline.penalty", [id], vals);
         return { ok: true };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** توقيع المحضر — من العامل على أقواله، ومن الموارد البشرية إقرارًا بقراءتها.
+   *
+   *  الطرف يُستنتج من العلاقة لا من وسيطٍ يرسله العميل: صاحب المخالفة يوقّع
+   *  توقيع العامل، وغيرُه ممن يملك الصلاحية يوقّع توقيع الموارد البشرية.
+   *  وسيطٌ يقول «أنا الموارد البشرية» يصدّقه الخادم ثغرةٌ لا خيار.
+   */
+  async "discipline.sign"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const role = ctx?.user?.role || "employee";
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        const image = String(params?.image || "");
+        if (!id || !empId) throw new Error("بيانات ناقصة");
+        if (!image.startsWith("data:image/"))
+          throw new Error("التوقيع مطلوب");
+        const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
+          [["id", "=", id]], ["employee_id", "state", "employee_statement"],
+          { limit: 1 });
+        if (!rec) throw new Error("المخالفة غير موجودة");
+        const b64 = image.slice(image.indexOf(",") + 1);
+        const mine = rec.employee_id?.[0] === empId;
+
+        if (mine) {
+          if (!String(rec.employee_statement || "").trim())
+            throw new Error("سجّل أقوالك قبل التوقيع عليها");
+          await odoo.write("sharqia.discipline.penalty", [id], {
+            employee_signature: b64, employee_signed_on: nowOdooDate(),
+          });
+          // إشعار الموارد البشرية أن المحضر صار جاهزًا للقراءة
+          await odoo.callButton("sharqia.discipline.penalty",
+            "action_employee_signed", [id]);
+          return { ok: true, party: "employee" };
+        }
+
+        if (!["hr", "admin"].includes(role))
+          throw new Error("توقيع المحضر للموارد البشرية");
+        await odoo.write("sharqia.discipline.penalty", [id], {
+          hr_signature: b64, hr_signed_on: nowOdooDate(),
+          hr_signed_by_id: empId,
+        });
+        // يرفع «سُمعت أقوال العامل» ويُشعر العامل — وبها يجوز الاعتماد
+        await odoo.callButton("sharqia.discipline.penalty",
+          "action_hr_signed", [id]);
+        return { ok: true, party: "hr" };
       },
       async () => ({ ok: false }),
       { forceLiveErrors: true }

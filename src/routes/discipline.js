@@ -85,4 +85,16 @@ router.post("/discipline/:id/statement", async (req, res, next) => {
   }
 });
 
+// توقيع المحضر. الطرف يُستنتج على الخادم من صاحب المخالفة ودور الموقّع،
+// فلا يقول العميل من هو.
+router.post("/discipline/:id/sign", async (req, res, next) => {
+  try {
+    const { data } = await runAction("discipline.sign",
+      { id: req.params.id, image: req.body?.image }, { user: req.user });
+    res.json(data);
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر حفظ التوقيع"));
+  }
+});
+
 export default router;
