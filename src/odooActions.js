@@ -2653,7 +2653,8 @@ const actions = {
         }
         return { ok: true, id };
       },
-      async () => ({ ok: false })
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
     );
   },
 
@@ -2676,7 +2677,8 @@ const actions = {
         await odoo.write("sharqia.discipline.penalty", [id], vals);
         return { ok: true };
       },
-      async () => ({ ok: false })
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
     );
   },
 };

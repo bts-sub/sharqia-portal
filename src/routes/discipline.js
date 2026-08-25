@@ -66,7 +66,11 @@ router.post("/discipline", async (req, res, next) => {
       throw badRequest("لا تُرفع مخالفة على نفسك");
     const { data } = await runAction("discipline.create", b, { user: req.user });
     res.status(201).json(data);
-  } catch (e) { next(e); }
+  } catch (e) {
+    // أخطاء أودو هنا أسبابٌ يفهمها من يرفع — تجاوزُ نافذة الثلاثين يومًا،
+    // أو خروج الموظف عن نطاقه. تُعاد 400 برسالتها لا 500 صامتة.
+    next(e?.status ? e : badRequest(e?.message || "تعذّر رفع المخالفة"));
+  }
 });
 
 router.post("/discipline/:id/statement", async (req, res, next) => {
@@ -76,7 +80,9 @@ router.post("/discipline/:id/statement", async (req, res, next) => {
       grievance: !!req.body?.grievance,
     }, { user: req.user });
     res.json(data);
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر تسجيل أقوالك"));
+  }
 });
 
 export default router;
