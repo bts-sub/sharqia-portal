@@ -36,6 +36,20 @@ router.get("/leaves", async (req, res, next) => {
 });
 
 // أنواع الإجازات → { records: [{id,name}] }
+// GET /api/leave/:id/form → نموذج طلب الإجازة PDF بتصميم المنشأة
+router.get("/leave/:id/form", async (req, res, next) => {
+  try {
+    const { data } = await runAction("leave.formPdf",
+      { id: req.params.id }, { user: req.user });
+    const buf = Buffer.from(data.base64, "base64");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition",
+      `inline; filename*=UTF-8''${encodeURIComponent(data.name)}`);
+    res.setHeader("Content-Length", buf.length);
+    res.send(buf);
+  } catch (e) { next(e); }
+});
+
 router.get("/leave/types", async (req, res, next) => {
   try {
     const { data } = await runAction("leaveType.list", {}, { user: req.user });

@@ -1961,6 +1961,44 @@ const actions = {
     );
   },
 
+  /** نموذج طلب الإجازة PDF كما يُطبع من أودو.
+   *
+   *  يُرسَم في أودو لا في التطبيق: القالب هناك هو المصدر، ورسمُه ثانيةً في
+   *  الواجهة يعني نسختين تفترقان — تُعدَّل ترويسةٌ في إحداهما فيخرج الموظف
+   *  بورقةٍ غير التي تطبعها الموارد البشرية.
+   */
+  async "leave.formPdf"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const role = ctx?.user?.role || "employee";
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!id) throw new Error("معرّف الإجازة مطلوب");
+        const [lv] = await odoo.searchRead("hr.leave", [["id", "=", id]],
+          ["employee_id"], { limit: 1 });
+        if (!lv) throw new Error("الإجازة غير موجودة");
+        // إجازةُ غيرك لا تُطبع إلا لمن يملك أمرها
+        const owner = lv.employee_id?.[0];
+        if (owner !== empId && !["hr", "admin", "manager"].includes(role))
+          throw new Error("هذه الإجازة ليست لك");
+        if (owner !== empId && role === "manager") {
+          const [e] = await odoo.searchRead("hr.employee",
+            [["id", "=", owner]], ["parent_id"], { limit: 1 });
+          if (!e || e.parent_id?.[0] !== empId)
+            throw new Error("هذه الإجازة ليست في فريقك");
+        }
+        // _render_qweb_pdf يعيد (bytes, type) — وJSON-RPC يمرّر البايتات base64
+        const out = await odoo.execKw("ir.actions.report", "_render_qweb_pdf",
+          ["sharqia_portal.report_hr_leave_form", [id]]);
+        const b64 = Array.isArray(out) ? out[0] : out;
+        if (!b64) throw new Error("تعذّر إخراج النموذج");
+        return { base64: b64, name: `طلب-إجازة-${id}.pdf` };
+      },
+      async () => { throw new Error("الطباعة غير متاحة في وضع الاختبار"); },
+      { forceLiveErrors: true }
+    );
+  },
+
   async "request.reject"(params, ctx) {
     return withOdoo(
       async () => {
