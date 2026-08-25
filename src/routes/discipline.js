@@ -1,6 +1,7 @@
 // ===========================================================================
 // routes/discipline.js — المخالفات والجزاءات
 //   GET  /api/discipline/violations   لائحة المخالفات (لمن يرفعها)
+//   GET  /api/discipline/employees    من يجوز رفع مخالفة عليه
 //   GET  /api/discipline/mine         جزاءاتي — ما خرج من المسودة
 //   GET  /api/discipline/team         جزاءات فريقي (مدير/موارد بشرية)
 //   POST /api/discipline              رفع مخالفة { employeeId, violationId, … }
@@ -23,6 +24,16 @@ router.get("/discipline/violations", async (req, res, next) => {
     if (!FILER_ROLES.includes(req.user.role))
       throw forbidden("لائحة المخالفات لمن يرفعها");
     const { data } = await runAction("discipline.violations", {}, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+// من يجوز رفع مخالفة عليه — يغذّي قائمة الاختيار في الشاشة
+router.get("/discipline/employees", async (req, res, next) => {
+  try {
+    if (!FILER_ROLES.includes(req.user.role))
+      throw forbidden("رفع المخالفات للمدير المباشر والموارد البشرية");
+    const { data } = await runAction("discipline.employees", {}, { user: req.user });
     res.json(data);
   } catch (e) { next(e); }
 });

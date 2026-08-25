@@ -2578,6 +2578,40 @@ const actions = {
     );
   },
 
+  /** من يجوز لصاحب الجلسة أن يرفع عليه مخالفة.
+   *
+   *  القائمة نفسها هي حدّ الصلاحية: المدير لا يرى إلا مرؤوسيه، فلا يستطيع
+   *  اختيار من ليس تحته أصلًا. وتُستثنى نفسه — لا يوقّع أحدٌ جزاءً على نفسه.
+   *  ولا نستعمل team.list هنا: هي تجلب الحضور والإجازات والطلبات لكل موظف،
+   *  وهذه الشاشة لا تحتاج إلا اسمًا ووظيفة.
+   */
+  async "discipline.employees"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const role = ctx?.user?.role || "employee";
+    return withOdoo(
+      async () => {
+        let domain;
+        if (["hr", "admin"].includes(role)) domain = [];
+        else if (empId) domain = [["parent_id", "=", empId]];
+        else return { records: [] };
+        if (empId) domain = domain.length
+          ? ["&", ...domain, ["id", "!=", empId]]
+          : [["id", "!=", empId]];
+        const recs = await odoo.searchRead("hr.employee", domain,
+          ["name", "job_title", "department_id"], { limit: 400, order: "name" });
+        return {
+          records: recs.map((r) => ({
+            id: r.id, name: r.name || "",
+            job: r.job_title || "",
+            department: r.department_id?.[1] || "",
+          })),
+        };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
   /** رفع مخالفة على موظف. */
   async "discipline.create"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
@@ -2588,6 +2622,16 @@ const actions = {
         if (!target || !violation) throw new Error("الموظف والمخالفة مطلوبان");
         if (!String(params?.description || "").trim())
           throw new Error("وصف الواقعة مطلوب");
+        // النطاق يُفرض على الخادم لا على الشاشة: تصفية القائمة تمنع الاختيار
+        // الخطأ، ولا تمنع طلبًا مصنوعًا بيده. والمدير سلطته على مرؤوسيه وحدهم.
+        const role = ctx?.user?.role || "employee";
+        if (!["hr", "admin"].includes(role)) {
+          if (target === empId) throw new Error("لا تُرفع مخالفة على نفسك");
+          const [t] = await odoo.searchRead("hr.employee",
+            [["id", "=", target]], ["parent_id"], { limit: 1 });
+          if (!t || t.parent_id?.[0] !== empId)
+            throw new Error("لا تملك صلاحية رفع مخالفة على هذا الموظف");
+        }
         const id = await odoo.create("sharqia.discipline.penalty", {
           employee_id: target,
           violation_id: violation,
@@ -2596,6 +2640,17 @@ const actions = {
           discovered_on: params?.discoveredOn || undefined,
           description: String(params.description).trim(),
         });
+        // المسودة اتّهامٌ لا يراه العامل. ورفعها من الهاتف يُقصد به إبلاغه
+        // ليردّ، فنفتح التحقيق في الحال: يصله الإشعار ويكتب أقواله.
+        // وإن ردّت أودو (مضى ثلاثون يومًا على الاكتشاف — المادة 72) نحذف
+        // المسودة ونُعيد سببها، فلا تتراكم اتّهاماتٌ معلّقة لا يعلم بها أحد.
+        try {
+          await odoo.callButton("sharqia.discipline.penalty",
+            "action_open_investigation", [id]);
+        } catch (e) {
+          await odoo.unlink("sharqia.discipline.penalty", [id]).catch(() => {});
+          throw e;
+        }
         return { ok: true, id };
       },
       async () => ({ ok: false })
