@@ -441,6 +441,7 @@ const DISC_FIELDS = ["name", "employee_id", "violation_id", "category",
   "employee_signed_on", "hr_signed_on", "hr_signed_by_id"];
 
 const nowOdooDate = () => new Date().toISOString().slice(0, 10);
+const nowOdooDatetime = () => new Date().toISOString().slice(0, 19).replace("T", " ");
 
 /** جزاء بالشكل الذي يقرؤه التطبيق. */
 function mapPenalty(rec) {
@@ -2680,7 +2681,7 @@ const actions = {
         const field = params?.grievance ? "grievance" : "employee_statement";
         const vals = { [field]: text };
         if (params?.grievance) vals.grievance_on = nowOdooDate();
-        else vals.statement_on = nowOdooDate();
+        else vals.statement_on = nowOdooDatetime();
         await odoo.write("sharqia.discipline.penalty", [id], vals);
         return { ok: true };
       },
@@ -2716,7 +2717,7 @@ const actions = {
           if (!String(rec.employee_statement || "").trim())
             throw new Error("سجّل أقوالك قبل التوقيع عليها");
           await odoo.write("sharqia.discipline.penalty", [id], {
-            employee_signature: b64, employee_signed_on: nowOdooDate(),
+            employee_signature: b64, employee_signed_on: nowOdooDatetime(),
           });
           // إشعار الموارد البشرية أن المحضر صار جاهزًا للقراءة
           await odoo.callButton("sharqia.discipline.penalty",
@@ -2727,7 +2728,7 @@ const actions = {
         if (!["hr", "admin"].includes(role))
           throw new Error("توقيع المحضر للموارد البشرية");
         await odoo.write("sharqia.discipline.penalty", [id], {
-          hr_signature: b64, hr_signed_on: nowOdooDate(),
+          hr_signature: b64, hr_signed_on: nowOdooDatetime(),
           hr_signed_by_id: empId,
         });
         // يرفع «سُمعت أقوال العامل» ويُشعر العامل — وبها يجوز الاعتماد
