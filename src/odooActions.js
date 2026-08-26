@@ -1876,10 +1876,23 @@ const actions = {
           vacancy = await managerVacancy(recs.map((r) => r.employee_id?.[0]));
         } catch (e) { console.warn("⚠️ تعذّر فحص مرحلة المدير:", e.message); }
         return {
-          records: recs.map((r) => ({
-            ...maskConfidential(mapRequestRecord(r), viewerKey), inbox,
-            mgrVacant: vacancy.get(r.employee_id?.[0]) === true,
-          })),
+          records: recs.map((r) => {
+            // ⚠️ inbox كانت راية النطاق المطلوب لا صفةَ الطلب: يفتح الموظف
+            // «طلباتي» فتصل مخالصته وinbox=false، فتقول شاشة التفاصيل إن
+            // الطلب ليس ضمن مهامه — وهي مرحلته هو. والواجهة لا تملك بديلًا:
+            // كائن «الموظف الحالي» فيها ثابتٌ بمعرّفٍ فارغ في الوضع الحقيقي.
+            //
+            // فالمرحلة التي يملكها صاحب الطلب تُعلَّم دائمًا، في أي نطاق.
+            const flow = flowFor(r.category, r.service);
+            const stage = r.state === "submitted" ? flow[0] : r.state;
+            const mine = stage === "employee" && !!empId
+              && r.employee_id?.[0] === empId;
+            return {
+              ...maskConfidential(mapRequestRecord(r), viewerKey),
+              inbox: inbox || mine,
+              mgrVacant: vacancy.get(r.employee_id?.[0]) === true,
+            };
+          }),
         };
       },
       async () => ({ records: [] })
