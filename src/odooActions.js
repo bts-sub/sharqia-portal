@@ -1904,7 +1904,14 @@ const actions = {
         let mgrVacant = false;
         try { mgrVacant = (await managerVacancy([owner])).get(owner) === true; }
         catch (e) { console.warn("⚠️ تعذّر فحص مرحلة المدير:", e.message); }
-        return maskConfidential({ ...mapRequestRecord(recs[0]), mgrVacant }, viewerKey);
+        // ⚠️ inbox تصل مع القائمة ولا تصل مع القراءة المفردة — فشاشة التفاصيل
+        // كانت تجهل أن الطلب ينتظر صاحبه، فلا تعرض له زرّ الإقرار. والمرحلة
+        // مرحلتُه وهو وحده من يملكها.
+        const flow = flowFor(recs[0].category, recs[0].service);
+        const stage = recs[0].state === "submitted" ? flow[0] : recs[0].state;
+        const inbox = stage === "employee" && !!empId && owner === empId;
+        return maskConfidential(
+          { ...mapRequestRecord(recs[0]), mgrVacant, inbox }, viewerKey);
       },
       async () => null
     );
