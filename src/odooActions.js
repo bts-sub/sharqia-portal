@@ -2769,6 +2769,38 @@ const actions = {
     );
   },
 
+  /** حالة الطلب ومرحلته من أودو مباشرةً — لا من صندوق وارد أحد.
+   *
+   *  الحارس كان يستنتج المرحلة من قائمة وارد المستخدم، فمن ليس الطلب في
+   *  وارده تصير مرحلته «مجهولة»، ثم يمرّ بامتياز دوره. والمرحلة صفةٌ للطلب
+   *  لا لمن ينظر إليه.
+   */
+  async "request.stage"(params, ctx) {
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!id) throw new Error("معرّف الطلب مطلوب");
+        const [rec] = await odoo.searchRead("sharqia.portal.request",
+          [["id", "=", id]],
+          ["name", "state", "stage_index", "service", "category", "employee_id"],
+          { limit: 1 });
+        if (!rec) throw new Error("الطلب غير موجود");
+        const flow = flowFor(rec.category, rec.service);
+        const idx = Math.min(Math.max(Number(rec.stage_index || 0), 0), flow.length - 1);
+        return {
+          id: rec.id, name: rec.name, state: rec.state,
+          stageIndex: Number(rec.stage_index || 0),
+          stage: rec.state === "submitted" ? flow[0] : rec.state,
+          flowStage: flow[idx],
+          service: rec.service || "", category: rec.category || "",
+          empId: rec.employee_id?.[0] ? "E" + rec.employee_id[0] : "",
+        };
+      },
+      async () => { throw new Error("غير متاح في وضع الاختبار"); },
+      { forceLiveErrors: true }
+    );
+  },
+
   /** مستند الطلب (المخالصة أو الخطاب) الصادر عنه — يفتحه صاحبه قبل التوقيع. */
   async "request.letterPdf"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
