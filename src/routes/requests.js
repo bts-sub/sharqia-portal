@@ -101,7 +101,10 @@ async function assertCanAct(user, id, verb = "الاعتماد", expectStage = n
   }
 
   if (!APPROVER_ROLES.includes(user.role)) throw forbidden(`لا تملك صلاحية ${verb}`);
-  if (user.role === "admin") return;
+  // ⚠️ كان هنا «إن كان أدمن فاسمح» — تجاوزٌ لكل ما تحته. والأدمن دورٌ تقنيّ
+  // لا صاحبُ كل مرحلة: مرورُه من مرحلة الإدارة المالية يعني اعتمادَ مبلغٍ
+  // بلا مراجعة من يملكها. فصار يخضع لقواعد الموارد البشرية نفسها: مرحلته
+  // أو مرحلةٌ لا صاحب لها.
   if (stage === "manager") {
     if (user.role === "manager") {
       if (String(rec.empId) === "E" + user.odooEmployeeId) throw forbidden("لا يمكنك اعتماد طلبك بنفسك");

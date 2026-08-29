@@ -1977,6 +1977,15 @@ const actions = {
         const stage = rec.state === "submitted" ? flow[0] : rec.state;
         if (stage !== "hr")
           throw new Error("المبلغ يُسجَّل في مرحلة الموارد البشرية");
+        // ⚠️ ومسار المخالصة يمرّ بالموارد البشرية مرّتين: الأولى تحسب المبلغ،
+        // والثانية تُغلق بعد أن وقّع العامل. وتغييرُ المبلغ في الثانية يجعل
+        // توقيعه واقعًا على رقمٍ لم يره — إبراءَ ذمّةٍ عن مبلغٍ غير الذي أقرّ
+        // باستلامه. فالمبلغ يُقفل بأول توقيعٍ منه.
+        const [signed] = await odoo.searchRead("sharqia.portal.request",
+          [["id", "=", id]], ["emp_signed_on"], { limit: 1 });
+        if (signed?.emp_signed_on)
+          throw new Error("وقّع الموظف على هذا المبلغ — لا يُعدَّل بعد توقيعه. "
+            + "إن لزم تصحيحه فليعترض عليه ليعود للمراجعة.");
         await odoo.write("sharqia.portal.request", [id], { amount });
         return { ok: true, amount };
       },
