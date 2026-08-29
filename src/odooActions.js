@@ -1976,6 +1976,7 @@ const actions = {
           { context: {
             portal_actor: ctx?.user?.name || "",
             portal_actor_login: ctx?.user?.login || "",
+            portal_actor_employee: Number(ctx?.user?.odooEmployeeId) || 0,
           } });
         return { ok: true };
       },
@@ -2075,7 +2076,11 @@ const actions = {
     return withOdoo(
       async () => {
         await odoo.execKw("sharqia.portal.request", "action_reject", [[params.id]],
-          { context: { portal_actor: ctx?.user?.name || "" } });
+          { context: {
+            portal_actor: ctx?.user?.name || "",
+            portal_actor_login: ctx?.user?.login || "",
+            portal_actor_employee: Number(ctx?.user?.odooEmployeeId) || 0,
+          } });
         return { ok: true };
       },
       async () => ({ ok: true }),
