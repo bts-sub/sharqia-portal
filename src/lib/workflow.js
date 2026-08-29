@@ -37,7 +37,7 @@ export const SERVICE_FLOW = {
   // البشرية تحسب المستحق، والمالية تؤكّد الصرف، ثم يوقّعها العامل بنفسه
   // فتعود إلى الموارد البشرية للإغلاق.
   "مخالصة": {
-    flow: ["manager", "hr", "finance", "employee", "hr", "done"], sla: 3,
+    flow: ["manager", "hr", "finance", "employee", "done"], sla: 3,
   },
 };
 

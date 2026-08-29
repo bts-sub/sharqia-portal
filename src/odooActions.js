@@ -549,7 +549,7 @@ export const SERVICE_FLOW = {
   "استئذان بالساعات": ["manager", "done"],
   "ترقية": ["manager", "done"],
   "مستحقات نهاية الخدمة": ["manager", "hr", "finance", "employee", "hr", "done"],
-  "مخالصة": ["manager", "hr", "finance", "employee", "hr", "done"],
+  "مخالصة": ["manager", "hr", "finance", "employee", "done"],
 };
 
 // خدماتٌ يوقّعها العامل بيده عند مرحلته، لا يكتفى منه بضغطة إقرار.
