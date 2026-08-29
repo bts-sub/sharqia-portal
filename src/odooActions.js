@@ -2008,8 +2008,15 @@ const actions = {
       async () => {
         if (!id) throw new Error("معرّف الإجازة مطلوب");
         const [lv] = await odoo.searchRead("hr.leave", [["id", "=", id]],
-          ["employee_id"], { limit: 1 });
+          ["employee_id", "state", "holiday_status_id"], { limit: 1 });
         if (!lv) throw new Error("الإجازة غير موجودة");
+        // النموذج للإجازات السنوية المعتمدة وحدها: هو نموذج «طلب إجازة»
+        // المعتمد في المنشأة ويُودَع الملف، ونسخةٌ منه لطلبٍ لم يُعتمد بعد
+        // ورقةٌ تُقرأ اعتمادًا لم يقع.
+        if (lv.state !== "validate")
+          throw new Error("النموذج يصدر بعد اعتماد الإجازة");
+        if (!String(lv.holiday_status_id?.[1] || "").includes("سنوي"))
+          throw new Error("النموذج للإجازات السنوية");
         // إجازةُ غيرك لا تُطبع إلا لمن يملك أمرها
         const owner = lv.employee_id?.[0];
         if (owner !== empId && !["hr", "admin", "manager"].includes(role))
