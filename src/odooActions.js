@@ -345,6 +345,38 @@ function maskConfidential(out, viewerEmpKey) {
   };
 }
 
+
+
+// رابط مستند الطلب — يُحسَب هنا لا في المتصفّح.
+//
+// المتصفّح لا يعرف إن كانت الإجازة معتمدةً ولا إن كانت سنوية ولا إن كان سجلّها
+// لا يزال قائمًا، فكان الزرّ يظهر لطلبٍ لا مستند له فيُفضي إلى خطأ. وزرٌّ
+// يُخيّب أسوأ من زرٍّ غائب. فالخادم — وهو من يملك الجواب — يُرسله معه: خطابٌ
+// مرتبطٌ بالطلب (وفيه محضر العهدة والمخالصة) أوّلًا، ثم نموذج الإجازة إن
+// استوفى شرط إصداره، ثم أوّل مرفق. فإن لم يكن شيء فسلسلةٌ فارغة، والزرّ يختفي.
+async function requestDocUrl(rec) {
+  if (!rec || !rec.id) return "";
+  try {
+    const letters = await odoo.searchRead("sharqia.portal.letter",
+      [["request_id", "=", rec.id]], ["id"], { limit: 1, order: "id desc" });
+    if (letters.length) return "/api/letters/" + letters[0].id + "/pdf";
+  } catch (e) { console.warn("⚠️ تعذّر البحث عن خطاب الطلب:", e.message); }
+  if (rec.odoo_ref_model === "sharqia.portal.letter" && rec.odoo_ref_id)
+    return "/api/letters/" + rec.odoo_ref_id + "/pdf";
+  if (rec.odoo_ref_model === "hr.leave" && rec.odoo_ref_id) {
+    try {
+      const lv = (await odoo.searchRead("hr.leave", [["id", "=", rec.odoo_ref_id]],
+        ["state", "holiday_status_id"], { limit: 1 }))[0];
+      // الشرطان نفسهما اللذان يفرضهما leave.formPdf — لو افترقا ظهر زرٌّ يرفضه
+      // الخادم عند الضغط.
+      if (lv && lv.state === "validate"
+        && String((lv.holiday_status_id && lv.holiday_status_id[1]) || "").includes("سنوي"))
+        return "/api/leave/" + rec.odoo_ref_id + "/form";
+    } catch (e) { console.warn("⚠️ تعذّرت قراءة الإجازة:", e.message); }
+  }
+  const att = (rec.attachment_ids || [])[0];
+  return att ? "/api/attachments/" + att : "";
+}
 function mapRequestRecord(rec) {
   let extra = {};
   try { extra = JSON.parse(rec.extra_json || "{}") || {}; } catch { extra = {}; }
@@ -1927,8 +1959,9 @@ const actions = {
         const flow = flowFor(recs[0].category, recs[0].service);
         const stage = recs[0].state === "submitted" ? flow[0] : recs[0].state;
         const inbox = stage === "employee" && !!empId && owner === empId;
+        const docUrl = await requestDocUrl(recs[0]);
         return maskConfidential(
-          { ...mapRequestRecord(recs[0]), mgrVacant, inbox }, viewerKey);
+          { ...mapRequestRecord(recs[0]), mgrVacant, inbox, docUrl }, viewerKey);
       },
       async () => null
     );
