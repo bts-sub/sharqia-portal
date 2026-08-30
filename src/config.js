@@ -54,6 +54,11 @@ export const config = {
 
   // مفتاح مشترك للجسر مع Odoo (يجب أن يطابق sharqia_portal.integration_token في Odoo)
   integrationToken: process.env.INTEGRATION_TOKEN || "",
+
+  // مفتاحٌ ضيّقٌ لوكيل البصمة وحده — يخوّل كتابة بصمةٍ خام لا غير. منفصلٌ عن
+  // مفتاح التكامل الذي يدير المستخدمين، فبقاؤه على جهاز العميل لا يعرّض شيئًا
+  // سواه، وتدويره لا يمسّ بقية التكامل.
+  attendanceToken: process.env.ATTENDANCE_TOKEN || "",
 };
 
 // تحذيرات إعداد مبكّرة (لا توقف التشغيل، فقط للانتباه في اللوق)

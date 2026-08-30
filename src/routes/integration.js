@@ -7,8 +7,9 @@ import { Router } from "express";
 import { requireIntegrationToken } from "../middleware/integrationAuth.js";
 import { upsertFromOdoo, updateByLogin, setPassword, findByLogin } from "../lib/users.js";
 import { insert } from "../lib/store.js";
-import { badRequest, notFound } from "../lib/errors.js";
+import { badRequest, notFound, unauthorized } from "../lib/errors.js";
 import * as odoo from "../lib/odooClient.js";
+import { config } from "../config.js";
 
 const router = Router();
 router.use("/integration", requireIntegrationToken);
@@ -75,7 +76,18 @@ router.post("/integration/notifications", (req, res, next) => {
 //   Odoo بحساب الخدمة نفسه الذي تعمل به — فلا يحتاج الوكيلُ حسابَ Odoo ولا
 //   يُوضع مفتاحٌ على جهاز العميل. الدالة idempotent: إعادة الإرسال created=0.
 // ---------------------------------------------------------------------------
-router.post("/integration/attendance/punches", async (req, res, next) => {
+function requireAttendanceToken(req, res, next) {
+  const hdr = req.headers.authorization || "";
+  const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : "";
+  // يُقبل المفتاح المخصّص للبصمة، أو مفتاح التكامل العام (بديلٌ حتى يُضبط
+  // المخصّص). فارغٌ مقابل فارغ لا يمرّ.
+  const ok = (config.attendanceToken && token === config.attendanceToken)
+    || (config.integrationToken && token === config.integrationToken);
+  if (!ok) return next(unauthorized("مفتاح بصمة غير صالح"));
+  next();
+}
+
+router.post("/device/punches", requireAttendanceToken, async (req, res, next) => {
   try {
     const punches = Array.isArray(req.body?.punches) ? req.body.punches : null;
     if (!punches) throw badRequest("punches مصفوفة مطلوبة");
