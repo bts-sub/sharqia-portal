@@ -8,6 +8,7 @@ import { requireIntegrationToken } from "../middleware/integrationAuth.js";
 import { upsertFromOdoo, updateByLogin, setPassword, findByLogin } from "../lib/users.js";
 import { insert } from "../lib/store.js";
 import { badRequest, notFound } from "../lib/errors.js";
+import * as odoo from "../lib/odooClient.js";
 
 const router = Router();
 router.use("/integration", requireIntegrationToken);
@@ -66,6 +67,28 @@ router.post("/integration/notifications", (req, res, next) => {
     });
     res.json({ ok: true, id: notif.id });
   } catch (e) { next(e); }
+});
+
+// ---------------------------------------------------------------------------
+// استقبال بصمات أجهزة Virdi من وكيل UNIS → Odoo (hr.attendance.raw)
+//   وكيلٌ على جهاز UNIS يقرأ الجديد من قاعدته ويرسله هنا. البوابة تكتبه في
+//   Odoo بحساب الخدمة نفسه الذي تعمل به — فلا يحتاج الوكيلُ حسابَ Odoo ولا
+//   يُوضع مفتاحٌ على جهاز العميل. الدالة idempotent: إعادة الإرسال created=0.
+// ---------------------------------------------------------------------------
+router.post("/integration/attendance/punches", async (req, res, next) => {
+  try {
+    const punches = Array.isArray(req.body?.punches) ? req.body.punches : null;
+    if (!punches) throw badRequest("punches مصفوفة مطلوبة");
+    if (punches.length > 1000) throw badRequest("الدفعة كبيرة — 1000 بصمة كحدٍّ أقصى للنداء");
+    // كل بصمة لا بدّ لها من مفتاح فريد؛ ما دونه لا يُميَّز فيتكرّر.
+    const clean = punches.filter((p) => p && p.unique_key);
+    if (!clean.length) throw badRequest("لا بصمة صالحة (unique_key مطلوب لكلٍّ)");
+    const result = await odoo.execKw(
+      "hr.attendance.raw", "import_punches", [clean]);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر استقبال البصمات"));
+  }
 });
 
 export default router;
