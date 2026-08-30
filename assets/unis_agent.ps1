@@ -31,7 +31,7 @@ if ($Install) {
   Say "Scheduled task UNIS_Odoo_Agent registered (every 5 min)."; return
 }
 
-# --- locate the live UNIS mdb (read-only open, no copy) ---
+# --- locate the live UNIS mdb ---
 $cands = @()
 Get-CimInstance Win32_Service -EA 0 | Where-Object { $_.Name -match "^UNIS_" -and $_.PathName -notmatch "svchost" } |
   ForEach-Object { $d = Split-Path ($_.PathName -replace '^"|"$','') -Parent; if (Test-Path $d) { $cands += $d } }
@@ -46,6 +46,13 @@ $xml = $cands | Select-Object -Unique | Where-Object { Test-Path $_ } |
   ForEach-Object { Get-ChildItem $_ -Recurse -Filter RManager.xml -EA 0 } | Select-Object -First 1
 if ($xml) { $mm = Select-String $xml.FullName -Pattern 'UDBAccPwd="([^"]*)"'; if ($mm) { $pw = $mm.Matches[0].Groups[1].Value } }
 
+# --- snapshot the live mdb to a writable folder (Program Files blocks the lock file) ---
+$work = "$Base\work"; New-Item -ItemType Directory -Force $work | Out-Null
+$snap = "$work\UNIS_snapshot.mdb"
+$si = [IO.File]::Open($mdb.FullName,'Open','Read','ReadWrite')
+$so = [IO.File]::Open($snap,'Create','Write','None')
+$si.CopyTo($so); $so.Close(); $si.Close()
+
 function ToUtc($k){
   try { return ([datetime]::ParseExact("$k","yyyyMMddHHmmss",$null)).AddHours(-3).ToString("yyyy-MM-dd HH:mm:ss") } catch { return $null }
 }
@@ -54,7 +61,7 @@ function Fill($sql,$conn){ $a=New-Object System.Data.OleDb.OleDbDataAdapter($sql
 # --- ROSTER: pull the device-user list into Odoo for HR to link ---
 if ($Roster) {
   $usersUrl = $Url -replace '/punches$','/users'
-  $C = New-Object System.Data.OleDb.OleDbConnection("Provider=$prov;Data Source=$($mdb.FullName);Jet OLEDB:Database Password=$pw;Mode=Read")
+  $C = New-Object System.Data.OleDb.OleDbConnection("Provider=$prov;Data Source=$snap;Jet OLEDB:Database Password=$pw;Mode=Read")
   $C.Open()
   $agg = Fill "SELECT L_UID, COUNT(*) AS Cnt, MAX(C_Date & C_Time) AS LastK, MIN(C_Date & C_Time) AS FirstK FROM [tEnter] WHERE L_UID > 0 GROUP BY L_UID" $C
   $nm  = Fill "SELECT L_UID, C_Name, COUNT(*) AS c FROM [tEnter] WHERE L_UID > 0 GROUP BY L_UID, C_Name" $C
@@ -93,7 +100,7 @@ $mark = (Get-Date).AddDays(-$InitialDays).ToString("yyyyMMdd") + "000000"
 if (Test-Path $stateFile) { try { $mark = (Get-Content $stateFile -Raw | ConvertFrom-Json).mark } catch {} }
 $today1 = (Get-Date).AddDays(1).ToString("yyyyMMdd")
 
-$C = New-Object System.Data.OleDb.OleDbConnection("Provider=$prov;Data Source=$($mdb.FullName);Jet OLEDB:Database Password=$pw;Mode=Read")
+$C = New-Object System.Data.OleDb.OleDbConnection("Provider=$prov;Data Source=$snap;Jet OLEDB:Database Password=$pw;Mode=Read")
 $C.Open()
 $sql = "SELECT C_Date,C_Time,L_TID,L_UID,C_Unique,C_Name,L_MatchingType,L_Result FROM [tEnter] " +
        "WHERE (C_Date & C_Time) > '$mark' AND L_UID > 0 AND C_Date <= '$today1' ORDER BY C_Date, C_Time"
