@@ -2,6 +2,8 @@ param(
   [switch]$Send,
   [switch]$Roster,
   [switch]$Install,
+  [switch]$All,
+  [string]$Since = "",
   [int]$InitialDays = 7,
   [string]$Url   = "https://hr.sharqiaa-tech.net/api/device/punches",
   [string]$Token = "92c0774b38330f6b33db7fdf8257005752b640056bd56471"
@@ -95,55 +97,73 @@ if ($Roster) {
   Say "roster done."; return
 }
 
-# --- high-water mark (yyyyMMddHHmmss). first run: InitialDays back ---
-$mark = (Get-Date).AddDays(-$InitialDays).ToString("yyyyMMdd") + "000000"
-if (Test-Path $stateFile) { try { $mark = (Get-Content $stateFile -Raw | ConvertFrom-Json).mark } catch {} }
+# --- high-water mark (yyyyMMddHHmmss) ---
+#   -All: from the very beginning (or -Since yyyyMMdd), ignoring the saved mark.
+#   otherwise: from the saved mark, or InitialDays back on first run.
+if ($All) {
+  $mark = if ($Since) { $Since + "000000" } else { "00000000000000" }
+  $Send = $true
+} else {
+  $mark = (Get-Date).AddDays(-$InitialDays).ToString("yyyyMMdd") + "000000"
+  if (Test-Path $stateFile) { try { $mark = (Get-Content $stateFile -Raw | ConvertFrom-Json).mark } catch {} }
+}
 $today1 = (Get-Date).AddDays(1).ToString("yyyyMMdd")
 
+# --- stream rows in batches: never hold all of them in memory (32-bit = 2GB cap) ---
+#   a full-history pull is ~400k rows; we read, batch 200, POST, and move on.
 $C = New-Object System.Data.OleDb.OleDbConnection("Provider=$prov;Data Source=$snap;Jet OLEDB:Database Password=$pw;Mode=Read")
 $C.Open()
-$sql = "SELECT C_Date,C_Time,L_TID,L_UID,C_Unique,C_Name,L_MatchingType,L_Result FROM [tEnter] " +
+$sql = "SELECT C_Date,C_Time,L_TID,L_UID,C_Name,L_MatchingType,L_Result FROM [tEnter] " +
        "WHERE (C_Date & C_Time) > '$mark' AND L_UID > 0 AND C_Date <= '$today1' ORDER BY C_Date, C_Time"
-$dt = Fill $sql $C; $C.Close()
-Say "mark=$mark  new punches: $($dt.Rows.Count)"
-if ($dt.Rows.Count -eq 0) { Say "nothing new."; return }
+$cmd = $C.CreateCommand(); $cmd.CommandText = $sql
+$rd = $cmd.ExecuteReader()
 
-# --- build batch: Riyadh(UTC+3) -> UTC, unique_key = TID|UID|Date|Time ---
-$batch = @(); $newMark = $mark
-foreach ($row in $dt.Rows) {
-  $d = "$($row.C_Date)"; $t = ("{0:D6}" -f [int]"$($row.C_Time)")
+$csv = $null
+if (-not $Send) { $csv = "$Base\pending_$(Get-Date -f yyyyMMdd_HHmmss).csv" }
+$batch = [System.Collections.Generic.List[object]]::new()
+$newMark = $mark; $seen = 0; $sent = 0; $created = 0; $matched = 0; $skipped = 0
+
+function Flush {
+  if ($batch.Count -eq 0) { return }
+  if ($script:csv) {
+    $script:batch | ForEach-Object { [pscustomobject]$_ } |
+      Export-Csv $script:csv -NoTypeInformation -Encoding UTF8 -Append
+  } else {
+    $body  = @{ punches = $script:batch } | ConvertTo-Json -Depth 5
+    $bytes = [Text.Encoding]::UTF8.GetBytes($body)
+    $res = Invoke-RestMethod -Uri $Url -Method Post -Body $bytes -ContentType "application/json; charset=utf-8" -Headers @{ Authorization = "Bearer $Token" }
+    $script:created += [int]$res.created; $script:matched += [int]$res.matched; $script:skipped += [int]$res.skipped
+  }
+  $script:sent += $script:batch.Count
+  if ($script:sent % 5000 -lt 200) { Say "processed $script:sent ..." }
+  $script:batch.Clear()
+}
+
+while ($rd.Read()) {
+  $d = "$($rd['C_Date'])"; $t = ("{0:D6}" -f [int]"$($rd['C_Time'])")
   $utc = ToUtc "$d$t"; if (-not $utc) { continue }
-  $tid = "{0:D4}" -f [int]$row.L_TID
-  $batch += [ordered]@{
-    unique_key  = "$tid|$($row.L_UID)|$d|$t"
+  $tid = "{0:D4}" -f [int]$rd['L_TID']
+  [void]$batch.Add([ordered]@{
+    unique_key  = "$tid|$($rd['L_UID'])|$d|$t"
     device_code = $tid
-    device_user_id = "$($row.L_UID)"
-    user_name   = "$($row.C_Name)"
+    device_user_id = "$($rd['L_UID'])"
+    user_name   = "$($rd['C_Name'])"
     punch_utc   = $utc
     raw_date    = $d
     raw_time    = $t
-    match_type  = [int]$row.L_MatchingType
-    result      = [int]$row.L_Result
-  }
+    match_type  = [int]$rd['L_MatchingType']
+    result      = [int]$rd['L_Result']
+  })
   if ("$d$t" -gt $newMark) { $newMark = "$d$t" }
+  $seen++
+  if ($batch.Count -ge 200) { Flush }
 }
+Flush
+$rd.Close(); $C.Close()
 
-# --- dry-run: CSV only. -Send: POST batches of 200 ---
 if (-not $Send) {
-  $csv = "$Base\pending_$(Get-Date -f yyyyMMdd_HHmmss).csv"
-  $batch | ForEach-Object { [pscustomobject]$_ } | Export-Csv $csv -NoTypeInformation -Encoding UTF8
-  Say "DRY-RUN: wrote $($batch.Count) rows -> $csv  (mark NOT advanced). Review, then run with -Send."
+  Say "DRY-RUN: wrote $seen rows -> $csv  (mark NOT advanced). Review, then run with -Send (or -All)."
   return
 }
-
-$sent = 0; $created = 0; $matched = 0
-for ($i = 0; $i -lt $batch.Count; $i += 200) {
-  $chunk = @($batch[$i..([math]::Min($i+199,$batch.Count-1))])
-  $body  = @{ punches = $chunk } | ConvertTo-Json -Depth 5
-  $bytes = [Text.Encoding]::UTF8.GetBytes($body)
-  $res = Invoke-RestMethod -Uri $Url -Method Post -Body $bytes -ContentType "application/json; charset=utf-8" -Headers @{ Authorization = "Bearer $Token" }
-  $sent += $chunk.Count; $created += [int]$res.created; $matched += [int]$res.matched
-  Say "posted $sent/$($batch.Count)  (created=$($res.created) matched=$($res.matched) skipped=$($res.skipped))"
-}
 @{ mark = $newMark; at = (Get-Date).ToString("s") } | ConvertTo-Json | Set-Content $stateFile -Encoding UTF8
-Say "done. sent=$sent created=$created matched=$matched  new mark=$newMark"
+Say "done. seen=$seen sent=$sent created=$created matched=$matched skipped=$skipped  new mark=$newMark"
