@@ -103,4 +103,20 @@ router.post("/device/punches", requireAttendanceToken, async (req, res, next) =>
   }
 });
 
+// روستر مستخدمي الأجهزة — مرّةً واحدة أو دوريًّا: يبني قائمة الأرقام بأسمائها
+// ليربطها فريقُ الموارد البشرية بالموظفين من داخل Odoo.
+router.post("/device/users", requireAttendanceToken, async (req, res, next) => {
+  try {
+    const rows = Array.isArray(req.body?.users) ? req.body.users : null;
+    if (!rows) throw badRequest("users مصفوفة مطلوبة");
+    if (rows.length > 20000) throw badRequest("الدفعة كبيرة جدًّا");
+    const clean = rows.filter((u) => u && u.code);
+    const result = await odoo.execKw(
+      "attendance.device.user", "import_device_users", [clean]);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر استقبال الروستر"));
+  }
+});
+
 export default router;
