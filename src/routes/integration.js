@@ -10,6 +10,7 @@ import { insert } from "../lib/store.js";
 import { badRequest, notFound, unauthorized } from "../lib/errors.js";
 import * as odoo from "../lib/odooClient.js";
 import { config } from "../config.js";
+import { listUsers } from "../lib/users.js";
 
 const router = Router();
 router.use("/integration", requireIntegrationToken);
@@ -97,6 +98,29 @@ router.post("/device/punches", requireAttendanceToken, async (req, res, next) =>
     if (!clean.length) throw badRequest("لا بصمة صالحة (unique_key مطلوب لكلٍّ)");
     const result = await odoo.execKw(
       "hr.attendance.raw", "import_punches", [clean]);
+    // إشعار أصحاب البصمات اللحظية في التطبيق — مطابَقةٌ لموظفٍ له حساب فقط.
+    try {
+      const notify = Array.isArray(result?.notify) ? result.notify : [];
+      if (notify.length) {
+        const byEmp = new Map();
+        for (const u of listUsers()) {
+          if (u.odooEmployeeId != null) byEmp.set(Number(u.odooEmployeeId), u);
+        }
+        for (const n of notify) {
+          const u = byEmp.get(Number(n.employee_id));
+          if (!u || u.status !== "active") continue;
+          const kind = n.direction === "out" ? "انصراف" : "حضور";
+          insert("notifs", {
+            id: Date.now() + Math.floor(Math.random() * 100000),
+            userId: u.id, type: "system",
+            title: `تم تسجيل بصمة ${kind}`,
+            body: `سجّلت بصمة ${kind} الساعة ${n.punch_hm}`
+              + (n.device_name ? ` — ${n.device_name}` : ""),
+            read: false, at: new Date().toISOString(), source: "device",
+          });
+        }
+      }
+    } catch (e) { console.warn("⚠️ تعذّر إرسال إشعارات البصمة:", e.message); }
     res.json({ ok: true, ...result });
   } catch (e) {
     next(e?.status ? e : badRequest(e?.message || "تعذّر استقبال البصمات"));
