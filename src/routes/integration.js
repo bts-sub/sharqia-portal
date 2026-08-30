@@ -96,8 +96,10 @@ router.post("/device/punches", requireAttendanceToken, async (req, res, next) =>
     // كل بصمة لا بدّ لها من مفتاح فريد؛ ما دونه لا يُميَّز فيتكرّر.
     const clean = punches.filter((p) => p && p.unique_key);
     if (!clean.length) throw badRequest("لا بصمة صالحة (unique_key مطلوب لكلٍّ)");
+    // flagChanges يفعّله المسحُ الرقابيّ فقط: يوسم البصمة الرجعية التاريخ.
+    const flagChanges = req.body?.flagChanges === true;
     const result = await odoo.execKw(
-      "hr.attendance.raw", "import_punches", [clean]);
+      "hr.attendance.raw", "import_punches", [clean, flagChanges]);
     // إشعار أصحاب البصمات اللحظية في التطبيق — مطابَقةٌ لموظفٍ له حساب فقط.
     try {
       const notify = Array.isArray(result?.notify) ? result.notify : [];
@@ -139,6 +141,22 @@ router.get("/device/agent", requireAttendanceToken, async (req, res, next) => {
     res.type("text/plain; charset=utf-8").send(readFileSync(p, "utf8"));
   } catch (e) {
     next(badRequest("تعذّر تحميل الوكيل: " + (e?.message || "")));
+  }
+});
+
+// المطابقة الرقابية: الوكيل يبعث كل مفاتيح البصمات الموجودة الآن على الجهاز في
+// نافذةٍ زمنية، فيَكشف Odoo ما اختفى منها (حُذف أو عُدّل وقته). كشفُ التلاعب.
+router.post("/device/audit", requireAttendanceToken, async (req, res, next) => {
+  try {
+    const { start, end } = req.body || {};
+    const keys = Array.isArray(req.body?.keys) ? req.body.keys : null;
+    if (!start || !end || !keys) throw badRequest("start و end و keys مطلوبة");
+    if (keys.length > 200000) throw badRequest("النافذة كبيرة جدًّا");
+    const result = await odoo.execKw(
+      "hr.attendance.raw", "audit_reconcile", [start, end, keys]);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر المسح الرقابي"));
   }
 });
 

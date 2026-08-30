@@ -3,6 +3,8 @@ param(
   [switch]$Roster,
   [switch]$Install,
   [switch]$All,
+  [switch]$Audit,
+  [int]$AuditDays = 30,
   [string]$Since = "",
   [int]$InitialDays = 7,
   [string]$Url   = "https://hr.sharqiaa-tech.net/api/device/punches",
@@ -59,6 +61,55 @@ function ToUtc($k){
   try { return ([datetime]::ParseExact("$k","yyyyMMddHHmmss",$null)).AddHours(-3).ToString("yyyy-MM-dd HH:mm:ss") } catch { return $null }
 }
 function Fill($sql,$conn){ $a=New-Object System.Data.OleDb.OleDbDataAdapter($sql,$conn); $t=New-Object System.Data.DataTable; [void]$a.Fill($t); return ,$t }
+
+# --- AUDIT: re-scan the last N days and detect tampering (removed / late-added) ---
+if ($Audit) {
+  $auditUrl = $Url -replace '/punches$','/audit'
+  $floor = (Get-Date).AddDays(-$AuditDays)
+  $fmark = $floor.ToString("yyyyMMdd") + "000000"
+  $startUtc = $floor.AddHours(-3).ToString("yyyy-MM-dd HH:mm:ss")   # Riyadh -> UTC
+  $endUtc   = (Get-Date).AddDays(1).AddHours(-3).ToString("yyyy-MM-dd HH:mm:ss")
+  $today1 = (Get-Date).AddDays(1).ToString("yyyyMMdd")
+  $C = New-Object System.Data.OleDb.OleDbConnection("Provider=$prov;Data Source=$snap;Jet OLEDB:Database Password=$pw;Mode=Read")
+  $C.Open()
+  $sql = "SELECT C_Date,C_Time,L_TID,L_UID,C_Name,L_MatchingType,L_Result FROM [tEnter] " +
+         "WHERE (C_Date & C_Time) > '$fmark' AND L_UID > 0 AND C_Date <= '$today1' ORDER BY C_Date, C_Time"
+  $cmd = $C.CreateCommand(); $cmd.CommandText = $sql
+  $rd = $cmd.ExecuteReader()
+  $keys = [System.Collections.Generic.List[string]]::new()
+  $batch = [System.Collections.Generic.List[object]]::new()
+  $seen = 0
+  function FlushAudit {
+    if ($script:batch.Count -eq 0) { return }
+    $body = @{ punches = $script:batch; flagChanges = $true } | ConvertTo-Json -Depth 5
+    $bytes = [Text.Encoding]::UTF8.GetBytes($body)
+    Invoke-RestMethod -Uri $Url -Method Post -Body $bytes -ContentType "application/json; charset=utf-8" -Headers @{ Authorization = "Bearer $Token" } | Out-Null
+    $script:batch.Clear()
+  }
+  while ($rd.Read()) {
+    $d = "$($rd['C_Date'])"; $t = ("{0:D6}" -f [int]"$($rd['C_Time'])")
+    $utc = ToUtc "$d$t"; if (-not $utc) { continue }
+    $tid = "{0:D4}" -f [int]$rd['L_TID']
+    $k = "$tid|$($rd['L_UID'])|$d|$t"
+    [void]$keys.Add($k)
+    [void]$batch.Add([ordered]@{
+      unique_key=$k; device_code=$tid; device_user_id="$($rd['L_UID'])"
+      user_name="$($rd['C_Name'])"; punch_utc=$utc; raw_date=$d; raw_time=$t
+      match_type=[int]$rd['L_MatchingType']; result=[int]$rd['L_Result']
+    })
+    $seen++
+    if ($batch.Count -ge 200) { FlushAudit }
+  }
+  FlushAudit
+  $rd.Close(); $C.Close()
+  Say "audit: scanned $seen punches over $AuditDays days; reconciling removals..."
+  # all keys in one call to detect removals
+  $body = @{ start=$startUtc; end=$endUtc; keys=$keys } | ConvertTo-Json -Depth 4
+  $bytes = [Text.Encoding]::UTF8.GetBytes($body)
+  $res = Invoke-RestMethod -Uri $auditUrl -Method Post -Body $bytes -ContentType "application/json; charset=utf-8" -Headers @{ Authorization = "Bearer $Token" }
+  Say "audit done. removed detected: $($res.removed)"
+  return
+}
 
 # --- ROSTER: pull the device-user list into Odoo for HR to link ---
 if ($Roster) {
