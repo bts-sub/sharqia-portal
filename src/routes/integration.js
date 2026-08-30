@@ -103,6 +103,21 @@ router.post("/device/punches", requireAttendanceToken, async (req, res, next) =>
   }
 });
 
+// تنزيل سكريبت الوكيل نفسه — ليُثبَّت على جهاز UNIS بأمرٍ قصير بدل لصق مئة سطر.
+// محميٌّ بمفتاح البصمة (السكريبت يحمل المفتاح، فلا يُخدَم مكشوفًا).
+router.get("/device/agent", requireAttendanceToken, async (req, res, next) => {
+  try {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const { dirname, join } = await import("node:path");
+    const here = dirname(fileURLToPath(import.meta.url));
+    const p = join(here, "..", "..", "assets", "unis_agent.ps1");
+    res.type("text/plain; charset=utf-8").send(readFileSync(p, "utf8"));
+  } catch (e) {
+    next(badRequest("تعذّر تحميل الوكيل: " + (e?.message || "")));
+  }
+});
+
 // روستر مستخدمي الأجهزة — مرّةً واحدة أو دوريًّا: يبني قائمة الأرقام بأسمائها
 // ليربطها فريقُ الموارد البشرية بالموظفين من داخل Odoo.
 router.post("/device/users", requireAttendanceToken, async (req, res, next) => {
