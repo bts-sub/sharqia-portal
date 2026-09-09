@@ -579,6 +579,7 @@ export const FLOW = {
 // مواضع تصف المسار نفسه، فأي تعديل هنا يلزم أخويه.
 export const SERVICE_FLOW = {
   "تعديل راتب": ["hr", "finance", "done"],
+  "مكافأة": ["hr", "finance", "done"],
   "استئذان بالساعات": ["manager", "done"],
   "ترقية": ["manager", "done"],
   "مستحقات نهاية الخدمة": ["manager", "hr", "finance", "employee", "hr", "done"],
