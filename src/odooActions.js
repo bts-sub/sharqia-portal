@@ -578,6 +578,7 @@ export const FLOW = {
 // (models/portal_request.py) وفي محرّك الاختبار (lib/workflow.js): ثلاثة
 // مواضع تصف المسار نفسه، فأي تعديل هنا يلزم أخويه.
 export const SERVICE_FLOW = {
+  "تعديل راتب": ["hr", "finance", "done"],
   "استئذان بالساعات": ["manager", "done"],
   "ترقية": ["manager", "done"],
   "مستحقات نهاية الخدمة": ["manager", "hr", "finance", "employee", "hr", "done"],
