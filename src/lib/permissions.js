@@ -43,9 +43,20 @@ export function setOverrides(next) { writeAll("permissions", next || {}); return
 
 const toAr = (role) => ROLE_AR[role] || role;
 
+// افتراضٌ خاصٌّ بخدماتٍ بعينها — يسبق افتراض الدور ويتأخّر عن تجاوزات
+// الإدارة، فتبقى الإدارة قادرةً على إظهارها من شاشة الصلاحيات.
+//
+// زيادة الراتب والمكافأة يرفعهما المدير لموظفه، فظهورهما للموظف نفسه
+// يدعوه إلى طلب زيادةٍ لنفسه — وليس ذلك مسار أيٍّ منهما.
+const SVC_DEFAULT = {
+  "زيادة راتب": { "موظف": "إخفاء الخدمة" },
+  "مكافأة": { "موظف": "إخفاء الخدمة" },
+  "تعديل راتب": { "موظف": "إخفاء الخدمة" },   // الاسم القديم: طلباتٌ قائمة به
+};
+
 export function svcPerm(role, unit) {
   const roleAr = toAr(role);
-  return overrides()?.[roleAr]?.services?.[unit] ?? defaultSvcLevel(roleAr);
+  return overrides()?.[roleAr]?.services?.[unit] ?? SVC_DEFAULT[unit]?.[roleAr] ?? defaultSvcLevel(roleAr);
 }
 export function catPerm(role, catId) {
   const roleAr = toAr(role);
