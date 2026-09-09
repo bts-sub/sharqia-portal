@@ -254,6 +254,7 @@
     "تعويض مصروف":         { en: "Expense Reimbursement", ur: "اخراجات کی واپسی", fr: "Remboursement de frais" },
     "مراجعة خصم":          { en: "Deduction Review", ur: "کٹوتی کا جائزہ", fr: "Révision d'une retenue" },
     "تعديل راتب":          { en: "Salary Adjustment", ur: "تنخواہ میں ترمیم", fr: "Révision salariale" },
+    "زيادة راتب":          { en: "Salary Increase", ur: "تنخواہ میں اضافہ", fr: "Augmentation de salaire" },
     "مكافأة":              { en: "Bonus", ur: "انعام", fr: "Prime" },
     "مراجعة راتب":         { en: "Salary Review", ur: "تنخواہ کا جائزہ", fr: "Révision de salaire" },
     "عهدة جديدة":          { en: "New Asset", ur: "نیا سامان", fr: "Nouveau matériel" },
