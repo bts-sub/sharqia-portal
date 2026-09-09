@@ -164,7 +164,7 @@ async function start() {
   warnConfig();
   await seedAdminIfEmpty();
   const server = app.listen(config.port, () => {
-    console.log(`✅ خادم بوابة «بيت العباءة الشرقية» v${config.version} يعمل على المنفذ ${config.port} — الوضع: ${config.testMode ? "اختبار (fixtures)" : "Odoo مباشر"}`);
+    console.log(`✅ خادم «العباءة الشرقية» v${config.version} يعمل على المنفذ ${config.port} — الوضع: ${config.testMode ? "اختبار (fixtures)" : "Odoo مباشر"}`);
   });
 
   // إيقاف نظيف: ينهي الطلبات الجارية بدل قتلها في منتصف الكتابة على القرص
