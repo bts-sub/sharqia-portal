@@ -5,7 +5,7 @@
 //   GET  /api/me      → الملف الشخصي للمستخدم الحالي
 // ===========================================================================
 import { Router } from "express";
-import { findByLogin, verifyPassword, touchLastLogin } from "../lib/users.js";
+import { findByLogin, verifyPassword, touchLastLogin, setPassword } from "../lib/users.js";
 import { signToken, setSessionCookie, clearSessionCookie } from "../lib/jwt.js";
 import { requireAuth } from "../middleware/auth.js";
 import { loginLimiter } from "../middleware/rateLimit.js";
@@ -44,6 +44,32 @@ router.get("/me", requireAuth, async (req, res) => {
   // الجلسة الجارية عند أول تحديث للتطبيق، بلا إعادة تسجيل دخول.
   const fresh = await syncRoleFromOdoo(req.user.login);
   res.json({ user: fresh || req.user });
+});
+
+
+// POST /api/change-password { current, next } → يغيّرها الموظف بنفسه
+//   كان زرّ «تغيير كلمة المرور» في التطبيق يعرض رسالةً ولا يفعل شيئًا، فلا
+//   سبيل للموظف إلى تغيير كلمةٍ وصلته في رسالة إلا أن يطلب من الموارد
+//   البشرية تصفيرها — فتبقى الكلمة المرسَلة عاملةً إلى الأبد.
+router.post("/change-password", requireAuth, async (req, res, next) => {
+  try {
+    const current = String(req.body?.current || "");
+    const nextPw = String(req.body?.next || "");
+    if (!current || !nextPw) throw badRequest("أدخل كلمة المرور الحالية والجديدة.");
+    if (nextPw.length < 8) throw badRequest("كلمة المرور الجديدة أقصر من ثمانية أحرف.");
+    if (nextPw === current) throw badRequest("كلمة المرور الجديدة مطابقة للحالية.");
+
+    const user = findByLogin(req.user.login);
+    if (!user) throw unauthorized("الجلسة لم تعد صالحة.");
+    // التحقّق من الحالية شرط: بلا هذا يغيّرها من جلس على جهازٍ مفتوح.
+    if (!(await verifyPassword(user, current))) throw badRequest("كلمة المرور الحالية غير صحيحة.");
+
+    await setPassword(user.login, nextPw);
+    // أودو يحتفظ بنسخةٍ من الكلمة لتُرسَل للموظف عند الحاجة، فتُخطَر
+    // بالتغيير — وإلا أرسلت الموارد البشرية لاحقًا كلمةً لم تعد تعمل.
+    notifyOdooUserEvent(user.login, "password_changed");
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });
 
 export default router;
