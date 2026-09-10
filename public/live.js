@@ -19,7 +19,6 @@
 
   var BUILD_EVERY = 3 * 60 * 1000;     // فحص النسخة كل ٣ دقائق
   var NOTIF_EVERY = 60 * 1000;         // استطلاع الإشعارات كل دقيقة
-  var lastUnread = null;               // null = لم يُقرأ بعد؛ لا ننبّه لأول قراءة
   var barUp = false;
 
   function visible() { return document.visibilityState === "visible"; }
@@ -35,60 +34,59 @@
   }
 
   /* ---------- (2) الإشعارات ---------- */
-  function bar(text) {
-    if (barUp) return;
-    barUp = true;
-    var d = document.createElement("div");
-    d.dir = "rtl";
-    d.style.cssText = "position:fixed;inset-inline:0;bottom:14px;margin-inline:auto;width:max-content;" +
-      "max-width:92vw;display:flex;align-items:center;gap:10px;z-index:2147483000;background:#17170F;" +
-      "color:#fff;border-radius:999px;padding:9px 12px 9px 16px;font:600 13.5px/1.4 inherit;" +
-      "box-shadow:0 10px 30px rgba(0,0,0,.35)";
-    var span = document.createElement("span");
-    span.textContent = text;
-    var go = document.createElement("button");
-    go.textContent = "تحديث";
-    go.style.cssText = "background:#C9A227;color:#17170F;border:0;border-radius:999px;padding:6px 14px;" +
-      "font:800 13px inherit;cursor:pointer";
-    go.onclick = function () { location.reload(); };
-    var x = document.createElement("button");
-    x.textContent = "✕";
-    x.setAttribute("aria-label", "إغلاق");
-    x.style.cssText = "background:transparent;color:#9A9A8C;border:0;font-size:17px;cursor:pointer;padding:2px 4px";
-    x.onclick = function () { barUp = false; d.remove(); };
-    d.appendChild(span); d.appendChild(go); d.appendChild(x);
-    document.body.appendChild(d);
-    // لا يبقى إلى الأبد: من لم يضغط «تحديث» يجدها في الفتحة التالية
-    setTimeout(function () { barUp = false; try { d.remove(); } catch (e) {} }, 25000);
-  }
+  // المرجع أكبر رقم إشعارٍ رآه هذا المستخدم على هذا الجهاز، محفوظًا بين
+  // الجلسات. وكان المرجع يُؤخذ من أول استطلاعٍ في الصفحة — وهو يقع قبل
+  // تسجيل الدخول فيعود بصفر، فتُحسب إشعاراتُ الموظف كلّها «جديدة» لحظةَ
+  // دخوله. ومفتاحه باسم المستخدم: جهازٌ يتناوبه اثنان لا يرث أحدهما مرجع
+  // الآخر.
+  var seenKey = null;
+  var lastActivity = Date.now();
+  ["click", "keydown", "input", "touchstart", "scroll"].forEach(function (ev) {
+    window.addEventListener(ev, function () { lastActivity = Date.now(); }, { passive: true });
+  });
 
-  function systemNotice(count) {
-    try {
-      if (!("Notification" in window) || Notification.permission !== "granted") return;
-      var n = new Notification("العباءة الشرقية", {
-        body: count === 1 ? "لديك إشعار جديد" : "لديك " + count + " إشعارات جديدة",
-        icon: "/icons/icon-192.png",
-        badge: "/icons/icon-192.png",
-        tag: "sharqia-notifs",          // إشعارٌ واحد يتجدّد لا كومةٌ تتراكم
-      });
-      n.onclick = function () { try { window.focus(); } catch (e) {} location.reload(); };
-    } catch (e) {}
+  function typing() {
+    var a = document.activeElement;
+    return !!(a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.isContentEditable));
+  }
+  function idle() { return Date.now() - lastActivity > 15000; }
+  function readSeen() { try { return Number(localStorage.getItem(seenKey) || 0); } catch (e) { return 0; } }
+  function writeSeen(v) { try { localStorage.setItem(seenKey, String(v)); } catch (e) {} }
+
+  function identify() {
+    return fetch("/api/me", { credentials: "include", cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        var id = j && j.user && j.user.id;
+        seenKey = id ? "sq.notifSeen." + id : null;
+        return !!seenKey;
+      })
+      .catch(function () { return false; });
   }
 
   function pollNotifs() {
     if (!visible()) return;
+    if (!seenKey) { identify().then(function (ok) { if (ok) pollNotifs(); }); return; }
     fetch("/api/notifications", { credentials: "include", cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
-        if (!j || !Array.isArray(j.records)) return;   // غير مسجَّل دخولًا أو خطأ
-        var unread = j.records.filter(function (n) { return !n.read; }).length;
-        if (lastUnread === null) { lastUnread = unread; return; }   // القراءة الأولى مرجع
-        if (unread > lastUnread) {
-          var fresh = unread - lastUnread;
-          systemNotice(fresh);
-          bar(fresh === 1 ? "وصلك إشعار جديد" : "وصلك " + fresh + " إشعارات جديدة");
-        }
-        lastUnread = unread;
+        if (!j || !Array.isArray(j.records)) return;   // خرج من الجلسة أو خطأ
+        var ids = j.records.map(function (n) {
+          return Number(String(n.id).replace(/\D/g, "")) || 0;
+        });
+        var maxId = ids.length ? Math.max.apply(null, ids) : 0;
+        var seen = readSeen();
+        if (!seen) { writeSeen(maxId); return; }        // أول تشغيلٍ لهذا المستخدم
+        if (maxId <= seen) return;
+
+        var fresh = ids.filter(function (i) { return i > seen; }).length;
+        writeSeen(maxId);
+        systemNotice(fresh);
+        // التحديث يجري بنفسه: من طلب إشعارًا جديدًا يريد رؤيته لا زرًّا
+        // يضغطه. ولا نُعيد التحميل وأصابعه على لوحة المفاتيح — نصٌّ نصف
+        // مكتوب يضيع، فيُعرض الشريط بدلًا منه.
+        if (!typing() && idle()) location.reload();
+        else bar(fresh === 1 ? "وصلك إشعار جديد" : "وصلك " + fresh + " إشعارات جديدة");
       })
       .catch(function () {});
   }
