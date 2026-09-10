@@ -93,11 +93,51 @@
       .catch(function () {});
   }
 
+
+  /* ---------- زرّ تحديث يدوي ----------
+   * الفحص الدوري يكفي عادةً، لكنه يجري كل دقائق. ومن ينتظر قرارًا على
+   * طلبه الآن لا يريد انتظار الدورة: زرٌّ يجلب الجديد فورًا.
+   */
+  function refreshButton() {
+    if (document.getElementById("sq-refresh")) return;
+    var b = document.createElement("button");
+    b.id = "sq-refresh";
+    b.type = "button";
+    b.setAttribute("aria-label", "تحديث");
+    b.title = "تحديث";
+    b.style.cssText = "position:fixed;top:calc(10px + env(safe-area-inset-top,0px));" +
+      "inset-inline-start:12px;z-index:2147482000;width:38px;height:38px;border-radius:50%;" +
+      "border:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.92);color:#17170F;" +
+      "font-size:17px;line-height:1;cursor:pointer;box-shadow:0 4px 14px rgba(16,24,40,.14);" +
+      "display:flex;align-items:center;justify-content:center;padding:0";
+    b.textContent = "↻";
+    b.onclick = function () {
+      b.disabled = true;
+      b.style.opacity = ".6";
+      b.style.transform = "rotate(180deg)";
+      b.style.transition = "transform .4s";
+      // نحدّث عامل الخدمة أولًا: إعادة تحميلٍ بلا ذلك تعيد النسخة نفسها
+      // من الذاكرة، فيضغط الموظف مرارًا ولا يتغيّر شيء.
+      var done = function () { location.reload(); };
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistration()
+          .then(function (r) {
+            if (!r) return;
+            r.update();
+            if (r.waiting) r.waiting.postMessage("SKIP_WAITING");
+          })
+          .catch(function () {})
+          .then(function () { setTimeout(done, 400); });
+      } else { done(); }
+    };
+    document.body.appendChild(b);
+  }
   /* ---------- التشغيل ---------- */
   window.addEventListener("load", function () {
     setInterval(checkBuild, BUILD_EVERY);
     setInterval(pollNotifs, NOTIF_EVERY);
     setTimeout(pollNotifs, 8000);      // قراءةٌ مرجعية بعد أن يستقرّ التطبيق
+    refreshButton();
   });
 
   // العودة إلى التطبيق: افحص فورًا بلا انتظار دورة المؤقّت
