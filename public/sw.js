@@ -7,7 +7,7 @@
 //   2) صفحة التطبيق تُطلب من الشبكة أولًا. لو خُدِّمت من الذاكرة أولًا لبقي
 //      الموظف على نسخة قديمة بعد كل نشر حتى يفرّغ ذاكرة متصفحه.
 // ===========================================================================
-const VERSION = "v69";
+const VERSION = "v70";
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 
@@ -18,6 +18,8 @@ const PRECACHE = [
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/i18n.js",
+  // شعار شاشة الدخول: أول ما يراه الموظف، فلا يُترك لشبكةٍ قد تتأخّر
+  "/logo-login.png?v=1",
 ];
 
 self.addEventListener("install", (e) => {
