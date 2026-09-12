@@ -366,12 +366,10 @@ async function requestDocUrl(rec) {
   if (rec.odoo_ref_model === "hr.leave" && rec.odoo_ref_id) {
     try {
       const lv = (await odoo.searchRead("hr.leave", [["id", "=", rec.odoo_ref_id]],
-        ["state", "holiday_status_id"], { limit: 1 }))[0];
-      // الشرطان نفسهما اللذان يفرضهما leave.formPdf — لو افترقا ظهر زرٌّ يرفضه
-      // الخادم عند الضغط.
-      if (lv && lv.state === "validate"
-        && String((lv.holiday_status_id && lv.holiday_status_id[1]) || "").includes("سنوي"))
-        return "/api/leave/" + rec.odoo_ref_id + "/form";
+        ["id"], { limit: 1 }))[0];
+      // نموذج الإجازة يُطبع لأي إجازةٍ قائمة (أيّ نوع، أيّ حالة) كما يسمح
+      // leave.formPdf. نتحقّق من وجود السجل وحده حتى لا يظهر زرٌّ لمرجعٍ حُذف.
+      if (lv) return "/api/leave/" + rec.odoo_ref_id + "/form";
     } catch (e) { console.warn("⚠️ تعذّرت قراءة الإجازة:", e.message); }
   }
   const att = (rec.attachment_ids || [])[0];
@@ -2031,13 +2029,10 @@ const actions = {
         const [lv] = await odoo.searchRead("hr.leave", [["id", "=", id]],
           ["employee_id", "state", "holiday_status_id"], { limit: 1 });
         if (!lv) throw new Error("الإجازة غير موجودة");
-        // النموذج للإجازات السنوية المعتمدة وحدها: هو نموذج «طلب إجازة»
-        // المعتمد في المنشأة ويُودَع الملف، ونسخةٌ منه لطلبٍ لم يُعتمد بعد
-        // ورقةٌ تُقرأ اعتمادًا لم يقع.
-        if (lv.state !== "validate")
-          throw new Error("النموذج يصدر بعد اعتماد الإجازة");
-        if (!String(lv.holiday_status_id?.[1] || "").includes("سنوي"))
-          throw new Error("النموذج للإجازات السنوية");
+        // النموذج «طلب إجازة» يُطبع لكل أنواع الإجازات (النموذج نفسه يؤشّر النوع:
+        // سنوي/مرضي/طارئ/غير مدفوع/أخرى) وفي أي حالة — قبل الاعتماد ورقةُ طلبٍ
+        // تُوقَّع، وبعده نسخةٌ موقَّعة تُودَع. فلا يُحبس على السنوي المعتمد وحده،
+        // فيبقى الموظف بلا نموذجٍ يطبعه لبقية الأنواع أو قبل اكتمال الاعتماد.
         // إجازةُ غيرك لا تُطبع إلا لمن يملك أمرها
         const owner = lv.employee_id?.[0];
         if (owner !== empId && !["hr", "admin", "manager"].includes(role))
