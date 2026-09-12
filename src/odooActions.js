@@ -2280,7 +2280,15 @@ const actions = {
         const fields = await availableFields("sharqia.portal.announcement",
           ["title", "body_html", "summary", "image", "image_ids", "priority", "pinned",
            "publish_date", "require_ack", "audience", "department_id"]);
-        const recs = await odoo.searchRead("sharqia.portal.announcement", [], fields,
+        // التعميم لا يبلغ الموظفين بمجرّد حفظه: كانت القراءة بلا شرط،
+        // فالمسوّدة تظهر لهم قبل أن يُضغط «إرسال التعميم». والشرط على
+        // sent_on لأنه يُكتب لحظةَ الإرسال وحده.
+        //
+        // والاحتياط لأدونٍ أقدم لا يحمل الحقل: يُقرأ بلا شرط كما كان،
+        // فلا تختفي التعاميم كلها لغياب حقل.
+        const annFields = await availableFields("sharqia.portal.announcement", ["sent_on"]);
+        const annDomain = annFields.includes("sent_on") ? [["sent_on", "!=", false]] : [];
+        const recs = await odoo.searchRead("sharqia.portal.announcement", annDomain, fields,
           { limit: 50, order: "pinned desc, publish_date desc" });
 
         // حالة القراءة لهذا الموظف. بدونها كانت الواجهة تُولّد إشعارًا لكل
