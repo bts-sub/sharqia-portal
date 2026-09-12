@@ -1040,34 +1040,14 @@ const actions = {
     return withOdoo(
       async () => {
         if (!empId) throw new Error("المستخدم غير مربوط بموظف في Odoo");
-        // المصدر الأول: حساب أودو نفسه — وهو ما يظهر في زر «Time Off» على
-        // بطاقة الموظف (20/30). أودو يخصم من الرصيد أنواعَ الإجازات ذات
-        // المخصَّص وحدها، فالإجازة الاضطرارية أو بدون راتب لا تنقص السنوية.
-        // قراءته مباشرةً تُغني عن إعادة الحساب وتضمن رقمًا واحدًا في النظامين.
-        const empFields = await availableFields("hr.employee",
-          ["allocation_display", "allocation_remaining_display", "allocation_count"]);
-        if (empFields.includes("allocation_remaining_display")) {
-          const e = (await odoo.searchRead("hr.employee", [["id", "=", empId]], empFields, { limit: 1 }))[0];
-          const num = (v) => { const n = parseFloat(String(v ?? "").replace(/[^\d.\-]/g, "")); return Number.isFinite(n) ? n : null; };
-          const remaining = num(e?.allocation_remaining_display);
-          const total = num(e?.allocation_display) ?? num(e?.allocation_count);
-          if (remaining !== null && total !== null) {
-            // المستهلك = المعتمد وحده، والمحجوز = المعلّق. أودو يطرحهما معًا
-            // من المتبقّي، وفصلُهما هنا يجعل شاشة الرصيد تشرح الرقم لا تناقضه.
-            let used = 0, pending = 0;
-            try {
-              const ls = await odoo.searchRead("hr.leave",
-                [["employee_id", "=", empId], ["state", "in", ["validate", ...LEAVE_PENDING]],
-                  ["holiday_status_id.requires_allocation", "=", true]],
-                ["number_of_days", "state"], { limit: 300 });
-              for (const l of ls) {
-                if (l.state === "validate") used += l.number_of_days || 0;
-                else pending += l.number_of_days || 0;
-              }
-            } catch (e2) { used = Math.max(0, total - remaining); }
-            return { balance: remaining, allocated: total, used, pending, source: "odoo-employee" };
-          }
-        }
+        // ⚠️ كان يُقرأ allocation_remaining_display من بطاقة الموظف ويُصدَّق.
+        // وأودو لا يحسب ذلك إلا لأنواعٍ requires_allocation=True — ونوع
+        // «إجازة سنوية» عندنا False (أودو يمنع تغييرها بعد تسجيل إجازات
+        // عليها). فكان المستهلك يخرج صفرًا والمتبقّي = المخصَّص كلّه:
+        // الرئيسية تقول «21 يوم» وشاشة الرصيد تقول «8 متبقٍ» للشيء نفسه.
+        //
+        // فصار الحساب واحدًا في الشاشتين: من المخصَّصات المعتمدة، ناقصَ
+        // المستهلك والمعلّق، ولكل نوعٍ على حدة.
 
         // نداءان مستقلان → بالتوازي (كانا متتابعين فيتضاعف زمن الانتظار)
         const [allocs, taken] = await Promise.all([
@@ -1075,8 +1055,8 @@ const actions = {
             [["employee_id", "=", empId], ["state", "=", "validate"]],
             ["number_of_days", "holiday_status_id"]),
           odoo.searchRead("hr.leave",
-            [["employee_id", "=", empId], ["state", "=", "validate"]],
-            ["number_of_days", "holiday_status_id"]),
+            [["employee_id", "=", empId], ["state", "in", ["validate", ...LEAVE_PENDING]]],
+            ["number_of_days", "holiday_status_id", "state"]),
         ]);
         // ⚠️ كان يطرح مجموع كل الإجازات من مجموع كل المخصَّصات بلا نظرٍ للنوع،
         // فإجازةٌ بدون راتب (نوعٌ بلا رصيد مخصَّص أصلًا) تُنقص الرصيد السنوي.
@@ -1085,17 +1065,21 @@ const actions = {
         const slot = (r) => {
           const id = r.holiday_status_id?.[0] || 0;
           if (!byType.has(id))
-            byType.set(id, { id, name: r.holiday_status_id?.[1] || "غير محدّد", allocated: 0, used: 0 });
+            byType.set(id, { id, name: r.holiday_status_id?.[1] || "غير محدّد", allocated: 0, used: 0, pending: 0 });
           return byType.get(id);
         };
         for (const a of allocs) slot(a).allocated += a.number_of_days || 0;
-        for (const t of taken) slot(t).used += t.number_of_days || 0;
+        for (const t of taken) {
+          const s = slot(t);
+          if (t.state === "validate") s.used += t.number_of_days || 0;
+          else s.pending += t.number_of_days || 0;   // أيامٌ حُجزت بطلبٍ لم يُبتّ فيه
+        }
 
         let balance = 0, allocated = 0, used = 0, usedUnallocated = 0;
         for (const t of byType.values()) {
           allocated += t.allocated;
           if (t.allocated > 0) {
-            balance += Math.max(0, t.allocated - t.used);
+            balance += Math.max(0, t.allocated - t.used - t.pending);
             used += t.used;
           } else {
             // نوعٌ بلا رصيد مخصَّص: أيامه تُحصى وتُعرض، ولا تُخصم من غيره
