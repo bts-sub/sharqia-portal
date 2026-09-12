@@ -1810,22 +1810,22 @@ const actions = {
 
         const id = await odoo.create("sharqia.portal.request", payload);
 
-        // ارفع المرفقات التي وصلت بمحتواها واربطها بالطلب
+        // ارفع المرفقات التي وصلت بمحتواها واربطها بالطلب.
+        // ⚠️ الرفع بالتوازي لا بالتتابع: كل مرفق كان يُرفع ثم يُنتظر ثم التالي،
+        // فطلبٌ بخمسة مرفقات = خمسة أزمنة ذهابٍ وإياب متراكمة إلى Odoo.sh، وقد
+        // يتجاوز مجموعُها مهلة nginx (60ث) فيرتدّ الطلب 504 ولا يُحفظ. بالتوازي
+        // يصير الزمنُ زمنَ أبطأ مرفقٍ لا مجموعَها. وفشلُ مرفقٍ لا يُسقط البقية
+        // ولا يُفشل الطلب — يُسجَّل فقط.
         const files = (params.attachments || []).filter((a) => a && (a.base64 || a.data));
-        const attIds = [];
-        for (const f of files) {
-          try {
-            attIds.push(await odoo.create("ir.attachment", {
-              name: f.name || f.fileName || "مرفق",
-              datas: f.base64 || f.data,
-              res_model: "sharqia.portal.request",
-              res_id: id,
-            }));
-          } catch (e) {
-            // المرفق لا يُفشل الطلب — يُسجَّل فقط
-            console.warn("تعذّر رفع مرفق للطلب", id, e.message);
-          }
-        }
+        const attResults = await Promise.all(files.map((f) =>
+          odoo.create("ir.attachment", {
+            name: f.name || f.fileName || "مرفق",
+            datas: f.base64 || f.data,
+            res_model: "sharqia.portal.request",
+            res_id: id,
+          }).catch((e) => { console.warn("تعذّر رفع مرفق للطلب", id, e.message); return null; })
+        ));
+        const attIds = attResults.filter((x) => x != null);
         if (attIds.length && (!known || known.has("attachment_ids"))) {
           try { await odoo.write("sharqia.portal.request", id, { attachment_ids: [[6, 0, attIds]] }); }
           catch (e) { console.warn("تعذّر ربط المرفقات بالطلب", id, e.message); }
