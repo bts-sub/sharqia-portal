@@ -965,7 +965,10 @@ const actions = {
     const id = toEmpId(params?.id);
     const text = String(params?.text || "").trim();
     if (!id) throw new Error("معرّف الطلب مطلوب");
-    if (!text) throw new Error("نص التعليق مطلوب");
+    const cmtAtts = (Array.isArray(params?.attachmentIds) ? params.attachmentIds : [])
+      .map(Number).filter(Boolean);
+    // نصٌّ فارغ مقبول إن صحبه مرفق
+    if (!text && !cmtAtts.length) throw new Error("نص التعليق أو مرفق مطلوب");
     if (text.length > 4000) throw new Error("التعليق طويل — الحد 4000 حرف");
     const empId = ctx?.user?.odooEmployeeId;
     return withOdoo(
@@ -998,6 +1001,17 @@ const actions = {
             message_type: "comment",
             subtype_xmlid: "mail.mt_comment",
           });
+        }
+        // المرفق يُرفع أوّلًا ثم يُنسب إلى الرسالة هنا فيظهر تحتها.
+        // وفشل النسبة لا يُسقط التعليق: النصّ وصل، وردُّه كلّه لأجل
+        // مرفقٍ أسوأ من مرفقٍ غير منسوب.
+        if (cmtAtts.length && msgId) {
+          try {
+            await odoo.execKw("mail.message", "write", [[msgId], {
+              attachment_ids: cmtAtts.map((a) => [4, a]) }]);
+            await odoo.execKw("ir.attachment", "write", [cmtAtts, {
+              res_model: "sharqia.portal.request", res_id: id }]);
+          } catch (e) { console.warn("⚠️ تعذّر ربط مرفق التعليق:", e.message); }
         }
         return { ok: true, messageId: msgId, request: rec.name };
       },
@@ -1945,8 +1959,35 @@ const actions = {
         const stage = recs[0].state === "submitted" ? flow[0] : recs[0].state;
         const inbox = stage === "employee" && !!empId && owner === empId;
         const docUrl = await requestDocUrl(recs[0]);
+        // التعليقات: تُكتب في محادثة الطلب في أودو ولم تكن تُقرأ منها
+        // أبدًا — فتعليق المدير على طلب موظفه يُكتب ويختفي، وتبقى
+        // الشاشة تقول «لا توجد تعليقات بعد».
+        //
+        // نقرأ رسائل التعليق وحدها: mail.message يحمل معها سجلّ تغيّر
+        // الحقول (tracking) وهو ضجيجٌ لا يعني قارئ الطلب.
+        let comments = [];
+        try {
+          const msgs = await odoo.searchRead("mail.message",
+            [["model", "=", "sharqia.portal.request"], ["res_id", "=", recs[0].id],
+             ["message_type", "in", ["comment", "email"]]],
+            ["body", "author_id", "date", "attachment_ids"],
+            { limit: 100, order: "date asc" });
+          const strip = (h) => String(h || "")
+            .replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n")
+            .replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ")
+            .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+            .replace(/\n{3,}/g, "\n\n").trim();
+          comments = msgs.map((m) => ({
+            by: m.author_id?.[1] || "—",
+            text: strip(m.body),
+            at: m.date,
+            atts: (m.attachment_ids || []).map((aid) => ({ id: aid, url: `/api/attachments/${aid}` })),
+          })).filter((c) => c.text || c.atts.length);
+        } catch (e) {
+          console.warn("⚠️ تعذّرت قراءة تعليقات الطلب:", e.message);
+        }
         return maskConfidential(
-          { ...mapRequestRecord(recs[0]), mgrVacant, inbox, docUrl }, viewerKey);
+          { ...mapRequestRecord(recs[0]), mgrVacant, inbox, docUrl, comments }, viewerKey);
       },
       async () => null
     );

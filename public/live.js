@@ -104,6 +104,51 @@
       if (t) checkBuild();
     } catch (e) {}
   }, true);
+
+  /* ---------- عرض الإشعار كاملًا ----------
+   * قائمة الإشعارات تقصّ النصّ، والضغط على إشعارٍ بلا وجهة معروفة كان
+   * لا يفعل شيئًا — فرسالة الإنذار أو الاستدعاء تصل ولا تُقرأ كاملة.
+   */
+  window.SharqiaNotifView = function (n) {
+    if (!n) return;
+    var back = document.createElement("div");
+    back.style.cssText = "position:fixed;inset:0;background:rgba(16,16,8,.45);z-index:2147483000;" +
+      "display:flex;align-items:center;justify-content:center;padding:16px";
+    var card = document.createElement("div");
+    card.style.cssText = "background:#fff;border-radius:16px;max-width:420px;width:100%;" +
+      "max-height:80vh;overflow:auto;padding:18px;direction:rtl;text-align:right;" +
+      "box-shadow:0 18px 50px rgba(16,24,40,.28);font-family:inherit";
+    var h = document.createElement("div");
+    h.style.cssText = "font-size:16px;font-weight:800;color:#17170F;margin-bottom:8px";
+    h.textContent = n.title || "إشعار";
+    var b = document.createElement("div");
+    // white-space: pre-wrap — الرسائل تأتي بأسطر، وطيُّها يلصق الحقول ببعضها
+    b.style.cssText = "font-size:13.5px;color:#3D3D34;line-height:1.9;white-space:pre-wrap";
+    b.textContent = n.body || "";
+    var d = document.createElement("div");
+    d.style.cssText = "font-size:11px;color:#9A9A8C;margin-top:10px";
+    try { d.textContent = n.at ? new Date(n.at).toLocaleString("ar-SA") : ""; } catch (e) {}
+    card.appendChild(h); card.appendChild(b); card.appendChild(d);
+
+    if (n.letterId) {
+      var a = document.createElement("a");
+      a.href = "/api/letters/" + n.letterId + "/pdf?view=1";
+      a.target = "_blank"; a.rel = "noopener noreferrer";
+      a.textContent = "📎 فتح المستند";
+      a.style.cssText = "display:inline-block;margin-top:12px;padding:9px 14px;border-radius:10px;" +
+        "background:#F7F3E3;color:#8a6d00;font-weight:800;font-size:13px;text-decoration:none";
+      card.appendChild(a);
+    }
+    var close = document.createElement("button");
+    close.textContent = "إغلاق";
+    close.style.cssText = "display:block;width:100%;margin-top:14px;padding:11px;border:0;" +
+      "border-radius:10px;background:#17170F;color:#fff;font:inherit;font-weight:800;cursor:pointer";
+    close.onclick = function () { try { back.remove(); } catch (e) {} };
+    card.appendChild(close);
+    back.onclick = function (ev) { if (ev.target === back) close.onclick(); };
+    back.appendChild(card);
+    document.body.appendChild(back);
+  };
   /* ---------- التشغيل ---------- */
   window.addEventListener("load", function () {
     setInterval(checkBuild, BUILD_EVERY);

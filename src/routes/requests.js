@@ -266,10 +266,13 @@ router.post("/requests/:id/amount", async (req, res, next) => {
 
 router.post("/requests/:id/comment", async (req, res, next) => {
   try {
-    if (!req.body?.text) throw badRequest("text مطلوب");
+    const atts = Array.isArray(req.body?.attachmentIds) ? req.body.attachmentIds : [];
+    // نصٌّ فارغ مقبول إن صحبه مرفق: من أرفق مستندًا قال ما أراد قوله.
+    if (!req.body?.text && !atts.length) throw badRequest("text أو مرفق مطلوب");
     if (!isTestMode()) {
       const { data } = await runAction("request.comment",
-        { id: req.params.id, text: req.body.text }, { user: req.user });
+        { id: req.params.id, text: req.body.text || "", attachmentIds: atts },
+        { user: req.user });
       return res.json(data);
     }
     res.json(wf.commentRequest({ user: req.user, id: req.params.id, text: req.body.text }));
