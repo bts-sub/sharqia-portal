@@ -42,6 +42,25 @@ router.post("/requests", async (req, res, next) => {
   try {
     const p = req.body || {};
     if (!p.service) throw badRequest("service مطلوب");
+    // الإجازة السنوية وحدها تُخصم من الرصيد. والحارس هنا لا في الواجهة
+    // فقط: من يرسل الطلب بغير الشاشة يتجاوز تحقّقها، والرصيد حقٌّ ماليّ
+    // لا يُترك لأمانة المتصفّح.
+    //
+    // ونوعٌ بلا مخصَّص رصيدُه «بلا سقف» لا صفر (remaining = null)، فلا
+    // يُمنع عليه شيء — وإلا رُفضت كل إجازةٍ سنوية قبل توزيع الأرصدة.
+    if (/سنوي/.test(String(p.service || "") + " " + String(p.extra?.leaveType || p.leaveType || ""))) {
+      const days = Number(p.extra?.days ?? p.days ?? 0);
+      if (days > 0) {
+        const { data } = await runAction("leave.balanceByType", {}, { user: req.user });
+        const row = (data?.records || []).find((r) => /سنوي/.test(String(r.name || "")));
+        const left = row && !row.unlimited && row.remaining != null ? Number(row.remaining) : null;
+        if (left != null && days > left) {
+          throw badRequest(
+            `الرصيد غير كافٍ: المطلوب ${days} يوم والمتاح ${left}. ` +
+            `الإجازة السنوية وحدها تُخصم من الرصيد.`);
+        }
+      }
+    }
     // Odoo مصدر الحقيقة: في الوضع الحقيقي يُنشأ الطلب في Odoo؛ في الاختبار محليًا
     if (!isTestMode()) {
       const { data } = await runAction("request.create", p, { user: req.user });
