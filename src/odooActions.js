@@ -48,7 +48,9 @@ const EMP_FIELDS = ["name", "job_title", "department_id", "work_email", "work_ph
 //   رغم وجود الرقم في أودو).
 const EMP_ME_FIELDS = [...EMP_FIELDS, "job_id", "mobile_phone", "private_phone", "private_email",
   "registration_number", "barcode", "joining_date", "identification_id", "passport_id",
-  "permit_no", "marital", "birthday", "primary_bank_account_id"];
+  "permit_no", "marital", "birthday", "primary_bank_account_id",
+  // الجنسية: تحدّد أيّ رقمٍ يُعرض — الهوية للسعودي والإقامة لغيره
+  "country_id"];
 
 // نوع التوظيف في أودو إنجليزي — يُعرض في التطبيق تحت «على رأس العمل»
 const EMP_TYPE_AR = {
@@ -448,6 +450,20 @@ function mapEmployee(rec) {
     iban: maskTail(rec.primary_bank_account_id?.[1]),
     passport: maskTail(rec.passport_id),
     iqama: maskTail(rec.permit_no),
+    // السعودي له رقم هوية وغيره رقم إقامة — وعرضُ الحقلين معًا يُظهر
+    // لكلٍّ منهما سطرًا فارغًا لا يعنيه. الجنسية هي الفيصل، فإن غابت
+    // حكَمَ الرقم الموجود: من له إقامة ليس سعوديًّا.
+    ...(() => {
+      const nat = rec.country_id?.[1] || "";
+      const saudi = /saudi|السعودية|سعودي/i.test(nat);
+      const useIqama = nat ? !saudi : !!rec.permit_no;
+      return {
+        nationality: nat,
+        idLabel: useIqama ? "رقم الإقامة" : "رقم الهوية",
+        idValue: maskTail(useIqama ? rec.permit_no : rec.identification_id)
+          || maskTail(useIqama ? rec.identification_id : rec.permit_no) || "",
+      };
+    })(),
     marital: MARITAL_AR[rec.marital] || "",
     birthday: rec.birthday || "",
     // صورة الموظف من أودو كـ data URI جاهزة للعرض في <img> مباشرة
