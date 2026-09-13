@@ -352,41 +352,67 @@ function maskConfidential(out, viewerEmpKey) {
 
 
 
-// رابط مستند الطلب — يُحسَب هنا لا في المتصفّح.
+// روابط مستندات الطلبات — تُحسَب هنا لا في المتصفّح.
 //
-// المتصفّح لا يعرف إن كانت الإجازة معتمدةً ولا إن كانت سنوية ولا إن كان سجلّها
-// لا يزال قائمًا، فكان الزرّ يظهر لطلبٍ لا مستند له فيُفضي إلى خطأ. وزرٌّ
-// يُخيّب أسوأ من زرٍّ غائب. فالخادم — وهو من يملك الجواب — يُرسله معه: خطابٌ
-// مرتبطٌ بالطلب (وفيه محضر العهدة والمخالصة) أوّلًا، ثم نموذج الإجازة إن
-// استوفى شرط إصداره، ثم أوّل مرفق. فإن لم يكن شيء فسلسلةٌ فارغة، والزرّ يختفي.
+// المتصفّح لا يعرف إن كان للطلب خطابٌ صادر ولا إن كان سجلّ إجازته لا يزال
+// قائمًا، فكان الزرّ يظهر لطلبٍ لا مستند له فيُفضي إلى خطأ. وزرٌّ يُخيّب
+// أسوأ من زرٍّ غائب. فالخادم — وهو من يملك الجواب — يُرسله معه: خطابٌ
+// مرتبطٌ بالطلب (وفيه المخالصة) أوّلًا، ثم نموذج الإجازة أو محضر العهدة إن
+// كان سجلُّهما قائمًا، ثم أوّل مرفق. فإن لم يكن شيء فسلسلةٌ فارغة والزرّ يختفي.
+//
+// ⚠️ دفعةً واحدة للقائمة كلّها: أربعة استعلاماتٍ مهما بلغ عددُ الطلبات، لا
+// استعلامان لكلّ طلب. «طلباتي» تحمل مئتَي طلب، والحسابُ الفرديّ كان يعني
+// أربعمئة نداءٍ في فتحةٍ واحدة — ولذلك لم تكن القائمة تحمل الروابط أصلًا،
+// فلم يظهر للموظف زرُّ مستندٍ في أيّ طلب، وهو ما اشتكى منه.
+async function docUrlMap(recs) {
+  const map = new Map();
+  const ids = recs.map((r) => r && r.id).filter(Boolean);
+  if (!ids.length) return map;
+  try {
+    // تصاعديًّا ثم الكتابة فوق السابق: يبقى أحدثُ خطابٍ صدر عن الطلب.
+    const letters = await odoo.searchRead("sharqia.portal.letter",
+      [["request_id", "in", ids]], ["id", "request_id"], { order: "id asc" });
+    for (const l of letters) {
+      const rid = Array.isArray(l.request_id) ? l.request_id[0] : l.request_id;
+      if (rid) map.set(rid, "/api/letters/" + l.id + "/pdf");
+    }
+  } catch (e) { console.warn("⚠️ تعذّر البحث عن خطابات الطلبات:", e.message); }
+  for (const rec of recs) {
+    if (!rec || map.has(rec.id)) continue;
+    if (rec.odoo_ref_model === "sharqia.portal.letter" && rec.odoo_ref_id)
+      map.set(rec.id, "/api/letters/" + rec.odoo_ref_id + "/pdf");
+  }
+  // وجودُ السجل يُتحقَّق منه دفعةً: سجلٌّ يُحذف من أودو يترك الطلب مشيرًا إليه.
+  const REFS = [
+    ["hr.leave", (i) => "/api/leave/" + i + "/form"],
+    ["hr.custody", (i) => "/api/custody/" + i + "/receipt"],
+  ];
+  for (const [model, toUrl] of REFS) {
+    const want = recs.filter((r) => r && !map.has(r.id)
+      && r.odoo_ref_model === model && r.odoo_ref_id);
+    if (!want.length) continue;
+    try {
+      const live = new Set((await odoo.searchRead(model,
+        [["id", "in", want.map((r) => r.odoo_ref_id)]], ["id"])).map((x) => x.id));
+      for (const r of want) {
+        if (live.has(r.odoo_ref_id)) map.set(r.id, toUrl(r.odoo_ref_id));
+      }
+    } catch (e) { console.warn(`⚠️ تعذّرت قراءة ${model}:`, e.message); }
+  }
+  for (const rec of recs) {
+    if (!rec || map.has(rec.id)) continue;
+    const att = (rec.attachment_ids || [])[0];
+    if (att) map.set(rec.id, "/api/attachments/" + att);
+  }
+  return map;
+}
+
+// الطلب الواحد يمرّ بالطريق نفسه، فلا تفترق القائمةُ عن شاشة التفاصيل.
 async function requestDocUrl(rec) {
   if (!rec || !rec.id) return "";
-  try {
-    const letters = await odoo.searchRead("sharqia.portal.letter",
-      [["request_id", "=", rec.id]], ["id"], { limit: 1, order: "id desc" });
-    if (letters.length) return "/api/letters/" + letters[0].id + "/pdf";
-  } catch (e) { console.warn("⚠️ تعذّر البحث عن خطاب الطلب:", e.message); }
-  if (rec.odoo_ref_model === "sharqia.portal.letter" && rec.odoo_ref_id)
-    return "/api/letters/" + rec.odoo_ref_id + "/pdf";
-  if (rec.odoo_ref_model === "hr.leave" && rec.odoo_ref_id) {
-    try {
-      const lv = (await odoo.searchRead("hr.leave", [["id", "=", rec.odoo_ref_id]],
-        ["id"], { limit: 1 }))[0];
-      // نموذج الإجازة يُطبع لأي إجازةٍ قائمة (أيّ نوع، أيّ حالة) كما يسمح
-      // leave.formPdf. نتحقّق من وجود السجل وحده حتى لا يظهر زرٌّ لمرجعٍ حُذف.
-      if (lv) return "/api/leave/" + rec.odoo_ref_id + "/form";
-    } catch (e) { console.warn("⚠️ تعذّرت قراءة الإجازة:", e.message); }
-  }
-  if (rec.odoo_ref_model === "hr.custody" && rec.odoo_ref_id) {
-    try {
-      const cu = (await odoo.searchRead("hr.custody", [["id", "=", rec.odoo_ref_id]],
-        ["id"], { limit: 1 }))[0];
-      if (cu) return "/api/custody/" + rec.odoo_ref_id + "/receipt";
-    } catch (e) { console.warn("⚠️ تعذّرت قراءة العهدة:", e.message); }
-  }
-  const att = (rec.attachment_ids || [])[0];
-  return att ? "/api/attachments/" + att : "";
+  return (await docUrlMap([rec])).get(rec.id) || "";
 }
+
 function mapRequestRecord(rec) {
   let extra = {};
   try { extra = JSON.parse(rec.extra_json || "{}") || {}; } catch { extra = {}; }
@@ -872,12 +898,27 @@ async function assertNoLeaveOverlap(params, empId) {
     [["employee_id", "=", empId], ["state", "in", LEAVE_BLOCKING],
       ["request_date_from", "<=", to], ["request_date_to", ">=", from]],
     ["holiday_status_id", "request_date_from", "request_date_to", "state"], { limit: 1 });
-  if (!clash.length) return;
-  const c = clash[0];
-  const how = c.state === "validate" ? "معتمدة" : "قيد الانتظار";
-  throw new Error(
-    `لديك ${c.holiday_status_id?.[1] || "إجازة"} ${how} من ${c.request_date_from} إلى ${c.request_date_to} ` +
-    "تتداخل مع هذه الفترة. اختر تواريخ أخرى، أو عدّل الإجازة القائمة من «تعديل إجازة معتمدة».");
+  if (clash.length) {
+    const c = clash[0];
+    const how = c.state === "validate" ? "معتمدة" : "قيد الانتظار";
+    throw new Error(
+      `لديك ${c.holiday_status_id?.[1] || "إجازة"} ${how} من ${c.request_date_from} إلى ${c.request_date_to} ` +
+      "تتداخل مع هذه الفترة. اختر تواريخ أخرى، أو عدّل الإجازة القائمة من «تعديل إجازة معتمدة».");
+  }
+  // ⚠️ والطلبات المفتوحة أيضًا: قيد hr.leave لا يُنشأ إلا عند إغلاق الطلب
+  // منفَّذًا، فطلبان بالتواريخ نفسها يمرّان معًا ما دام أوّلهما لم يُعتمد
+  // بعد — ثم يُرفض أحدهما عند التنفيذ وقد قطع مسار الاعتماد كلَّه.
+  const pend = await odoo.searchRead("sharqia.portal.request",
+    [["employee_id", "=", empId], ["category", "=", "leave"],
+      ["state", "not in", CLOSED_STATES],
+      ["date_from", "<=", to], ["date_to", ">=", from]],
+    ["name", "service", "date_from", "date_to"], { limit: 1 });
+  if (pend.length) {
+    const p = pend[0];
+    throw new Error(
+      `لديك طلب ${p.service || "إجازة"} (${p.name}) قيد الاعتماد من ${p.date_from} إلى ${p.date_to} ` +
+      "يتداخل مع هذه الفترة. انتظر البتّ فيه أو ألغِه قبل رفع طلبٍ جديد.");
+  }
 }
 
 // صاحب الطلب الفعلي: الموظف المستفيد لا مَن ضغط الزر.
@@ -1936,6 +1977,13 @@ const actions = {
         try {
           vacancy = await managerVacancy(recs.map((r) => r.employee_id?.[0]));
         } catch (e) { console.warn("⚠️ تعذّر فحص مرحلة المدير:", e.message); }
+        // ⚠️ الرابط يُرسَل مع القائمة أيضًا لا مع القراءة المفردة وحدها:
+        // شاشة التفاصيل تقرأ الطلب من القائمة المحمّلة ولا تنادي الخادم
+        // ثانيةً، فكانت docUrl غائبةً دائمًا ولا يظهر زرُّ المستند في أيّ
+        // طلب — لا نموذج إجازة ولا محضر عهدة ولا خطاب.
+        let docs = new Map();
+        try { docs = await docUrlMap(recs); }
+        catch (e) { console.warn("⚠️ تعذّر حساب روابط المستندات:", e.message); }
         return {
           records: recs.map((r) => {
             // ⚠️ inbox كانت راية النطاق المطلوب لا صفةَ الطلب: يفتح الموظف
@@ -1952,6 +2000,7 @@ const actions = {
               ...maskConfidential(mapRequestRecord(r), viewerKey),
               inbox: inbox || mine,
               mgrVacant: vacancy.get(r.employee_id?.[0]) === true,
+              docUrl: docs.get(r.id) || "",
             };
           }),
         };
