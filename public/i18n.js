@@ -1489,7 +1489,7 @@
     box.style.cssText = "position:fixed;top:8px;" + (LANGS[lang].dir === "rtl" ? "left" : "right") +
       ":8px;z-index:2147482000;display:flex;gap:6px;align-items:center;" +
       "background:rgba(27,27,27,.86);border-radius:99px;padding:4px 6px;" +
-      "font-family:Tajawal,'Segoe UI',Tahoma,sans-serif;box-shadow:0 3px 12px rgba(0,0,0,.28)";
+      "font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;box-shadow:0 3px 12px rgba(0,0,0,.28)";
 
     var sel = document.createElement("select");
     sel.setAttribute("aria-label", "Language");

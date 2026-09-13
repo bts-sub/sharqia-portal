@@ -188,6 +188,9 @@ const CONTROL_KEYS = new Set([
   "id", "odooId", "status", "state", "flow", "stageIndex", "audit", "at", "emp", "employee",
   // المستفيد ليس تفصيلًا من تفاصيل الطلب بل هو صاحبه — يُعيَّن على employee_id
   "beneficiaryId", "beneficiaryName", "onBehalf",
+  // التوقيع صورةٌ بـ base64 يرسلها التطبيق مع الطلب. ليس تفصيلًا من تفاصيله،
+  // وتخزينُه في extra_json يُخرجه في شاشة الطلب سطرًا من حروفٍ لا تُقرأ.
+  "signature", "sig", "signatureData", "empSignature",
 ]);
 
 const isEmpty = (v) =>
@@ -2085,7 +2088,10 @@ const actions = {
         if (!id) throw new Error("معرّف الإجازة مطلوب");
         const [lv] = await odoo.searchRead("hr.leave", [["id", "=", id]],
           ["employee_id", "state", "holiday_status_id"], { limit: 1 });
-        if (!lv) throw new Error("الإجازة غير موجودة");
+        // سجلُّ الإجازة قد يُحذف من أودو ويبقى الطلب في البوابة مشيرًا إليه.
+        // و«غير موجودة» تُقرأ خطأً في التطبيق، والسبب أن السجل حُذف لا أن
+        // الطلب خاطئ.
+        if (!lv) throw new Error("سجلّ هذه الإجازة حُذف من النظام — لا يمكن إخراج النموذج");
         // النموذج «طلب إجازة» يُطبع لكل أنواع الإجازات (النموذج نفسه يؤشّر النوع:
         // سنوي/مرضي/طارئ/غير مدفوع/أخرى) وفي أي حالة — قبل الاعتماد ورقةُ طلبٍ
         // تُوقَّع، وبعده نسخةٌ موقَّعة تُودَع. فلا يُحبس على السنوي المعتمد وحده،

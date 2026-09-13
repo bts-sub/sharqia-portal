@@ -7,7 +7,7 @@
 //   2) صفحة التطبيق تُطلب من الشبكة أولًا. لو خُدِّمت من الذاكرة أولًا لبقي
 //      الموظف على نسخة قديمة بعد كل نشر حتى يفرّغ ذاكرة متصفحه.
 // ===========================================================================
-const VERSION = "v77";
+const VERSION = "v78";
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 
@@ -21,6 +21,8 @@ const PRECACHE = [
   // الشعار: أول ما يراه الموظف في الدخول والرئيسية، فلا يُترك لشبكةٍ قد تتأخّر
   "/logo-mark.png?v=2",
   "/logo-mark-dark.png?v=1",
+  "/fonts/IBMPlexSansArabic-Regular.ttf",
+  "/fonts/IBMPlexSansArabic-SemiBold.ttf",
 ];
 
 self.addEventListener("install", (e) => {
