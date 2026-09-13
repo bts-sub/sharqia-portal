@@ -36,6 +36,20 @@ router.get("/custody", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+
+// GET /api/custody/:id/receipt → محضر استلام العهدة PDF بتصميم المنشأة
+router.get("/custody/:id/receipt", async (req, res, next) => {
+  try {
+    const { data } = await runAction("custody.receiptPdf",
+      { id: req.params.id }, { user: req.user });
+    const buf = Buffer.from(data.base64, "base64");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition",
+      `inline; filename*=UTF-8''${encodeURIComponent(data.name)}`);
+    res.setHeader("Content-Length", buf.length);
+    res.send(buf);
+  } catch (e) { next(e); }
+});
 // GET /api/loans → سلف الموظف الحالي من نظام القروض في Odoo
 router.get("/loans", async (req, res, next) => {
   try {

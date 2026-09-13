@@ -377,6 +377,13 @@ async function requestDocUrl(rec) {
       if (lv) return "/api/leave/" + rec.odoo_ref_id + "/form";
     } catch (e) { console.warn("⚠️ تعذّرت قراءة الإجازة:", e.message); }
   }
+  if (rec.odoo_ref_model === "hr.custody" && rec.odoo_ref_id) {
+    try {
+      const cu = (await odoo.searchRead("hr.custody", [["id", "=", rec.odoo_ref_id]],
+        ["id"], { limit: 1 }))[0];
+      if (cu) return "/api/custody/" + rec.odoo_ref_id + "/receipt";
+    } catch (e) { console.warn("⚠️ تعذّرت قراءة العهدة:", e.message); }
+  }
   const att = (rec.attachment_ids || [])[0];
   return att ? "/api/attachments/" + att : "";
 }
@@ -2111,6 +2118,40 @@ const actions = {
         const b64 = await odoo.execKw("hr.leave", "sharqia_form_pdf", [[id]]);
         if (!b64) throw new Error("تعذّر إخراج النموذج");
         return { base64: b64, name: `طلب-إجازة-${id}.pdf` };
+      },
+      async () => { throw new Error("الطباعة غير متاحة في وضع الاختبار"); },
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** محضر استلام العهدة PDF — كما يُطبع من أودو.
+   *
+   *  يُرسَم في أودو لا في التطبيق: كان التطبيق يبني صفحةَ HTML بنفسه
+   *  ويطبعها، فصار للمحضر الواحد وجهان يفترقان مع أول تعديل في القالب.
+   */
+  async "custody.receiptPdf"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const role = ctx?.user?.role || "employee";
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!id) throw new Error("معرّف العهدة مطلوب");
+        const [cu] = await odoo.searchRead("hr.custody", [["id", "=", id]],
+          ["employee_id", "name", "state"], { limit: 1 });
+        if (!cu) throw new Error("سجلّ هذه العهدة حُذف من النظام — لا يمكن إخراج المحضر");
+        // عهدةُ غيرك لا تُطبع إلا لمن يملك أمرها
+        const owner = cu.employee_id?.[0];
+        if (owner !== empId && !["hr", "admin", "manager"].includes(role))
+          throw new Error("هذه العهدة ليست لك");
+        if (owner !== empId && role === "manager") {
+          const [e] = await odoo.searchRead("hr.employee",
+            [["id", "=", owner]], ["parent_id"], { limit: 1 });
+          if (!e || e.parent_id?.[0] !== empId)
+            throw new Error("هذه العهدة ليست في فريقك");
+        }
+        const b64 = await odoo.execKw("hr.custody", "sharqia_receipt_pdf", [[id]]);
+        if (!b64) throw new Error("تعذّر إخراج المحضر");
+        return { base64: b64, name: `محضر-عهدة-${cu.name || id}.pdf` };
       },
       async () => { throw new Error("الطباعة غير متاحة في وضع الاختبار"); },
       { forceLiveErrors: true }
