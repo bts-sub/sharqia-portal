@@ -1966,7 +1966,7 @@ const actions = {
     return withOdoo(
       async () => {
         const fields = await requestReadFields();
-        const recs = await odoo.searchRead("sharqia.portal.request", domain, fields,
+        let recs = await odoo.searchRead("sharqia.portal.request", domain, fields,
           { order: "create_date desc", limit: 200 });
         // inbox=true تعلّم الطلب بأنه ينتظر إجراء صاحب الجلسة، فتعرضه شاشة
         // المدير حتى لو تعذّر تحميل قائمة الفريق.
@@ -1977,6 +1977,25 @@ const actions = {
         try {
           vacancy = await managerVacancy(recs.map((r) => r.employee_id?.[0]));
         } catch (e) { console.warn("⚠️ تعذّر فحص مرحلة المدير:", e.message); }
+        // ⚠️ صندوق الوارد ما ينتظر إجراءك أنت، لا كلَّ ما هو مفتوح. والنطاق
+        // وحده لا يكفي: المرحلة الجارية تُحسب من مسار الخدمة لا من الحالة —
+        // طلبٌ حالته «submitted» قد تكون أولى مراحله الموارد البشرية لا
+        // المدير. فكان المدير يرى طلبات فريقه كلَّها ولو لم يكن في مسارها
+        // أصلًا — شهادةُ راتبٍ طريقها الموارد البشرية وحدها تصله ولا شأن له
+        // بها — وترى الموارد البشرية ما ينتظر المديرين. فتُصفّى بالمرحلة.
+        if (inbox && role !== "admin") {
+          recs = recs.filter((r) => {
+            const flow = flowFor(r.category, r.service);
+            const stage = r.state === "submitted" ? flow[0] : r.state;
+            // مرحلة «إقرار الموظف» يملكها صاحب الطلب وحده مهما كان دوره
+            if (stage === "employee") return !!empId && r.employee_id?.[0] === empId;
+            if (role === "manager") return stage === "manager";
+            // ومرحلةُ مديرٍ لا وجود له ترثها الموارد البشرية، وإلا وقف الطلب
+            return stage === role
+              || (role === "hr" && stage === "manager"
+                  && vacancy.get(r.employee_id?.[0]) === true);
+          });
+        }
         // ⚠️ الرابط يُرسَل مع القائمة أيضًا لا مع القراءة المفردة وحدها:
         // شاشة التفاصيل تقرأ الطلب من القائمة المحمّلة ولا تنادي الخادم
         // ثانيةً، فكانت docUrl غائبةً دائمًا ولا يظهر زرُّ المستند في أيّ
