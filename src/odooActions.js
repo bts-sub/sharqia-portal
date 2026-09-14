@@ -535,6 +535,37 @@ function mapEmployee(rec) {
 // حالات الطلب المغلقة — لا تظهر في صندوق وارد أحد
 const CLOSED_STATES = ["done", "rejected", "cancelled"];
 
+
+// مديرُ القسم صاحبِ المرحلة يعتمدها ولو لم يحمل دورَها.
+//
+// ⚠️ الدورُ في البوابة واحدٌ لكل حساب: فمديرُ قسم تقنية المعلومات لا يستطيع
+// أن يكون «مديرًا» و«تقنيةً» معًا — ولو أُعطي الدور الثاني لفقد فريقه. وقد
+// قرّرت الإدارة أن اعتماد مرحلة التقنية عند مدير ذلك القسم، فيُعرَف بإدارته
+// لا بدوره. والمطابقة بكلمات اسم القسم لا بمعرّفٍ ثابت: الأقسام تُنشأ
+// وتُسمّى في أودو، ومعرّفٌ مكتوبٌ في الكود يعطب أوّلَ ما يُعاد ترتيبها.
+const STAGE_DEPT_WORDS = {
+  it: ["تقني", "معلومات", "حاسب", "it"],
+  finance: ["مالي", "ماليه", "مالية", "محاسب", "finance"],
+};
+
+export async function ownedStagesByDepartment(empId) {
+  const out = new Set();
+  const id = Number(empId) || 0;
+  if (!id) return out;
+  try {
+    const deps = await odoo.searchRead("hr.department",
+      [["manager_id", "=", id]], ["name"]);
+    for (const d of deps) {
+      const n = String(d.name || "").toLowerCase();
+      for (const [stage, words] of Object.entries(STAGE_DEPT_WORDS))
+        if (words.some((w) => n.includes(w))) out.add(stage);
+    }
+  } catch (e) { console.warn("⚠️ تعذّر فحص إدارات المراحل:", e.message); }
+  return out;
+}
+
+export const ownsStageByDepartment = async (empId, stage) =>
+  (await ownedStagesByDepartment(empId)).has(String(stage || ""));
 // أبواب لائحة الجزاءات ومراحلها بالعربية
 const DISC_CATEGORY_AR = {
   timing: "مواعيد العمل", organization: "تنظيم العمل", conduct: "سلوك العامل",
@@ -2015,6 +2046,9 @@ const actions = {
         try {
           vacancy = await managerVacancy(recs.map((r) => r.employee_id?.[0]));
         } catch (e) { console.warn("⚠️ تعذّر فحص مرحلة المدير:", e.message); }
+        // مراحلُ يملكها هذا المستخدم بإدارته لا بدوره — تُقرأ مرّةً للقائمة
+        // كلّها لا لكل طلب.
+        const deptStages = await ownedStagesByDepartment(empId);
         // ⚠️ صندوق الوارد ما ينتظر إجراءك أنت، لا كلَّ ما هو مفتوح. والنطاق
         // وحده لا يكفي: المرحلة الجارية تُحسب من مسار الخدمة لا من الحالة —
         // طلبٌ حالته «submitted» قد تكون أولى مراحله الموارد البشرية لا
@@ -2031,6 +2065,7 @@ const actions = {
             // مطلوبٌ فيه فيتابعه إلى نهايته، ويبقى في «منجزة» بعد موافقته.
             // ولو صُفّي بالمرحلة لاختفى لحظةَ اعتماده. وما ليس في مساره
             // أصلًا — شهادةُ راتبٍ طريقها الموارد البشرية — لا يصله أبدًا.
+            if (deptStages.has(stage)) return true;
             if (role === "manager") return flow.includes("manager");
             // ومرحلةُ مديرٍ لا وجود له ترثها الموارد البشرية، وإلا وقف الطلب
             return stage === role
@@ -2062,6 +2097,7 @@ const actions = {
               stage === "employee"
                 ? (!!empId && r.employee_id?.[0] === empId)
                 : role === "admin" ? true
+                  : deptStages.has(stage) ? true
                   : role === "manager"
                     ? (stage === "manager" && r.employee_id?.[0] !== empId)
                     : (stage === role

@@ -12,7 +12,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import * as wf from "../lib/workflow.js";
-import { runAction, flowFor, producesLetter, managerStageIsVacant, stageRoleIsVacant, SIGN_ON_EMPLOYEE_STAGE } from "../odooActions.js";
+import { runAction, flowFor, producesLetter, managerStageIsVacant, stageRoleIsVacant, ownsStageByDepartment, SIGN_ON_EMPLOYEE_STAGE } from "../odooActions.js";
 import { isTestMode } from "../lib/settings.js";
 import { badRequest, notFound, forbidden } from "../lib/errors.js";
 
@@ -136,6 +136,10 @@ async function assertCanAct(user, id, verb = "الاعتماد", expectStage = n
     throw forbidden("هذا الطلب بانتظار المدير المباشر");
   }
   if (user.role !== stage) {
+    // ومديرُ القسم صاحبِ المرحلة يعتمدها ولو لم يحمل دورَها: قرّرت الإدارة
+    // أن اعتماد مرحلة التقنية عند مدير قسم تقنية المعلومات، ودورُه في
+    // البوابة «مدير» لفريقه — ولا يحمل حسابٌ دورين.
+    if (await ownsStageByDepartment(user.odooEmployeeId, stage)) return;
     // مرحلةٌ لا يحمل دورَها أحد (لا مستخدم مالية مثلًا) تحبس الطلب كما
     // تحبسه مرحلة المدير الشاغرة — والموارد البشرية والإدارة يفكّانها.
     if (["hr", "admin"].includes(user.role) && await stageRoleIsVacant(stage)) return;
