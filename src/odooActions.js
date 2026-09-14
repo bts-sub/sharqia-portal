@@ -2181,10 +2181,14 @@ const actions = {
         // ⚠️ ومسار المخالصة يمرّ بالموارد البشرية مرّتين: الأولى تحسب المبلغ،
         // والثانية تُغلق بعد أن وقّع العامل. وتغييرُ المبلغ في الثانية يجعل
         // توقيعه واقعًا على رقمٍ لم يره — إبراءَ ذمّةٍ عن مبلغٍ غير الذي أقرّ
-        // باستلامه. فالمبلغ يُقفل بأول توقيعٍ منه.
-        const [signed] = await odoo.searchRead("sharqia.portal.request",
-          [["id", "=", id]], ["emp_signed_on"], { limit: 1 });
-        if (signed?.emp_signed_on)
+        // باستلامه. فيُقفل متى تجاوز الطلبُ مرحلةَ العامل.
+        //
+        // والقفلُ بمرحلةِ المسار لا بحقل التوقيع: صار التوقيع يُختم لحظةَ
+        // رفع الطلب في سائر الخدمات، فكان يُقفل المبلغَ قبل أن يُكتب أصلًا.
+        const empIdx = flow.indexOf("employee");
+        const [st] = await odoo.searchRead("sharqia.portal.request",
+          [["id", "=", id]], ["stage_index"], { limit: 1 });
+        if (empIdx >= 0 && (st?.stage_index ?? 0) > empIdx)
           throw new Error("وقّع الموظف على هذا المبلغ — لا يُعدَّل بعد توقيعه. "
             + "إن لزم تصحيحه فليعترض عليه ليعود للمراجعة.");
         await odoo.write("sharqia.portal.request", [id], { amount });
