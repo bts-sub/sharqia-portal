@@ -133,12 +133,29 @@ app.use("/api", disciplineRoutes);
 const frontendPath = path.resolve(__dirname, "..", config.frontendFile);
 if (fs.existsSync(frontendPath)) {
   const publicDir = path.dirname(frontendPath);
+
+  // ⚠️ رقمُ النسخة يُحقَن عند الإقلاع، ولا يُكتب بيد أحد في الحزمة ولا في
+  // عامل الخدمة. كان مكتوبًا في ثلاثة مواضع تُحدَّث يدويًّا، فتفترق: الخادم
+  // يقول 1.85 والحزمة تقول 1.94 وعاملُ الخدمة يقول v96. والتطبيق يعرف أنه
+  // قديمٌ بمقارنة رقمه برقم الخادم — فما داما لا يتطابقان أبدًا فالمقارنة
+  // لا تدلّ على شيء، ويبقى الموظف على نسخةٍ قديمة حتى يطلب التحديث بيده.
+  //
+  // فصار المصدر واحدًا: package.json. رفعُه وحده ينشر التحديث على الأجهزة
+  // كلّها: يتغيّر رقم الحزمة فتُعيد الصفحة تحميل نفسها، ويتغيّر اسم مخزن
+  // عامل الخدمة فيُستبدل العامل ويُفرَّغ القديم.
+  const stamp = (src) => src
+    .replace(/window\.SQ_BUILD\s*=\s*"[^"]*"/, `window.SQ_BUILD = "${config.version}"`)
+    .replace(/const VERSION = "[^"]*"/, `const VERSION = "v${config.version}"`);
+
+  const indexHtml = stamp(fs.readFileSync(frontendPath, "utf8"));
+  const swSource = stamp(fs.readFileSync(path.join(publicDir, "sw.js"), "utf8"));
+  console.log(`📦 نسخة التطبيق المنشورة: ${config.version}`);
+
   // عامل الخدمة يجب ألّا يُخزَّن طويلًا: المتصفح يقارنه بالخادم ليكتشف نسخة
   // جديدة، فتخزينه يعني بقاء الموظفين على نسخة قديمة بعد كل نشر.
   app.get("/sw.js", (req, res) => {
     res.set("Cache-Control", "no-cache, must-revalidate");
-    res.type("application/javascript");
-    res.sendFile(path.join(publicDir, "sw.js"));
+    res.type("application/javascript").send(swSource);
   });
   // بعض إصدارات express لا تعرف امتداد webmanifest فتُرسله نصًّا عاديًا
   // فيتجاهله المتصفح ولا يظهر عرض التثبيت
@@ -146,10 +163,18 @@ if (fs.existsSync(frontendPath)) {
     res.type("application/manifest+json");
     res.sendFile(path.join(publicDir, "manifest.webmanifest"));
   });
-  app.use(express.static(publicDir));
+  // الصفحة تُرسَل من الذاكرة بنسختها المحقونة. و index:false يمنع
+  // express.static من تقديم الملف الخام قبل أن نصل إليه.
+  const sendApp = (req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.type("html").send(indexHtml);
+  };
+  app.get("/", sendApp);
+  app.get("/index.html", sendApp);
+  app.use(express.static(publicDir, { index: false }));
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api/")) return next();
-    res.sendFile(frontendPath);
+    sendApp(req, res);
   });
 }
 

@@ -618,6 +618,16 @@ function X1({go:e}){const t=H().t,[n,i]=z.useState(null),l=[["طلب صيانة"
       }).catch(function () {});
   };
   window.addEventListener("load", function () { setTimeout(window.SQ_checkBuild, 2500); });
+  // وفحصٌ دوريّ كل خمس دقائق: التطبيق المثبَّت يبقى مفتوحًا اليوم كلَّه بلا
+  // إغلاقٍ ولا انتقالٍ عنه، فلا يقع فحصُ العودة من الغياب ولا فحصُ التحميل —
+  // فيبقى صاحبه على نسخةٍ قديمة حتى يطلب التحديث بيده. والفحص نداءٌ واحد
+  // خفيف لا يُخزَّن.
+  setInterval(function () {
+    if (document.visibilityState !== "visible") return;
+    try { navigator.serviceWorker && navigator.serviceWorker.getRegistration()
+      .then(function (r) { r && r.update(); }).catch(function () {}); } catch (e) {}
+    window.SQ_checkBuild && window.SQ_checkBuild();
+  }, 5 * 60 * 1000);
   // iOS لا يطلق beforeinstallprompt إطلاقًا — يحتاج شرحًا يدويًا
   var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   var standalone = window.matchMedia("(display-mode: standalone)").matches ||
