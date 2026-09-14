@@ -413,6 +413,20 @@ async function requestDocUrl(rec) {
   return (await docUrlMap([rec])).get(rec.id) || "";
 }
 
+// ⚠️ صورةُ التوقيع بـ base64 تسرّبت إلى وصف طلباتٍ قديمة وإلى تفاصيلها قبل
+// أن تُستبعَد عند الإنشاء، فتخرج في الشاشة سطرًا من آلاف الحروف لا تُقرأ —
+// وهو ما رآه المستخدم. تُنظَّف عند القراءة لا في قاعدة البيانات: السجلّ لا
+// يُمسّ، والطلب القديم يُعرض سليمًا كالجديد.
+//
+// شرطٌ من مئةٍ وعشرين محرفًا من أبجدية base64 بلا فاصل ليس كلامًا بحال،
+// والعربية خارج هذه الأبجدية أصلًا فلا يطالها الحذف.
+const BLOB_RE = /(?:data:[a-z.+-]+\/[a-z.+-]+;base64,)?[A-Za-z0-9+/]{120,}={0,2}/g;
+const stripBlobs = (v) => String(v ?? "")
+  .replace(BLOB_RE, "")
+  .replace(/[ \t]{2,}/g, " ")
+  .replace(/\n{3,}/g, "\n\n")
+  .trim();
+
 function mapRequestRecord(rec) {
   let extra = {};
   try { extra = JSON.parse(rec.extra_json || "{}") || {}; } catch { extra = {}; }
@@ -422,14 +436,24 @@ function mapRequestRecord(rec) {
   // لا نُرسل محتوى الملفات في قائمة الطلبات (رد بعشرات الميغابايت لكل فتحة).
   const attachments = (Array.isArray(rec.attachment_ids) ? rec.attachment_ids : [])
     .map((id) => ({ id, name: `مرفق ${id}`, url: `/api/attachments/${id}` }));
+  // والتفاصيل كذلك: قيمةٌ صارت فارغةً بعد التنظيف تُسقَط، فلا يبقى عنوانٌ
+  // بلا قيمةٍ تحته.
+  for (const k of Object.keys(extra)) {
+    if (typeof extra[k] !== "string") continue;
+    BLOB_RE.lastIndex = 0;
+    if (!BLOB_RE.test(extra[k])) continue;
+    const clean = stripBlobs(extra[k]);
+    if (clean) extra[k] = clean; else delete extra[k];
+  }
   return {
     ...rec,
+    description: stripBlobs(rec.description),
     empId: emp ? "E" + emp[0] : "",
     empName: emp ? emp[1] : "",
     requestedBy: rec.requested_by || "",
     attachments,
     extra,
-    details: pickDetailValues(rec),
+    details: pickDetailValues(rec).filter((d) => !!stripBlobs(d.value)),
   };
 }
 
@@ -1960,10 +1984,12 @@ const actions = {
         ? [["employee_id", "=", empId], ["state", "=", "employee"]] : null;
       let roleDomain = null;
       if (role === "manager" && empId) {
+        // ⚠️ ولا شرطَ حالةٍ هنا: المدير يتابع طلبات فريقه إلى نهايتها. كان
+        // المغلقُ يُستبعَد، فيختفي الطلب من «طلبات موظفيي» في اللحظة التي
+        // يعتمده فيها ولا يجده في «منجزة» — كأنّ موافقته أضاعته. والتصفية
+        // بعضويّة المسار تأتي بعد القراءة.
         roleDomain = [["employee_id.parent_id", "=", empId],
-          ["employee_id", "!=", empId],              // لا اعتماد ذاتي
-          ["state", "not in", CLOSED_STATES],
-          ["state", "!=", "employee"]];
+          ["employee_id", "!=", empId]];              // لا اعتماد ذاتي
       } else if (["hr", "finance", "it", "admin"].includes(role)) {
         roleDomain = [["state", "not in", CLOSED_STATES],
           ["state", "!=", "employee"]];
@@ -1996,7 +2022,11 @@ const actions = {
             const stage = r.state === "submitted" ? flow[0] : r.state;
             // مرحلة «إقرار الموظف» يملكها صاحب الطلب وحده مهما كان دوره
             if (stage === "employee") return !!empId && r.employee_id?.[0] === empId;
-            if (role === "manager") return stage === "manager";
+            // ⚠️ المدير يُصفّى بعضويّة المسار لا بالمرحلة الجارية: اعتمادُه
+            // مطلوبٌ فيه فيتابعه إلى نهايته، ويبقى في «منجزة» بعد موافقته.
+            // ولو صُفّي بالمرحلة لاختفى لحظةَ اعتماده. وما ليس في مساره
+            // أصلًا — شهادةُ راتبٍ طريقها الموارد البشرية — لا يصله أبدًا.
+            if (role === "manager") return flow.includes("manager");
             // ومرحلةُ مديرٍ لا وجود له ترثها الموارد البشرية، وإلا وقف الطلب
             return stage === role
               || (role === "hr" && stage === "manager"
@@ -2020,11 +2050,21 @@ const actions = {
             // فالمرحلة التي يملكها صاحب الطلب تُعلَّم دائمًا، في أي نطاق.
             const flow = flowFor(r.category, r.service);
             const stage = r.state === "submitted" ? flow[0] : r.state;
-            const mine = stage === "employee" && !!empId
-              && r.employee_id?.[0] === empId;
+            // ⚠️ الرايةُ تقول «ينتظر إجراءك أنت الآن» لا «هو في قائمتك»:
+            // صارت قائمةُ المدير تضمّ ما اعتمده وانتهى، فلو رُفعت الراية على
+            // كل ما فيها لظهرت له أزرار اعتمادٍ على طلبٍ أغلقه بنفسه.
+            const awaitsMe = !CLOSED_STATES.includes(r.state) && (
+              stage === "employee"
+                ? (!!empId && r.employee_id?.[0] === empId)
+                : role === "admin" ? true
+                  : role === "manager"
+                    ? (stage === "manager" && r.employee_id?.[0] !== empId)
+                    : (stage === role
+                       || (role === "hr" && stage === "manager"
+                           && vacancy.get(r.employee_id?.[0]) === true)));
             return {
               ...maskConfidential(mapRequestRecord(r), viewerKey),
-              inbox: inbox || mine,
+              inbox: awaitsMe,
               mgrVacant: vacancy.get(r.employee_id?.[0]) === true,
               docUrl: docs.get(r.id) || "",
             };
