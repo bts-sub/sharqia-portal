@@ -11,7 +11,7 @@ export const FLOW = {
   leave: { flow: ["manager", "hr", "done"], sla: 3 },
   attend: { flow: ["manager", "hr", "done"], sla: 3 },
   finance: { flow: ["manager", "hr", "finance", "done"], sla: 3 },
-  custody: { flow: ["manager", "it", "done"], sla: 3 },
+  custody: { flow: ["manager", "it", "finance", "done"], sla: 3 },
   transfer: { flow: ["manager", "hr", "done"], sla: 3 },
   personal: { flow: ["hr", "done"], sla: 3 },
   letters: { flow: ["hr", "done"], sla: 3 },
@@ -34,6 +34,8 @@ export const SERVICE_FLOW = {
   // المكافأة صرفٌ لمرة واحدة لا تدخل الراتب الأساسي، لكن مسارها واحد:
   // مديرٌ يرفعها لموظفه، فالموارد البشرية، فالمالية تصرف.
   "مكافأة": { flow: ["hr", "finance", "done"], sla: 3 },
+  // الإجازة السنوية تمرّ بالمالية: رصيدُها التزامٌ ماليّ على المنشأة.
+  "إجازة سنوية": { flow: ["manager", "hr", "finance", "done"], sla: 3 },
   "استئذان بالساعات": { flow: ["manager", "done"], sla: 3 },
   "ترقية": { flow: ["manager", "done"], sla: 3 },
   // شهاداتٌ تُصدرها الموارد البشرية من ملفّ الموظف: لا رأيَ لمديره فيها ولا

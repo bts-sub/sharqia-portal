@@ -642,7 +642,9 @@ export function producesLetter(rec) {
 
 export const FLOW = {
   leave: ["manager", "hr", "done"], attend: ["manager", "hr", "done"],
-  finance: ["manager", "hr", "finance", "done"], custody: ["manager", "it", "done"],
+  finance: ["manager", "hr", "finance", "done"],
+  // المالية في مسار العهدة: العهدة أصلٌ له قيمة، وطلبت الإدارة حضورها فيه.
+  custody: ["manager", "it", "finance", "done"],
   transfer: ["manager", "hr", "done"], personal: ["hr", "done"], letters: ["hr", "done"],
   training: ["manager", "hr", "done"], insurance: ["hr", "done"], complaint: ["hr", "done"],
   offboard: ["manager", "hr", "done"], general: ["manager", "hr", "done"],
@@ -655,6 +657,9 @@ export const SERVICE_FLOW = {
   "تعديل راتب": ["hr", "finance", "done"],
   "زيادة راتب": ["hr", "finance", "done"],
   "مكافأة": ["hr", "finance", "done"],
+  // الإجازة السنوية تمرّ بالمالية: رصيدُها التزامٌ ماليّ يُحتسب في مستحقّات
+  // نهاية الخدمة، وطلبت الإدارة اعتمادَها.
+  "إجازة سنوية": ["manager", "hr", "finance", "done"],
   "استئذان بالساعات": ["manager", "done"],
   "ترقية": ["manager", "done"],
   // شهاداتٌ تُصدرها الموارد البشرية من ملفّ الموظف: لا رأيَ لمديره فيها ولا
