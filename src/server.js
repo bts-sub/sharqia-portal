@@ -33,6 +33,7 @@ import letterRoutes from "./routes/letters.js";
 import integrationRoutes from "./routes/integration.js";
 import learningRoutes from "./routes/learning.js";
 import disciplineRoutes from "./routes/discipline.js";
+import mesRoutes from "./routes/mes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -113,6 +114,9 @@ app.get("/api/health/odoo", async (req, res) => {
 });
 
 // المسارات
+// تطبيق التصنيع أولًا: بعضُ الموجِّهات التالية تفرض جلسة البوابة على كل ما
+// يمرّ بها، فتحجب دخولَه قبل أن يصل إلى موجِّهه.
+app.use("/api/mes", mesRoutes);
 app.use("/api", integrationRoutes);
 app.use("/api", authRoutes);
 app.use("/api", odooRoutes);
