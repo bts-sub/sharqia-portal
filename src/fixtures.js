@@ -6,7 +6,7 @@
 
 export const FX_EMPLOYEE = {
   id: "E1042", odooId: 1042, name: "محمد عبدالله العتيبي", jobTitle: "أخصائي مشتريات",
-  dept: "إدارة المشتريات", branch: "فرع الرياض", empNo: "1042",
+  dept: "إدارة المشتريات", branch: "—", empNo: "1042",
   manager: "صلاح الدين محمود", managerId: "M1", hrOfficer: "سارة القحطاني",
   company: "بيت العباءة الشرقية", email: "m.alotaibi@sharqia.sa", phone: "05xxxxxx42",
   hireDate: "2022-03-14", contract: "دوام كامل", leaveBalance: 21,
