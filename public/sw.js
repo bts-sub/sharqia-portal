@@ -68,17 +68,22 @@ self.addEventListener("fetch", (e) => {
   if (url.origin !== self.location.origin) return;        // لا نتدخّل في نطاق آخر
   if (url.pathname.startsWith("/api/")) return;           // (1) بيانات الجلسة لا تُخزَّن
 
-  // (2) صفحات التطبيق: الشبكة أولًا، والذاكرة شبكة نجاة عند انقطاعها
+  // (2) صفحات التطبيق: النسخة المحفوظة تُعرض فورًا، والشبكة تُحدّثها خلفَها.
+  //   كانت الشبكة أولًا، فكل فتحةٍ تنتظر تنزيل الصفحة كاملة (نحو 150 كيلوبايت
+  //   مضغوطة) قبل أن يرى الموظف شيئًا. والنسخةُ الجديدة لا تضيع: الصفحة تسأل
+  //   الخادم عن رقم النسخة بعد ثوانٍ من فتحها وكل خمس دقائق، فتُحدّث نفسها.
   if (req.mode === "navigate") {
     e.respondWith((async () => {
-      try {
-        const fresh = await fetch(req);
-        const cache = await caches.open(SHELL);
-        cache.put("/", fresh.clone());
+      const cached = await caches.match("/");
+      const net = fetch(req).then(async (fresh) => {
+        if (fresh && fresh.ok) {
+          const cache = await caches.open(SHELL);
+          await cache.put("/", fresh.clone());
+        }
         return fresh;
-      } catch {
-        return (await caches.match("/")) || Response.error();
-      }
+      }).catch(() => null);
+      if (cached) { e.waitUntil(net); return cached; }
+      return (await net) || Response.error();
     })());
     return;
   }

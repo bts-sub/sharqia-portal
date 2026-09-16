@@ -166,7 +166,10 @@ if (fs.existsSync(frontendPath)) {
   // الصفحة تُرسَل من الذاكرة بنسختها المحقونة. و index:false يمنع
   // express.static من تقديم الملف الخام قبل أن نصل إليه.
   const sendApp = (req, res) => {
-    res.set("Cache-Control", "no-store");
+    // no-cache لا no-store: المتصفّح يسأل «هل تغيّرت؟» فيردّ الخادم 304 بلا
+    // جسم حين لا تتغيّر — بدل تنزيل الصفحة كاملة في كل فتحة. والتحديث يبقى
+    // فوريًّا لأن الردّ لا يُستعمل بلا مراجعة.
+    res.set("Cache-Control", "no-cache");
     res.type("html").send(indexHtml);
   };
   app.get("/", sendApp);
