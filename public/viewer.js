@@ -186,12 +186,13 @@
   }, true);
 
   // كل مستندات التطبيق تمرّ من هنا: روابط «عرض …» ونداءات window.open.
-  var DOC_RE = /^\/api\/(letters\/\d+\/pdf|leave\/\d+\/form|custody\/\d+\/receipt|discipline\/\d+\/pdf|requests\/\d+\/letter)/;
+  var DOC_RE = /^\/api\/(letters\/\d+\/pdf|leave\/\d+\/form|custody\/\d+\/receipt|discipline\/\d+\/(?:pdf|summons)|requests\/\d+\/letter)/;
   var DOC_TITLE = [
     [/^\/api\/letters\//, "الخطاب"],
     [/^\/api\/leave\//, "طلب الإجازة"],
     [/^\/api\/custody\//, "محضر استلام العهدة"],
-    [/^\/api\/discipline\//, "محضر المخالفة"],
+    [/^\/api\/discipline\/\d+\/summons/, "طلب استدعاء للتحقيق"],
+    [/^\/api\/discipline\//, "محضر التحقيق"],
     [/^\/api\/requests\/\d+\/letter/, "المخالصة"],
   ];
   function docPath(url) {

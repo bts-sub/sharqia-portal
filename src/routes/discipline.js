@@ -6,6 +6,12 @@
 //   GET  /api/discipline/team         جزاءات فريقي (مدير/موارد بشرية)
 //   POST /api/discipline              رفع مخالفة { employeeId, violationId, … }
 //   POST /api/discipline/:id/statement { text, grievance }
+//   POST /api/discipline/:id/review    مراجعة الموارد البشرية والاستدعاء
+//   POST /api/discipline/:id/ack       استلام الاستدعاء
+//   POST /api/discipline/:id/minutes   محضر التحقيق
+//   GET  /api/discipline/:id/summons   طلب الاستدعاء PDF
+//
+// المسار: المشرف يرفع ← الموارد البشرية تراجع وتستدعي ← الموظف يستلم ويُدلي
 // ===========================================================================
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
@@ -67,7 +73,7 @@ router.post("/discipline", async (req, res, next) => {
     const { data } = await runAction("discipline.create", b, { user: req.user });
     res.status(201).json(data);
   } catch (e) {
-    // أخطاء أودو هنا أسبابٌ يفهمها من يرفع — تجاوزُ نافذة الثلاثين يومًا،
+    // أخطاء أودو هنا أسبابٌ يفهمها من يرفع — تجاوزُ مهلة الرفع من الاكتشاف،
     // أو خروج الموظف عن نطاقه. تُعاد 400 برسالتها لا 500 صامتة.
     next(e?.status ? e : badRequest(e?.message || "تعذّر رفع المخالفة"));
   }
@@ -98,6 +104,75 @@ router.get("/discipline/:id/pdf", async (req, res, next) => {
     res.send(buf);
   } catch (e) {
     next(e?.status ? e : badRequest(e?.message || "تعذّر فتح المحضر"));
+  }
+});
+
+// GET /api/discipline/:id/summons → طلب الاستدعاء للتحقيق
+router.get("/discipline/:id/summons", async (req, res, next) => {
+  try {
+    const { data } = await runAction("discipline.summonsPdf",
+      { id: req.params.id }, { user: req.user });
+    const buf = Buffer.from(data.base64, "base64");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition",
+      `inline; filename*=UTF-8''${encodeURIComponent(data.name)}`);
+    res.setHeader("Content-Length", buf.length);
+    res.send(buf);
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر فتح الاستدعاء"));
+  }
+});
+
+// مهلة رفع المخالفة — تعرضها شاشة الرفع
+router.get("/discipline/settings", async (req, res, next) => {
+  try {
+    const { data } = await runAction("discipline.settings", {}, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+// من يجوز تكليفه بالتحقيق — للموارد البشرية
+router.get("/discipline/investigators", async (req, res, next) => {
+  try {
+    if (!["hr", "admin"].includes(req.user.role))
+      throw forbidden("تكليف المحقِّق للموارد البشرية");
+    const { data } = await runAction("discipline.investigators", {}, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+// مراجعة الموارد البشرية: { accept, investigatorId, occurrence, summonsAt, summonsPlace, notes }
+router.post("/discipline/:id/review", async (req, res, next) => {
+  try {
+    if (!["hr", "admin"].includes(req.user.role))
+      throw forbidden("مراجعة المخالفات للموارد البشرية");
+    const { data } = await runAction("discipline.review",
+      { ...(req.body || {}), id: req.params.id }, { user: req.user });
+    res.json(data);
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر حفظ المراجعة"));
+  }
+});
+
+// استلام الاستدعاء (الموظف) أو إثبات امتناعه { refused } (الموارد البشرية)
+router.post("/discipline/:id/ack", async (req, res, next) => {
+  try {
+    const { data } = await runAction("discipline.ack",
+      { id: req.params.id, refused: !!req.body?.refused }, { user: req.user });
+    res.json(data);
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر تسجيل الاستلام"));
+  }
+});
+
+// محضر التحقيق { text } — المحقِّق المكلَّف أو الموارد البشرية
+router.post("/discipline/:id/minutes", async (req, res, next) => {
+  try {
+    const { data } = await runAction("discipline.minutes",
+      { id: req.params.id, text: req.body?.text }, { user: req.user });
+    res.json(data);
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر حفظ المحضر"));
   }
 });
 

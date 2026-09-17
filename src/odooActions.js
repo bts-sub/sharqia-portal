@@ -589,7 +589,8 @@ const DISC_CATEGORY_AR = {
   timing: "مواعيد العمل", organization: "تنظيم العمل", conduct: "سلوك العامل",
 };
 const DISC_STATE_AR = {
-  draft: "مسودة", investigation: "قيد التحقيق", decided: "معتمَد",
+  draft: "مسودة", hr_review: "مراجعة الموارد البشرية",
+  summoned: "استدعاء للتحقيق", investigation: "قيد التحقيق", decided: "معتمَد",
   applied: "نُفِّذ", dismissed: "حُفظت بلا جزاء", cancelled: "ملغاة",
 };
 const DISC_FIELDS = ["name", "employee_id", "violation_id", "category",
@@ -597,7 +598,30 @@ const DISC_FIELDS = ["name", "employee_id", "violation_id", "category",
   "deduction_days", "state", "description", "employee_statement",
   "statement_taken", "investigation_notes", "decision_notes", "grievance",
   "decided_on", "applied_on", "reported_by_id",
-  "employee_signed_on", "hr_signed_on", "hr_signed_by_id"];
+  "employee_signed_on", "hr_signed_on", "hr_signed_by_id",
+  "discovered_at", "submitted_on", "investigated_by_id", "investigated_on",
+  "hr_reviewed_by_id", "hr_reviewed_on", "hr_review_notes",
+  "summons_type", "summons_datetime", "summons_place", "summons_sent_on",
+  "summons_ack_on", "summons_ack_by", "summons_refused",
+  "statement_on", "statement_updated_on", "statement_revisions",
+  "penalty_ladder", "department_id"];
+
+// أوقات أودو بالتوقيت العالمي بلا علامة ("2026-09-17 09:30:00") — تُعاد ISO
+// صريحةً فيعرضها الهاتف بتوقيته، ويُحوَّل ما يرسله الهاتف إلى صيغة أودو.
+const odooDtToIso = (v) => (v ? String(v).replace(" ", "T") + "Z" : null);
+function isoToOdooDt(v) {
+  if (!v) return false;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) throw new Error("وقتٌ غير صالح");
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+/** سياقٌ يحمل الموظف الفاعل: أودو يُنادى بحسابٍ خدمي، فيُسمّى الفاعل صراحةً. */
+const actorCtx = (ctx) => ({
+  context: {
+    sharqia_actor_employee_id: Number(ctx?.user?.odooEmployeeId || 0) || false,
+    tz: "Asia/Riyadh",
+  },
+});
 
 const nowOdooDate = () => new Date().toISOString().slice(0, 10);
 const nowOdooDatetime = () => new Date().toISOString().slice(0, 19).replace("T", " ");
@@ -628,6 +652,25 @@ function mapPenalty(rec) {
     signedByHr: !!rec.hr_signed_on,
     hrSignedOn: rec.hr_signed_on || null,
     hrSignedBy: rec.hr_signed_by_id?.[1] || "",
+    department: rec.department_id?.[1] || "",
+    discoveredAt: odooDtToIso(rec.discovered_at),
+    submittedOn: odooDtToIso(rec.submitted_on),
+    investigatorId: rec.investigated_by_id?.[0] || 0,
+    investigator: rec.investigated_by_id?.[1] || "",
+    investigatedOn: rec.investigated_on || null,
+    reviewedBy: rec.hr_reviewed_by_id?.[1] || "",
+    reviewedOn: odooDtToIso(rec.hr_reviewed_on),
+    reviewNotes: rec.hr_review_notes || "",
+    summonsAt: odooDtToIso(rec.summons_datetime),
+    summonsPlace: rec.summons_place || "",
+    summonsSentOn: odooDtToIso(rec.summons_sent_on),
+    summonsAckOn: odooDtToIso(rec.summons_ack_on),
+    summonsAckBy: rec.summons_ack_by || "",
+    summonsRefused: !!rec.summons_refused,
+    statementOn: odooDtToIso(rec.statement_on),
+    statementUpdatedOn: odooDtToIso(rec.statement_updated_on),
+    statementRevisions: Number(rec.statement_revisions || 0),
+    ladder: rec.penalty_ladder || "",
   };
 }
 
@@ -3060,7 +3103,10 @@ const actions = {
     );
   },
 
-  /** جزاءات الموظف نفسه — والمسودة تُخفى عنه.
+  /** جزاءات الموظف نفسه — ما وصله بالاستدعاء فقط.
+   *
+   *  ما زال عند المشرف أو في مراجعة الموارد البشرية لا يراه، وما حفظته
+   *  المراجعة بلا اتّهام لا يعلم به أصلًا.
    *
    *  المسودة اتّهامٌ لم يُحقَّق فيه بعد، وإظهارها للعامل قبل التحقيق يجعل كل
    *  اتّهامٍ عقوبةً بذاته. يراها حين يُفتح التحقيق ويُطلب منه قولُه.
@@ -3071,7 +3117,8 @@ const actions = {
       async () => {
         if (!empId) return { records: [] };
         const recs = await odoo.searchRead("sharqia.discipline.penalty",
-          [["employee_id", "=", empId], ["state", "!=", "draft"]],
+          [["employee_id", "=", empId], ["employee_notified", "=", true],
+           ["state", "not in", ["draft", "hr_review"]]],
           DISC_FIELDS, { limit: 100, order: "occurred_on desc, id desc" });
         return { records: recs.map(mapPenalty) };
       },
@@ -3088,11 +3135,17 @@ const actions = {
       async () => {
         let domain;
         if (["hr", "admin"].includes(role)) domain = [];
-        else if (empId) domain = [["employee_id.parent_id", "=", empId]];
+        else if (empId) domain = ["|", ["employee_id.parent_id", "=", empId],
+                                  ["investigated_by_id", "=", empId]];
         else return { records: [] };
         const recs = await odoo.searchRead("sharqia.discipline.penalty", domain,
           DISC_FIELDS, { limit: 200, order: "state, occurred_on desc, id desc" });
-        return { records: recs.map(mapPenalty) };
+        // المحقِّق المكلَّف يكتب المحضر — والشاشة تعرف ذلك من هنا
+        return {
+          records: recs.map(mapPenalty).map((p) => ({
+            ...p, iAmInvestigator: !!empId && p.investigatorId === Number(empId),
+          })),
+        };
       },
       async () => ({ records: [] }),
       { emptyOnError: () => ({ records: [], unavailable: true }) }
@@ -3158,16 +3211,18 @@ const actions = {
           violation_id: violation,
           reported_by_id: empId || false,
           occurred_on: params?.occurredOn || undefined,
-          discovered_on: params?.discoveredOn || undefined,
+          discovered_at: isoToOdooDt(params?.discoveredAt) || undefined,
+          discovered_on: params?.discoveredAt ? undefined : (params?.discoveredOn || undefined),
           description: String(params.description).trim(),
         });
-        // المسودة اتّهامٌ لا يراه العامل. ورفعها من الهاتف يُقصد به إبلاغه
-        // ليردّ، فنفتح التحقيق في الحال: يصله الإشعار ويكتب أقواله.
-        // وإن ردّت أودو (مضى ثلاثون يومًا على الاكتشاف — المادة 72) نحذف
-        // المسودة ونُعيد سببها، فلا تتراكم اتّهاماتٌ معلّقة لا يعلم بها أحد.
+        // المسار: المشرف ← الموارد البشرية ← الموظف. الرفع يذهب إلى مراجعة
+        // الموارد البشرية ولا يصل الموظفَ شيء؛ يصله الاستدعاء بعد المراجعة.
+        // ومهلة الاكتشاف يفحصها أودو عند الإنشاء نفسه، فالمتأخّرة لا تُسجَّل.
+        // وإن ردّ الرفعَ لسببٍ آخر نحذف المسودة ونُعيد سببها، فلا تتراكم
+        // اتّهاماتٌ معلّقة لا يعلم بها أحد.
         try {
           await odoo.callButton("sharqia.discipline.penalty",
-            "action_open_investigation", [id]);
+            "action_submit_review", [id]);
         } catch (e) {
           await odoo.unlink("sharqia.discipline.penalty", [id]).catch(() => {});
           throw e;
@@ -3187,15 +3242,25 @@ const actions = {
       async () => {
         if (!id || !empId) throw new Error("بيانات ناقصة");
         const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
-          [["id", "=", id]], ["employee_id", "state"], { limit: 1 });
+          [["id", "=", id]], ["employee_id", "state", "employee_signed_on"], { limit: 1 });
         if (!rec || rec.employee_id?.[0] !== empId)
           throw new Error("هذه المخالفة ليست عليك");
         const text = String(params?.text || "").trim();
         if (!text) throw new Error("اكتب أقوالك قبل الإرسال");
+        if (!params?.grievance) {
+          if (rec.state === "summoned")
+            throw new Error("أكّد استلام الاستدعاء أولًا، ثم تُكتب أقوالك");
+          if (rec.state !== "investigation")
+            throw new Error("الأقوال تُكتب أثناء التحقيق فقط");
+          if (rec.employee_signed_on)
+            throw new Error("وقّعت على أقوالك، فلا تُعدَّل بعد التوقيع");
+        } else if (!["decided", "applied"].includes(rec.state)) {
+          throw new Error("التظلّم يكون على قرارٍ صادر");
+        }
         const field = params?.grievance ? "grievance" : "employee_statement";
+        // وقت الإدلاء وتاريخ التعديل يختمهما أودو نفسه عند الكتابة
         const vals = { [field]: text };
         if (params?.grievance) vals.grievance_on = nowOdooDate();
-        else vals.statement_on = nowOdooDatetime();
         await odoo.write("sharqia.discipline.penalty", [id], vals);
         return { ok: true };
       },
@@ -3274,15 +3339,16 @@ const actions = {
       async () => {
         if (!id) throw new Error("معرّف المخالفة مطلوب");
         const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
-          [["id", "=", id]], ["employee_id", "state"], { limit: 1 });
+          [["id", "=", id]], ["employee_id", "state", "investigated_by_id"], { limit: 1 });
         if (!rec) throw new Error("المخالفة غير موجودة");
         const mine = rec.employee_id?.[0] === empId;
         // المسودة اتّهامٌ لم يُحقَّق فيه — لا تُطبع للعامل قبل فتح التحقيق
-        if (mine && rec.state === "draft")
+        if (mine && ["draft", "hr_review"].includes(rec.state))
           throw new Error("لا يوجد محضر بعد");
-        if (!mine && !["hr", "admin", "manager"].includes(role))
+        const investigator = rec.investigated_by_id?.[0] === empId;
+        if (!mine && !investigator && !["hr", "admin", "manager"].includes(role))
           throw new Error("هذا المحضر ليس لك");
-        if (!mine && role === "manager") {
+        if (!mine && !investigator && role === "manager") {
           const [e] = await odoo.searchRead("hr.employee",
             [["id", "=", rec.employee_id[0]]], ["parent_id"], { limit: 1 });
           if (!e || e.parent_id?.[0] !== empId)
@@ -3315,12 +3381,165 @@ const actions = {
         if (!["hr", "admin"].includes(role))
           throw new Error("اعتماد الجزاء للموارد البشرية");
         await odoo.callButton("sharqia.discipline.penalty",
-          apply ? "action_apply" : "action_decide", [id]);
+          apply ? "action_apply" : "action_decide", [id], actorCtx(ctx));
         const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
           [["id", "=", id]], ["state"], { limit: 1 });
         return { ok: true, state: rec?.state || "" };
       },
       async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** مهلة رفع المخالفة بالساعات — تعرضها شاشة الرفع. */
+  async "discipline.settings"(params, ctx) {
+    return withOdoo(
+      async () => ({
+        limitHours: Number(await odoo.execKw("sharqia.discipline.penalty",
+          "discovery_limit_hours", [])) || 72,
+      }),
+      async () => ({ limitHours: 72 }),
+      { emptyOnError: () => ({ limitHours: 72, unavailable: true }) }
+    );
+  },
+
+  /** من يجوز تكليفه بالتحقيق — للموارد البشرية عند المراجعة. */
+  async "discipline.investigators"(params, ctx) {
+    return withOdoo(
+      async () => {
+        const recs = await odoo.searchRead("hr.employee", [],
+          ["name", "job_title", "department_id"], { limit: 400, order: "name" });
+        return {
+          records: recs.map((r) => ({
+            id: r.id, name: r.name || "", job: r.job_title || "",
+            department: r.department_id?.[1] || "",
+          })),
+        };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  /** مراجعة الموارد البشرية: قبولٌ بمحقِّقٍ ودرجةٍ وموعد، أو حفظٌ بلا اتّهام. */
+  async "discipline.review"(params, ctx) {
+    const role = ctx?.user?.role || "employee";
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!id) throw new Error("معرّف المخالفة مطلوب");
+        if (!["hr", "admin"].includes(role))
+          throw new Error("مراجعة المخالفات للموارد البشرية");
+        if (params?.accept) {
+          const investigator = Number(params?.investigatorId || 0);
+          if (!investigator) throw new Error("اختر المحقِّق");
+          if (!params?.summonsAt || !String(params?.summonsPlace || "").trim())
+            throw new Error("موعد الاستدعاء ومكانه مطلوبان");
+          await odoo.execKw("sharqia.discipline.penalty", "hr_review_accept", [[id]], {
+            investigator_id: investigator,
+            occurrence: Number(params?.occurrence || 0) || false,
+            summons_datetime: isoToOdooDt(params.summonsAt),
+            summons_place: String(params.summonsPlace).trim(),
+            notes: String(params?.notes || "").trim() || false,
+            ...actorCtx(ctx),
+          });
+        } else {
+          await odoo.execKw("sharqia.discipline.penalty", "hr_review_reject", [[id]], {
+            notes: String(params?.notes || "").trim() || false,
+            ...actorCtx(ctx),
+          });
+        }
+        return { ok: true };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** الموظف يؤكّد استلام الاستدعاء — والموارد البشرية تُثبت امتناعه. */
+  async "discipline.ack"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const role = ctx?.user?.role || "employee";
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!id || !empId) throw new Error("بيانات ناقصة");
+        const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
+          [["id", "=", id]], ["employee_id", "state"], { limit: 1 });
+        if (!rec) throw new Error("المخالفة غير موجودة");
+        const mine = rec.employee_id?.[0] === empId;
+        if (params?.refused) {
+          if (mine || !["hr", "admin"].includes(role))
+            throw new Error("إثبات الامتناع للموارد البشرية");
+          await odoo.execKw("sharqia.discipline.penalty", "action_summons_refused",
+            [[id]], { actor_name: ctx?.user?.name || false, ...actorCtx(ctx) });
+          return { ok: true };
+        }
+        if (!mine) throw new Error("الاستدعاء ليس لك");
+        await odoo.execKw("sharqia.discipline.penalty", "action_ack_summons",
+          [[id]], { actor_name: ctx?.user?.name || false, ...actorCtx(ctx) });
+        return { ok: true };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** محضر التحقيق — يكتبه المحقِّق المكلَّف أو الموارد البشرية. */
+  async "discipline.minutes"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const role = ctx?.user?.role || "employee";
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!id || !empId) throw new Error("بيانات ناقصة");
+        const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
+          [["id", "=", id]], ["employee_id", "state", "investigated_by_id", "hr_signed_on"],
+          { limit: 1 });
+        if (!rec) throw new Error("المخالفة غير موجودة");
+        if (rec.employee_id?.[0] === empId) throw new Error("لا تكتب محضر مخالفتك");
+        const isInvestigator = rec.investigated_by_id?.[0] === empId;
+        if (!isInvestigator && !["hr", "admin"].includes(role))
+          throw new Error("المحضر يكتبه المحقِّق المكلَّف");
+        if (rec.state !== "investigation") throw new Error("المحضر يُكتب أثناء التحقيق");
+        if (rec.hr_signed_on) throw new Error("المحضر موقَّع، فلا يُعدَّل");
+        await odoo.write("sharqia.discipline.penalty", [id], {
+          investigation_notes: String(params?.text || "").trim(),
+        });
+        return { ok: true };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** طلب الاستدعاء PDF — لصاحبه، وللمحقِّق والموارد البشرية والمدير المباشر. */
+  async "discipline.summonsPdf"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const role = ctx?.user?.role || "employee";
+    const id = Number(params?.id || 0);
+    return withOdoo(
+      async () => {
+        if (!id) throw new Error("معرّف المخالفة مطلوب");
+        const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
+          [["id", "=", id]], ["employee_id", "investigated_by_id", "employee_notified"],
+          { limit: 1 });
+        if (!rec) throw new Error("المخالفة غير موجودة");
+        const mine = rec.employee_id?.[0] === empId;
+        if (mine && !rec.employee_notified) throw new Error("لا استدعاء بعد");
+        if (!mine && !["hr", "admin"].includes(role)
+            && rec.investigated_by_id?.[0] !== empId) {
+          const [e] = await odoo.searchRead("hr.employee",
+            [["id", "=", rec.employee_id[0]]], ["parent_id"], { limit: 1 });
+          if (role !== "manager" || !e || e.parent_id?.[0] !== empId)
+            throw new Error("هذا الاستدعاء ليس لك");
+        }
+        const b64 = await odoo.execKw("sharqia.discipline.penalty",
+          "sharqia_summons_pdf", [[id]]);
+        if (!b64) throw new Error("تعذّر إخراج الاستدعاء");
+        return { base64: b64, name: `استدعاء-${id}.pdf` };
+      },
+      async () => { throw new Error("غير متاح في وضع الاختبار"); },
       { forceLiveErrors: true }
     );
   },
