@@ -186,9 +186,13 @@
     ov.setAttribute("role", "dialog");
     ov.setAttribute("aria-modal", "true");
 
-    var frame = h("div", "position:relative;max-width:78vw;max-height:56vh;border-radius:20px;overflow:hidden;" +
-      "box-shadow:0 22px 70px rgba(0,0,0,.6);background:#101014;border:1px solid rgba(255,255,255,.12);touch-action:none");
-    var img = h("img", "display:block;max-width:78vw;max-height:56vh;object-fit:contain;" +
+    // ⚠️ النافذة بقدر الصورة لا بقدر الشاشة: الإطار يلتفّ حول الصورة نفسها،
+    //   والصورة الصغيرة تكبر قليلًا لتُرى، ولا تُملأ الشاشة بسوادٍ حولها.
+    var frame = h("div", "position:relative;display:flex;align-items:center;justify-content:center;" +
+      "line-height:0;border-radius:18px;overflow:hidden;box-shadow:0 22px 70px rgba(0,0,0,.6);" +
+      "background:#101014;border:1px solid rgba(255,255,255,.14);touch-action:none");
+    var img = h("img", "display:block;width:auto;height:auto;" +
+      "min-width:min(58vw,210px);max-width:min(72vw,360px);max-height:min(46vh,360px);object-fit:contain;" +
       "transform-origin:center center;will-change:transform;user-select:none;-webkit-user-drag:none");
     img.src = src;
     img.alt = title || "";
@@ -200,18 +204,21 @@
       "text-align:center;pointer-events:none", title || "");
     if (title) frame.appendChild(cap);
 
+    // زرّ الإغلاق على ركن النافذة نفسها لا على ركن الشاشة: بحجمٍ يناسبها
     var x = h("button",
-      "position:absolute;top:max(12px,env(safe-area-inset-top));left:12px;width:38px;height:38px;border-radius:12px;" +
-      "border:none;background:rgba(255,255,255,.16);color:#fff;font:inherit;font-size:19px;font-weight:700;" +
-      "cursor:pointer;display:grid;place-items:center;backdrop-filter:blur(4px)", "✕");
+      "position:absolute;top:8px;left:8px;width:30px;height:30px;border-radius:10px;" +
+      "border:none;background:rgba(12,12,14,.62);color:#fff;font:inherit;font-size:15px;font-weight:800;" +
+      "line-height:1;cursor:pointer;display:grid;place-items:center;z-index:2;" +
+      "backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)", "✕");
     x.type = "button";
     x.setAttribute("aria-label", "إغلاق");
     x.onclick = function (e) { e.stopPropagation(); close(false); };
+    frame.appendChild(x);
 
-    var hint = h("div", "position:absolute;top:max(16px,env(safe-area-inset-top));right:14px;color:#ffffffb3;" +
-      "font-size:11.5px;font-weight:600;pointer-events:none", "قرّب بالإصبعين أو بضغطتين");
+    var hint = h("div", "position:absolute;bottom:calc(50% - 20vh);left:0;right:0;text-align:center;" +
+      "color:#ffffffa6;font-size:11.5px;font-weight:600;pointer-events:none", "قرّب بالإصبعين أو بضغطتين");
 
-    ov.appendChild(frame); ov.appendChild(x); ov.appendChild(hint);
+    ov.appendChild(frame); ov.appendChild(hint);
     document.body.appendChild(ov);
     open = { el: ov, overflow: document.body.style.overflow };
     document.body.style.overflow = "hidden";
@@ -219,10 +226,22 @@
 
     // ── التقريب والتحريك ──
     var z = 1, tx = 0, ty = 0, MAXZ = 5;
+    // النافذة تكبر مع التقريب حتى تقارب الشاشة، ثم تكبر الصورة داخلها
+    // ويُسحب فيها. فمن أراد النظر في تفصيلٍ وسّعها بإصبعيه ولم تُقحم عليه
+    // شاشةٌ كاملة من أول لمسة.
+    var base = { w: 0, h: 0 };
+    function sizeFrame(anim) {
+      if (!base.w) { base.w = img.offsetWidth || 220; base.h = img.offsetHeight || 220; }
+      var maxW = window.innerWidth * 0.92, maxH = window.innerHeight * 0.8;
+      frame.style.transition = anim ? "width .18s ease, height .18s ease" : "none";
+      frame.style.width = Math.round(Math.min(base.w * z, maxW)) + "px";
+      frame.style.height = Math.round(Math.min(base.h * z, maxH)) + "px";
+    }
     function apply(anim) {
       img.style.transition = anim ? "transform .18s ease" : "none";
       img.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + z + ")";
       frame.style.cursor = z > 1 ? "grab" : "default";
+      sizeFrame(anim);
       if (hint.parentNode && z > 1) hint.remove();
     }
     function clamp() {
@@ -285,6 +304,9 @@
       zoomTo(z * (e.deltaY < 0 ? 1.12 : 0.89), false);
     }, { passive: false });
     ov.addEventListener("dblclick", function (e) { e.preventDefault(); zoomTo(z > 1.2 ? 1 : 2.4, true); });
+    // القياس بعد تحميل الصورة: قبله عرضها صفر فتخرج النافذة بلا حجم
+    if (img.complete) apply(false);
+    img.addEventListener("load", function () { base.w = 0; apply(false); });
     apply(false);
   }
 
