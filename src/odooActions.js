@@ -620,6 +620,8 @@ const actorCtx = (ctx) => ({
   context: {
     sharqia_actor_employee_id: Number(ctx?.user?.odooEmployeeId || 0) || false,
     tz: "Asia/Riyadh",
+    // فحوص الخادم على القاعدة الحيّة فقط — لا يضعه أيُّ مسارٍ من الهاتف
+    ...(ctx?.silent ? { sharqia_disc_silent: true } : {}),
   },
 });
 
@@ -3222,7 +3224,7 @@ const actions = {
         // اتّهاماتٌ معلّقة لا يعلم بها أحد.
         try {
           await odoo.callButton("sharqia.discipline.penalty",
-            "action_submit_review", [id]);
+            "action_submit_review", [id], actorCtx(ctx));
         } catch (e) {
           await odoo.unlink("sharqia.discipline.penalty", [id]).catch(() => {});
           throw e;
