@@ -1592,6 +1592,35 @@
     "لا يُوقَّع جزاء قبل التحقيق وسماع أقوالك. ولك أن تتظلّم على القرار خلال خمسة عشر يومًا من تاريخه.": { en: "No penalty is imposed before an investigation and hearing your statement. You may appeal the decision within fifteen days of its date.", ur: "تحقیق اور آپ کا بیان سنے بغیر کوئی سزا نہیں دی جاتی۔ آپ فیصلے کی تاریخ سے پندرہ دن کے اندر اپیل کر سکتے ہیں۔", fr: "Aucune sanction sans enquête ni audition. Vous pouvez contester la décision dans les quinze jours." },
     "تم إنشاء الطلب بنجاح": { en: "Request created successfully", ur: "درخواست کامیابی سے بن گئی", fr: "Demande créée avec succès" },
     "تم رفض طلبك":         { en: "Your request was rejected", ur: "آپ کی درخواست مسترد ہو گئی", fr: "Votre demande a été refusée" },
+    // ── الإعدادات، عارض المستندات، اكتمال الملف ──
+    "الإعدادات": { en: "Settings", ur: "ترتیبات", fr: "Paramètres" },
+    "الإعدادات (اللغة والمظهر)": { en: "Settings (language & appearance)", ur: "ترتیبات (زبان اور ظاہری شکل)", fr: "Paramètres (langue et apparence)" },
+    "اللغة": { en: "Language", ur: "زبان", fr: "Langue" },
+    "الوضع الداكن": { en: "Dark mode", ur: "ڈارک موڈ", fr: "Mode sombre" },
+    "رجوع": { en: "Back", ur: "واپس", fr: "Retour" },
+    "تنزيل": { en: "Download", ur: "ڈاؤن لوڈ", fr: "Télécharger" },
+    "جارٍ فتح المستند…": { en: "Opening document…", ur: "دستاویز کھل رہی ہے…", fr: "Ouverture du document…" },
+    "تعذّر فتح المستند.": { en: "Couldn't open the document.", ur: "دستاویز نہیں کھل سکی۔", fr: "Impossible d'ouvrir le document." },
+    "الخطاب": { en: "Letter", ur: "خط", fr: "Lettre" },
+    "طلب الإجازة": { en: "Leave request", ur: "چھٹی کی درخواست", fr: "Demande de congé" },
+    "محضر استلام العهدة": { en: "Custody receipt", ur: "امانت کی وصولی کی رسید", fr: "Procès-verbal de remise" },
+    "محضر المخالفة": { en: "Violation record", ur: "خلاف ورزی کا ریکارڈ", fr: "Procès-verbal d'infraction" },
+    "المخالصة": { en: "Final settlement", ur: "حتمی تصفیہ", fr: "Solde de tout compte" },
+    "الصورة": { en: "Photo", ur: "تصویر", fr: "Photo" },
+    "المستند": { en: "Document", ur: "دستاویز", fr: "Document" },
+    "تغيير": { en: "Change", ur: "تبدیل کریں", fr: "Modifier" },
+    "اضغط رجوع مرة أخرى للخروج": { en: "Press back again to exit", ur: "باہر نکلنے کے لیے دوبارہ واپس دبائیں", fr: "Appuyez encore sur retour pour quitter" },
+    "نسبة اكتمال ملفك": { en: "Profile completion", ur: "پروفائل کی تکمیل", fr: "Complétude du profil" },
+    "ملفك مكتمل": { en: "Your profile is complete", ur: "آپ کی پروفائل مکمل ہے", fr: "Votre profil est complet" },
+    "البيانات الأساسية": { en: "Basic information", ur: "بنیادی معلومات", fr: "Informations de base" },
+    "البيانات الشخصية": { en: "Personal information", ur: "ذاتی معلومات", fr: "Informations personnelles" },
+    "العهد": { en: "Custody items", ur: "امانتیں", fr: "Biens confiés" },
+    "تحديث البيانات": { en: "Update my data", ur: "ڈیٹا اپ ڈیٹ کریں", fr: "Mettre à jour mes données" },
+    "أكمل ملفك — ستُشترط نسبة 100% لتقديم الطلبات.": { en: "Complete your profile — 100% will be required to submit requests.", ur: "اپنی پروفائل مکمل کریں — درخواستیں جمع کرانے کے لیے 100% ضروری ہوگا۔", fr: "Complétez votre profil — 100 % sera exigé pour soumettre des demandes." },
+    "الطلبات مقفلة حتى يكتمل ملفك 100% — عدا «تحديث البيانات».": { en: "Requests are locked until your profile is 100% complete — except «Update my data».", ur: "پروفائل 100% مکمل ہونے تک درخواستیں بند ہیں — سوائے «ڈیٹا اپ ڈیٹ»۔", fr: "Les demandes sont bloquées jusqu'à un profil complet à 100 % — sauf « Mettre à jour mes données »." },
+    "أقرّ بالاستلام": { en: "Acknowledge receipt", ur: "وصولی کی تصدیق کریں", fr: "Accuser réception" },
+    "✓ أقررتَ باستلام هذه العهدة": { en: "✓ You acknowledged receiving this item", ur: "✓ آپ نے اس امانت کی وصولی کی تصدیق کر دی", fr: "✓ Vous avez accusé réception de ce bien" },
+    "أقرّ باستلام هذه العهدة بحالةٍ سليمة، وأتعهّد بالمحافظة عليها وإرجاعها عند الطلب.": { en: "I acknowledge receiving this item in good condition and undertake to keep it safe and return it on request.", ur: "میں اس امانت کو درست حالت میں وصول کرنے کی تصدیق کرتا ہوں اور اس کی حفاظت اور طلب پر واپسی کا عہد کرتا ہوں۔", fr: "J'accuse réception de ce bien en bon état et m'engage à le préserver et à le restituer sur demande." },
   };
 
   var KEY_LANG = "sq.lang", KEY_DARK = "sq.dark";
@@ -1739,7 +1768,6 @@
     applyDir();
     if (next === "ar") { if (wasForeign) restore(document.body); }
     else paint(document.body);
-    build();
   }
 
   /* --- المظهر الداكن: قلبٌ لوني على مستوى الصفحة ---
@@ -1801,13 +1829,13 @@
     document.body.appendChild(box);
   }
 
+  // ⚠️ شريط اللغة والمظهر العائم (أعلى الشاشة) أُزيل: الاختياران صارا في
+  // «حسابي ← الإعدادات». والمظهر الداكن لم يعد قلبًا لونيًّا بمرشّح على
+  // الصفحة (كان يُخفي الشعار ويكسر الأشرطة الثابتة) — التطبيق يحمل لوحة
+  // ألوانٍ داكنة حقيقية. نزيل أيّ أثرٍ قديم للقلب من جهازٍ فعّله سابقًا.
   function boot() {
-    var st = document.createElement("style");
-    st.textContent = DARK_CSS;
-    document.head.appendChild(st);
-    setDark(isDark());
+    document.documentElement.classList.remove("sq-dark");
     applyDir();
-    build();
     paint(document.body);
     observer = new MutationObserver(schedule);
     observer.observe(document.body, OBS);
