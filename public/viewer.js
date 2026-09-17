@@ -171,14 +171,118 @@
     });
   }
 
+  // الصورة ليست مستندًا: لا تُفتح صفحةً بترويسةٍ وزرّ رجوع، بل تكبر في مكانها
+  // فوق الشاشة ويُقرَّب فيها بالإصبعين أو بضغطتين، وتُغلق بلمسة خارجها.
   function openImage(src, title) {
     if (!src) return;
-    var ui = shell(title || "الصورة");
-    ui.body.style.justifyContent = "center";
-    var img = h("img", "max-width:100%;max-height:100%;object-fit:contain;border-radius:12px");
+    close(true);
+    var ov = h("div",
+      "position:fixed;inset:0;z-index:2147483600;background:rgba(8,8,10,.92);display:flex;" +
+      "align-items:center;justify-content:center;padding:16px;direction:rtl;touch-action:none;" +
+      "font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;overflow:hidden");
+    ov.setAttribute("role", "dialog");
+    ov.setAttribute("aria-modal", "true");
+
+    var frame = h("div", "position:relative;max-width:92vw;max-height:82vh;border-radius:18px;overflow:hidden;" +
+      "box-shadow:0 18px 60px rgba(0,0,0,.55);background:#101014;touch-action:none");
+    var img = h("img", "display:block;max-width:92vw;max-height:82vh;object-fit:contain;" +
+      "transform-origin:center center;will-change:transform;user-select:none;-webkit-user-drag:none");
     img.src = src;
     img.alt = title || "";
-    ui.body.appendChild(img);
+    img.draggable = false;
+    frame.appendChild(img);
+
+    var cap = h("div", "position:absolute;bottom:0;left:0;right:0;padding:9px 12px;font-size:12.5px;" +
+      "font-weight:700;color:#fff;background:linear-gradient(to top,rgba(0,0,0,.72),transparent);" +
+      "text-align:center;pointer-events:none", title || "");
+    if (title) frame.appendChild(cap);
+
+    var x = h("button",
+      "position:absolute;top:max(12px,env(safe-area-inset-top));left:12px;width:38px;height:38px;border-radius:12px;" +
+      "border:none;background:rgba(255,255,255,.16);color:#fff;font:inherit;font-size:19px;font-weight:700;" +
+      "cursor:pointer;display:grid;place-items:center;backdrop-filter:blur(4px)", "✕");
+    x.type = "button";
+    x.setAttribute("aria-label", "إغلاق");
+    x.onclick = function (e) { e.stopPropagation(); close(false); };
+
+    var hint = h("div", "position:absolute;top:max(16px,env(safe-area-inset-top));right:14px;color:#ffffffb3;" +
+      "font-size:11.5px;font-weight:600;pointer-events:none", "قرّب بالإصبعين أو بضغطتين");
+
+    ov.appendChild(frame); ov.appendChild(x); ov.appendChild(hint);
+    document.body.appendChild(ov);
+    open = { el: ov, overflow: document.body.style.overflow };
+    document.body.style.overflow = "hidden";
+    try { history.pushState({ sq: "viewer" }, ""); } catch (e) {}
+
+    // ── التقريب والتحريك ──
+    var z = 1, tx = 0, ty = 0, MAXZ = 5;
+    function apply(anim) {
+      img.style.transition = anim ? "transform .18s ease" : "none";
+      img.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + z + ")";
+      frame.style.cursor = z > 1 ? "grab" : "default";
+      if (hint.parentNode && z > 1) hint.remove();
+    }
+    function clamp() {
+      // لا تُترك الصورة خارج الإطار: الحدّ نصفُ ما زاد من حجمها بعد التقريب
+      var r = img.getBoundingClientRect();
+      var maxX = Math.max(0, (img.offsetWidth * z - Math.min(img.offsetWidth * z, window.innerWidth)) / 2);
+      var maxY = Math.max(0, (img.offsetHeight * z - Math.min(img.offsetHeight * z, window.innerHeight)) / 2);
+      tx = Math.min(maxX, Math.max(-maxX, tx));
+      ty = Math.min(maxY, Math.max(-maxY, ty));
+      return r;
+    }
+    function zoomTo(nz, anim) {
+      z = Math.min(MAXZ, Math.max(1, nz));
+      if (z === 1) { tx = 0; ty = 0; }
+      clamp(); apply(anim);
+    }
+
+    var pts = {}, startDist = 0, startZ = 1, startT = null, moved = false, lastTap = 0;
+    function dist() {
+      var k = Object.keys(pts);
+      if (k.length < 2) return 0;
+      var a = pts[k[0]], b = pts[k[1]];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+    ov.addEventListener("pointerdown", function (e) {
+      pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+      moved = false;
+      if (Object.keys(pts).length === 2) { startDist = dist(); startZ = z; }
+      else { startT = { x: e.clientX - tx, y: e.clientY - ty }; }
+      try { ov.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    ov.addEventListener("pointermove", function (e) {
+      if (!pts[e.pointerId]) return;
+      pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+      var n = Object.keys(pts).length;
+      if (n >= 2 && startDist) {
+        moved = true;
+        zoomTo(startZ * (dist() / startDist), false);
+      } else if (n === 1 && startT && z > 1) {
+        moved = true;
+        tx = e.clientX - startT.x; ty = e.clientY - startT.y;
+        clamp(); apply(false);
+      }
+      if (moved) e.preventDefault();
+    }, { passive: false });
+    function up(e) {
+      delete pts[e.pointerId];
+      if (Object.keys(pts).length < 2) startDist = 0;
+      if (!moved && e.target === ov) { close(false); return; }   // لمسةٌ خارج الصورة تُغلق
+      if (!moved && (e.target === img || e.target === frame)) {
+        var now = Date.now();
+        if (now - lastTap < 320) { zoomTo(z > 1.2 ? 1 : 2.4, true); lastTap = 0; }
+        else lastTap = now;
+      }
+    }
+    ov.addEventListener("pointerup", up);
+    ov.addEventListener("pointercancel", function (e) { delete pts[e.pointerId]; startDist = 0; });
+    ov.addEventListener("wheel", function (e) {
+      e.preventDefault();
+      zoomTo(z * (e.deltaY < 0 ? 1.12 : 0.89), false);
+    }, { passive: false });
+    ov.addEventListener("dblclick", function (e) { e.preventDefault(); zoomTo(z > 1.2 ? 1 : 2.4, true); });
+    apply(false);
   }
 
   function close(silent) {
