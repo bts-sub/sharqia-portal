@@ -131,6 +131,56 @@
     }
   }
 
+  // ── الموقع ──
+  // التواجد الفعلي شرطٌ للعمليات الإدارية، وخدمة الموقع مغلقةٌ تجعل الحضور
+  // والانصراف مستحيلَين ثم يُكتشف ذلك في آخر الشهر. فتُطلب مع الإشعارات معًا
+  // عند الفتح، لا عند أول بصمة.
+  var geoState = "unknown";   // granted | denied | prompt | unsupported
+  function geoCheck() {
+    if (!navigator.geolocation) { geoState = "unsupported"; return Promise.resolve(geoState); }
+    var q = navigator.permissions && navigator.permissions.query
+      ? navigator.permissions.query({ name: "geolocation" }).catch(function () { return null; })
+      : Promise.resolve(null);
+    return q.then(function (st) {
+      if (st && st.state) {
+        geoState = st.state;                       // granted / denied / prompt
+        if (st.state !== "prompt") return geoState;
+      }
+      // لا واجهةَ أذونات (سفاري): نسأل الموقع نفسه — الإذن الممنوح يردّ بموضع
+      return new Promise(function (res) {
+        navigator.geolocation.getCurrentPosition(
+          function () { geoState = "granted"; res(geoState); },
+          function (e) { geoState = e && e.code === 1 ? "denied" : "prompt"; res(geoState); },
+          { timeout: 12000, maximumAge: 600000, enableHighAccuracy: false });
+      });
+    });
+  }
+
+  function askGeo() {
+    if (!navigator.geolocation) return Promise.resolve("unsupported");
+    return new Promise(function (res) {
+      navigator.geolocation.getCurrentPosition(
+        function () { geoState = "granted"; res(geoState); },
+        function (e) { geoState = e && e.code === 1 ? "denied" : "prompt"; res(geoState); },
+        { timeout: 15000, maximumAge: 0, enableHighAccuracy: true });
+    });
+  }
+
+  function blockGeo(denied) {
+    card("تشغيل خدمة الموقع مطلوب", denied ? [
+      "منعتَ خدمة الموقع لهذا التطبيق، والموقع شرطٌ لتسجيل الحضور والانصراف وإثبات التواجد.",
+      isIOS
+        ? "من إعدادات الجهاز: الخصوصية والأمان ← خدمات الموقع ← بوابة الموظفين ← «أثناء استخدام التطبيق»."
+        : "افتح إعدادات الموقع في المتصفّح (القفل بجوار العنوان) ← الموقع ← سماح.",
+      "ثم أعد فتح التطبيق.",
+    ] : [
+      "الموقع شرطٌ لاستعمال التطبيق: به يُثبَت حضورك وانصرافك وتواجدك عند الإجراءات الإدارية.",
+      "اضغط «تشغيل الموقع» ثم «سماح» في رسالة الجهاز.",
+    ], denied ? null : "تشغيل الموقع", function () {
+      askGeo().then(function () { check(true); });
+    });
+  }
+
   function blockDenied() {
     card("الإشعارات محظورة في جهازك", [
       "منعتَ الإشعارات لهذا التطبيق من قبل، والمتصفّح لا يسأل مرّةً ثانية.",
@@ -189,13 +239,16 @@
         var block = state.gate === "block" && !state.exempt;
         if (!supported) { if (block) blockUnsupported(); else warnBanner(); return; }
         var p = perm();
-        if (p === "granted") { clear(); dropWarn(); return subscribe(); }
+        if (p === "granted") {
+          // الإشعارات تمّت — يبقى الموقع
+          return subscribe().then(function () { return geoGate(block); });
+        }
         if (p === "denied") { if (block) blockDenied(); else warnBanner(); return; }
         // الإذن لم يُطلب بعد: يُطلب تلقائيًّا مرّةً، فإن لم يستجب المتصفّح
         // (يشترط لمسةً من المستخدم) عُرض الزرّ.
         if (!afterAsk) {
           return ask().then(function (res) {
-            if (res === "granted") { clear(); dropWarn(); return subscribe(); }
+            if (res === "granted") { return subscribe().then(function () { return geoGate(block); }); }
             if (res === "denied") { if (block) blockDenied(); else warnBanner(); return; }
             if (block) blockAsk(); else warnBanner();
           });
@@ -203,6 +256,20 @@
         if (block) blockAsk(); else warnBanner();
       });
     }).catch(function () { /* بلا شبكة: لا يُحجب التطبيق */ });
+  }
+
+  /** بعد الإشعارات يأتي الموقع: الحاجز واحد، والشرطان يُطلبان في فتحةٍ واحدة. */
+  function geoGate(block) {
+    return geoCheck().then(function (st) {
+      if (st === "granted" || st === "unsupported") { clear(); dropWarn(); return; }
+      if (!block) { warnBanner(); return; }
+      if (st === "denied") { blockGeo(true); return; }
+      // "prompt": يُطلب الإذن مرّةً تلقائيًّا، وإلا فبزرٍّ صريح
+      return askGeo().then(function (r2) {
+        if (r2 === "granted" || r2 === "unsupported") { clear(); dropWarn(); return; }
+        blockGeo(r2 === "denied");
+      });
+    });
   }
 
   window.SQ_PUSH = {
