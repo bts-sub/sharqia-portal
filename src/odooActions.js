@@ -5,7 +5,7 @@
 //   ملاحظة الأمان: ctx.user يأتي من الجلسة (JWT) ويحدّد الموظف المرتبط في Odoo.
 // ===========================================================================
 import * as odoo from "./lib/odooClient.js";
-import { isTestMode } from "./lib/settings.js";
+import { isTestMode, profileGateMode } from "./lib/settings.js";
 import { nearestLocation } from "./lib/geo.js";
 import * as FX from "./fixtures.js";
 
@@ -1137,7 +1137,7 @@ const actions = {
     const total = sections.reduce((s, x) => s + x.total, 0);
     const done = sections.reduce((s, x) => s + x.done, 0);
     const percent = total ? Math.floor((done / total) * 100) : 100;
-    const data = { percent, complete: done === total, sections };
+    const data = { percent, complete: done === total, sections, enforced: profileGateMode() === "block" };
     completionCache.set(login, { at: Date.now(), data });
     return { source: "odoo", data };
   },

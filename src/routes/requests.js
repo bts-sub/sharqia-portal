@@ -13,7 +13,7 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import * as wf from "../lib/workflow.js";
 import { runAction, flowFor, producesLetter, managerStageIsVacant, stageRoleIsVacant, ownsStageByDepartment, SIGN_ON_EMPLOYEE_STAGE } from "../odooActions.js";
-import { isTestMode } from "../lib/settings.js";
+import { isTestMode, profileGateMode } from "../lib/settings.js";
 import { badRequest, notFound, forbidden } from "../lib/errors.js";
 
 const router = Router();
@@ -45,6 +45,7 @@ async function syncToOdoo(reqObj, user) {
 // ---------------------------------------------------------------------------
 const COMPLETION_EXEMPT = new Set(["تحديث البيانات"]);
 async function assertProfileComplete(user, p) {
+  if (profileGateMode() !== "block") return;
   if (COMPLETION_EXEMPT.has(String(p.service || "").trim())) return;
   const self = String(user.odooEmployeeId || "");
   const ben = String(p.beneficiaryId || "").replace(/^E/, "");

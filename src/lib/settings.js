@@ -23,6 +23,22 @@ export function getSettings() {
 export function isTestMode() {
   return !!load().testMode;
 }
+/**
+ * شرط اكتمال الملف قبل الطلبات: "block" يمنع، و"warn" يعرض النسبة وما ينقص
+ * بلا منع. الافتراضي warn: تشغيل المنع وأغلب الملفات ناقصةٌ من جهة الموارد
+ * البشرية يوقف كل الطلبات دفعةً واحدة.
+ */
+export function profileGateMode() {
+  return load().profileGate === "block" ? "block" : "warn";
+}
+export function setProfileGateMode(mode) {
+  const s = load();
+  s.profileGate = mode === "block" ? "block" : "warn";
+  writeAll(KEY, s);
+  cache = s;
+  return s.profileGate;
+}
+
 export function setTestMode(v) {
   const s = load();
   s.testMode = !!v;

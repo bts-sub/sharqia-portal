@@ -7,7 +7,7 @@
 // ===========================================================================
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { getSettings, setTestMode, isTestMode } from "../lib/settings.js";
+import { getSettings, setTestMode, isTestMode, setProfileGateMode } from "../lib/settings.js";
 import { connectionStatus, testConnection, clearUidCache } from "../lib/odooClient.js";
 import { maskCreds, clearCreds } from "../lib/odooCreds.js";
 import { FX_VERSION } from "../fixtures.js";
@@ -26,6 +26,11 @@ router.get("/settings", (req, res) => {
       ? { connected: false, mode: "test", odooVersion: FX_VERSION }
       : { ...connectionStatus(), mode: "odoo" },
   });
+});
+
+// POST /api/settings/profile-gate { mode: "block" | "warn" } — مدير النظام فقط
+router.post("/settings/profile-gate", requireRole("admin"), (req, res) => {
+  res.json({ ok: true, profileGate: setProfileGateMode(req.body?.mode) });
 });
 
 router.post("/settings/test-mode", requireRole("admin"), (req, res) => {
