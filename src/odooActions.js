@@ -95,10 +95,47 @@ async function autoCloseStamp(empId, checkIn) {
     }
   } catch { /* التقويم اختياري — ثماني ساعات افتراض معقول */ }
   const start = new Date(String(checkIn).replace(" ", "T") + "Z");
-  const end = new Date(start.getTime() + hours * 3600e3);
-  // لا نتجاوز نهاية يوم الحضور نفسه
-  const dayEnd = new Date(start.toISOString().slice(0, 10) + "T23:59:00Z");
-  return (end > dayEnd ? dayEnd : end).toISOString().slice(0, 19).replace("T", " ");
+  // ⚠️ كان الحدّ «نهاية اليوم» يُحسب بتوقيت غرينتش: 23:59Z هي 02:59 في
+  //   الرياض. فكل ورديةٍ مسائية نُسي إغلاقها كانت تُغلق على الساعة الثالثة
+  //   فجرًا بلا يدٍ بشرية — رقمٌ كاذب يدخل الرواتب والعمل الإضافي.
+  //   والصواب ساعات الدوام المعتادة من وقت الحضور، بسقف اثنتي عشرة ساعة:
+  //   لا يوم بصفر ساعة ولا يوم بأربع وعشرين.
+  const capped = Math.min(Math.max(Number(hours) || 8, 1), 12);
+  const end = new Date(start.getTime() + capped * 3600e3);
+  const now = Date.now();
+  // ولا تُكتب لحظةٌ في المستقبل: بصمةٌ نُسيت قبل ساعةٍ تُغلق الآن لا غدًا
+  return new Date(Math.min(end.getTime(), now)).toISOString().slice(0, 19).replace("T", " ");
+}
+
+/**
+ * الإغلاق التلقائي لا يمرّ صامتًا.
+ *
+ * ساعاتُ يومٍ كامل تدخل الراتب، فإغلاقٌ يقدّره النظام ولا يعلم به أحد يمرّ
+ * إلى المسيَّر بلا مراجعة. فيُعلَّم السجل «أُغلق تلقائيًّا»، ويُشعَر صاحبه
+ * والموارد البشرية ليصحّحه بطلب «تصحيح انصراف».
+ */
+async function notifyAutoClose(empId, attId, checkIn, closeAt) {
+  try {
+    const [emp] = await odoo.searchRead("hr.employee", [["id", "=", empId]], ["name"], { limit: 1 });
+    const inL = localParts(checkIn), outL = localParts(closeAt);
+    const when = inL ? `${inL.date} ${inL.hhmm}` : checkIn;
+    const body = `حضورك المسجَّل في ${when} لم يُغلق بانصراف، فأُغلق تقديريًّا في `
+      + `${outL ? outL.hhmm : ""} بساعات دوامك المعتادة. إن كان انصرافك في وقتٍ آخر `
+      + `فارفع طلب «تصحيح انصراف» ليُصحَّح قبل احتساب الراتب.`;
+    const PU = "sharqia.portal.user";
+    const [me] = await odoo.searchRead(PU,
+      [["employee_id", "=", empId], ["status", "=", "active"]], ["id"], { limit: 1 });
+    const hrs = await odoo.searchRead(PU,
+      [["role", "in", ["hr", "admin"]], ["status", "=", "active"]], ["id"], { limit: 10 });
+    const mk = (pu, title, text) => odoo.create("sharqia.portal.notification", {
+      portal_user_id: pu, ntype: "system", title, body: text,
+    }).catch(() => {});
+    if (me) await mk(me.id, "أُغلقت ورديتك تلقائيًّا", body);
+    for (const h of hrs) {
+      await mk(h.id, "إغلاق تلقائي لوردية",
+        `${emp?.name || ""}: حضور ${when} بلا انصراف — أُغلق تقديريًّا. يحتاج مراجعة قبل الرواتب.`);
+    }
+  } catch (e) { console.warn("⚠️ تعذّر إشعار الإغلاق التلقائي:", e.message); }
 }
 
 // نوع الصورة يُستنتج من بايتاتها لا بالتخمين: أودو يخزّن ما رُفع كما هو
@@ -1820,9 +1857,13 @@ const actions = {
             .filter((r) => localParts(r.check_in)?.date !== today);
           for (const r of stale) {
             try {
+              const at = await autoCloseStamp(empId, r.check_in);
+              // ⚠️ لا تُعلَّم «يدوية»: اليدوية يكتبها إنسان ويُسأل عنها، وهذه
+              //   قدّرها النظام. تُعلَّم «أُغلقت تلقائيًّا» ويُشعَر بها أهلها.
               await odoo.write("hr.attendance", r.id,
-                { check_out: await autoCloseStamp(empId, r.check_in), ...only({ x_manual: true }) });
+                { check_out: at, ...only({ x_auto_closed: true }) });
               closedStale++;
+              await notifyAutoClose(empId, r.id, r.check_in, at);
             } catch (e) { console.warn("⚠️ تعذّر إغلاق بصمة معلّقة", r.id, e.message); }
           }
         } catch (e) { console.warn("⚠️ تعذّر فحص البصمات المعلّقة:", e.message); }
@@ -1994,17 +2035,21 @@ const actions = {
             [["employee_id", "=", empId], ["check_out", "=", false]],
             ["id", "check_in"], { limit: 1, order: "check_in desc" });
           if (openNow.length) {
-            const openDay = String(openNow[0].check_in || "").slice(0, 10);
-            const today = now.slice(0, 10);
-            if (openDay === today) {
+            // ⚠️ اليومُ يومُ الرياض لا يومُ غرينتش: المقارنة كانت على UTC،
+            //   ويومُه ينقلب الساعة الثالثة فجرًا — فالوردية المفتوحة مساءً
+            //   تصير «من أمس» عند الثالثة فتُغلق تلقائيًّا. وبقيةُ الملف
+            //   تحسب بتوقيت العمل، فانفردت هذه بالخطأ.
+            const openDay = localParts(openNow[0].check_in)?.date;
+            if (openDay === todayLocal()) {
               throw new Error("لديك حضور مفتوح اليوم — سجّل الانصراف أولًا.");
             }
             // بصمة يومٍ سابق نُسي إغلاقها: إبقاؤها مفتوحة يحبس الموظف عن
-            // الحضور إلى الأبد. نُغلقها بساعات دوامه المعتادة ونُعلّمها يدوية
-            // ليصحّحها المسؤول، ولا نمنعه من يومه الجديد.
+            // الحضور إلى الأبد. تُغلق بساعات دوامه المعتادة، وتُعلَّم أنها
+            // إغلاقٌ تلقائي ويُشعَر بها هو والموارد البشرية لتُصحَّح.
             const closeAt = await autoCloseStamp(empId, openNow[0].check_in);
             await odoo.write("hr.attendance", openNow[0].id,
-              { check_out: closeAt, ...only({ x_manual: true }) });
+              { check_out: closeAt, ...only({ x_auto_closed: true }) });
+            await notifyAutoClose(empId, openNow[0].id, openNow[0].check_in, closeAt);
             console.warn(`⚠️ أُغلقت بصمة معلّقة تلقائيًا للموظف ${empId} عند ${closeAt}`);
           }
           const id = await odoo.create("hr.attendance", {
