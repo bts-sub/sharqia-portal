@@ -229,16 +229,6 @@ async function assertSignedIfSettlement(user, id) {
       + "ارسم توقيعك أو ارفع صورته، ثم أعد المحاولة.");
 }
 
-// ---------------------------------------------------------------------------
-// كل اعتمادٍ يُختم بتوقيع صاحبه على الطلب، والتوقيع مرجعُ المستند القانوني.
-// اعتمادٌ بلا توقيعٍ محفوظ كان يُخرج نموذجًا فيه الاسم والتاريخ وخانةٌ فارغة.
-// ---------------------------------------------------------------------------
-async function assertApproverSigned(user) {
-  const { data: sig } = await runAction("me.signature.read", {}, { user });
-  if (!sig?.hasSignature)
-    throw badRequest("احفظ توقيعك المعتمد أولًا من «حسابي ← توقيعي المعتمد»، "
-      + "فكل اعتمادٍ يُختم بتوقيعك على المستند.");
-}
 
 router.post("/requests/:id/approve", async (req, res, next) => {
   try {
@@ -251,7 +241,6 @@ router.post("/requests/:id/approve", async (req, res, next) => {
         await runAction("me.signature", { image: req.body.signature }, { user: req.user });
       await assertSignedIfLetter(req.user, req.params.id);
       await assertSignedIfSettlement(req.user, req.params.id);
-      await assertApproverSigned(req.user);
       const { data } = await runAction("request.approve", { id: Number(req.params.id) }, { user: req.user });
       return res.json(data);
     }
