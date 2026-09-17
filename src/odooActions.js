@@ -830,6 +830,9 @@ export const FLOW = {
 // (models/portal_request.py) وفي محرّك الاختبار (lib/workflow.js): ثلاثة
 // مواضع تصف المسار نفسه، فأي تعديل هنا يلزم أخويه.
 export const SERVICE_FLOW = {
+  // تبديل التوقيع المحفوظ: تقنية المعلومات وحدها تعتمده، وباعتماده يُمسح
+  // القديم فيرسم صاحبه توقيعه الجديد.
+  "تعديل التوقيع": ["it", "done"],
   "تعديل راتب": ["hr", "finance", "done"],
   "زيادة راتب": ["hr", "finance", "done"],
   "مكافأة": ["hr", "finance", "done"],
@@ -2659,8 +2662,13 @@ const actions = {
     return withOdoo(
       async () => {
         const pu = await odoo.searchRead("sharqia.portal.user",
-          [["login", "=ilike", login]], ["id"], { limit: 1 });
+          [["login", "=ilike", login]], ["id", "has_signature"], { limit: 1 });
         if (!pu.length) throw new Error("لا يوجد مستخدم مطابق في أودو");
+        // التوقيع يُحفظ مرّةً واحدة؛ تبديله بطلبٍ تعتمده تقنية المعلومات
+        if (pu[0].has_signature) {
+          throw new Error("توقيعك محفوظ ولا يُبدَّل مباشرةً. "
+            + "ارفع طلب «تعديل التوقيع» إلى تقنية المعلومات، وبعد اعتماده ترسم توقيعك الجديد.");
+        }
         await odoo.write("sharqia.portal.user", pu[0].id, { signature: b64 });
         completionCache.delete(login);
         return { ok: true };
