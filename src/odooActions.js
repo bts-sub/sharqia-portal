@@ -39,7 +39,7 @@ function toEmpId(v) {
 
 // حقول hr.employee التي نقرأها ونحوّلها لشكل الواجهة
 const EMP_FIELDS = ["name", "job_title", "department_id", "work_email", "work_phone", "parent_id",
-  "employee_type", "work_location_id", "company_id", "image_128"];
+  "employee_type", "work_location_id", "company_id", "image_128", "image_256"];
 
 // حقول شاشة «ملفي الوظيفي» — أوسع من EMP_FIELDS التي تُقرأ لكل عضو فريق.
 //   الأسماء مأخوذة من فحص hr.employee على أودو 19: رقم الموظف
@@ -567,7 +567,7 @@ function mapEmployee(rec) {
     marital: MARITAL_AR[rec.marital] || "",
     birthday: rec.birthday || "",
     // صورة الموظف من أودو كـ data URI جاهزة للعرض في <img> مباشرة
-    photo: imgDataUri(rec.image_128),
+    photo: imgDataUri(rec.image_256 || rec.image_128),
     leaveBalance: rec.leaveBalance ?? null,
   };
 }
@@ -1212,7 +1212,7 @@ const actions = {
     const hit = completionCache.get(login);
     if (hit && !params?.fresh && Date.now() - hit.at < 60 * 1000) return { source: "odoo", data: hit.data };
     const [emp] = await odoo.searchRead("hr.employee", [["id", "=", empId]],
-      await availableFields("hr.employee", EMP_ME_FIELDS.filter((f) => f !== "image_128")), { limit: 1 });
+      await availableFields("hr.employee", EMP_ME_FIELDS.filter((f) => f !== "image_128" && f !== "image_256")), { limit: 1 });
     if (!emp) throw new Error("تعذّر قراءة ملفك الوظيفي من أودو.");
     const e = mapEmployee(emp);
     const has = (v) => v != null && String(v).trim() !== "" && String(v).trim() !== "—";
@@ -1385,8 +1385,8 @@ const actions = {
         await odoo.write("hr.employee", [empId], { image_1920: b64 });
         // أعد قراءة المصغّرة التي ولّدها أودو لتُعرض فورًا بلا إعادة تحميل
         const recs = await odoo.searchRead("hr.employee", [["id", "=", empId]],
-          ["image_128"], { limit: 1 });
-        const img = recs[0]?.image_128;
+          ["image_256", "image_128"], { limit: 1 });
+        const img = recs[0]?.image_256 || recs[0]?.image_128;
         return { ok: true, photo: imgDataUri(img) };
       },
       async () => { throw new Error("تغيير الصورة غير متاح في وضع الاختبار"); },
@@ -1679,7 +1679,7 @@ const actions = {
   //   مصفوفة موظفين تجريبية مثبّتة في الحزمة — هذا يجعلها بيانات أودو الحقيقية.
   async "team.list"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
-    const TEAM_FIELDS = EMP_FIELDS.filter((f) => f !== "image_128"); // الصور تُثقل الرد
+    const TEAM_FIELDS = EMP_FIELDS.filter((f) => !f.startsWith("image_")); // الصور تُثقل الرد
     return withOdoo(
       async () => {
         if (!empId) return { records: [] };
