@@ -128,6 +128,10 @@ function imgDataUri(b64) {
     : head.startsWith("iVBORw0") ? "png"
     : head.startsWith("UklGR") ? "webp"
     : head.startsWith("R0lGOD") ? "gif"
+    // ⚠️ صورة أودو الافتراضية للموظف SVG لا JPEG («PHN2Zy…» = «<svg»،
+    //   و«PD94bWw…» = «<?xml»). وسمُها jpeg يجعل المتصفّح يرفضها فتظهر
+    //   أيقونةَ صورةٍ مكسورة مكان صورة الموظف.
+    : (head.startsWith("PHN2Z") || head.startsWith("PD94bWw")) ? "svg+xml"
     : "jpeg";
   return `data:image/${mime};base64,${b64}`;
 }
