@@ -119,7 +119,21 @@
       if (!open) return;
       ui.actions.appendChild(actionBtn("تنزيل", function () { saveBlob(blob, name); }));
       return blob.arrayBuffer().then(function (buf) {
-        return pdfjs.getDocument({ data: new Uint8Array(buf) }).promise;
+        // ⚠️ disableFontFace: الحروف تُرسم من الخطّ المضمَّن في الملف نفسه، لا
+        // بتحميله في المتصفّح.
+        //   كان العارض يسلّم الخطّ المضمَّن (Tajawal) إلى المتصفّح ليحمّله
+        //   ويكتب به. وبعض الأجهزة ترفض الخطّ المستخرَج، فيسقط المتصفّح إلى
+        //   خطٍّ بديل ويرسم كل حرفٍ في موضعه المحسوب على الخطّ الأصلي: تتفكّك
+        //   الكلمات وتنعكس حروفها، ويخرج الخطاب غير مقروء. والملف نفسه سليم —
+        //   ولذلك كان يُطبع صحيحًا ويُقرأ مشوَّهًا داخل التطبيق.
+        //   ورسمُ الأشكال من الخطّ المضمَّن لا يعتمد على جهازٍ ولا على خطٍّ
+        //   مثبَّت فيه: ما في الورقة هو ما يُرسم.
+        return pdfjs.getDocument({
+          data: new Uint8Array(buf),
+          disableFontFace: true,
+          // الخطوط كلها مضمَّنة في مستنداتنا، فلا يُنتظر جلبُ خطٍّ قياسي
+          useSystemFonts: false,
+        }).promise;
       }).then(function (pdf) {
         if (!open) return;
         ui.body.innerHTML = "";

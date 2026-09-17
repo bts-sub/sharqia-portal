@@ -626,6 +626,47 @@ const actorCtx = (ctx) => ({
   },
 });
 
+/** مقاس صورة من بايتاتها — PNG و JPEG، وما عداهما يُترك بلا فحص. */
+function imageSize(b64) {
+  let b;
+  try { b = Buffer.from(b64, "base64"); } catch { return null; }
+  if (b.length > 24 && b[0] === 0x89 && b[1] === 0x50) {
+    return { w: b.readUInt32BE(16), h: b.readUInt32BE(20), kind: "png" };
+  }
+  if (b.length > 4 && b[0] === 0xFF && b[1] === 0xD8) {
+    let i = 2;
+    while (i < b.length - 9) {
+      if (b[i] !== 0xFF) { i++; continue; }
+      const m = b[i + 1];
+      if (m >= 0xC0 && m <= 0xC3) {
+        return { h: b.readUInt16BE(i + 5), w: b.readUInt16BE(i + 7), kind: "jpeg" };
+      }
+      if (m === 0xD8 || m === 0x01 || (m >= 0xD0 && m <= 0xD7)) { i += 2; continue; }
+      i += 2 + b.readUInt16BE(i + 2);
+    }
+  }
+  return null;
+}
+
+/**
+ * التوقيع ورقةٌ عريضة لا صورةٌ من الكاميرا.
+ *
+ * رفع أحدُ المعتمِدين صورةَ سقفِ مبنًى في خانة توقيعه، فطُبعت في كل مستندٍ
+ * اعتمده مربّعاتٍ لا تُقرأ — ولا أحد يفتح المستند بعد ختمه ليراها. والفحص
+ * هنا لا في الشاشة: الشاشة تُتجاوَز، والخانة تبقى.
+ */
+function assertSignatureShape(b64) {
+  const s = imageSize(b64);
+  if (!s) return;
+  if (s.w < 100 || s.h < 30) {
+    throw new Error("صورة التوقيع صغيرة جدًّا — أعِد رسمه أو صوّره أوضح.");
+  }
+  if (s.w / s.h < 1.15) {
+    throw new Error("هذه صورةٌ لا توقيع: التوقيع يكون عريضًا لا طوليًّا. "
+      + "ارسم توقيعك في المربّع، أو ارفع صورة التوقيع وحده على ورقة بيضاء.");
+  }
+}
+
 const nowOdooDate = () => new Date().toISOString().slice(0, 10);
 const nowOdooDatetime = () => new Date().toISOString().slice(0, 19).replace("T", " ");
 
@@ -2569,6 +2610,7 @@ const actions = {
     const b64 = m[2];
     if (b64.length < 200) throw new Error("التوقيع فارغ — ارسمه أو ارفع صورته");
     if (b64.length > 2 * 1024 * 1024 * 1.37) throw new Error("حجم التوقيع كبير — الحد 2 ميجابايت");
+    assertSignatureShape(b64);
     return withOdoo(
       async () => {
         const pu = await odoo.searchRead("sharqia.portal.user",
@@ -2596,6 +2638,7 @@ const actions = {
     const b64 = m[2];
     if (b64.length < 200) throw new Error("التوقيع فارغ — ارسمه أو ارفع صورته");
     if (b64.length > 2 * 1024 * 1024 * 1.37) throw new Error("حجم التوقيع كبير — الحد 2 ميجابايت");
+    assertSignatureShape(b64);
     return withOdoo(
       async () => {
         const done = await odoo.execKw("sharqia.portal.letter", "apply_signature", [],
@@ -3573,6 +3616,7 @@ const actions = {
         if (!id || !empId) throw new Error("بيانات ناقصة");
         if (!image.startsWith("data:image/"))
           throw new Error("التوقيع مطلوب");
+        assertSignatureShape(image.slice(image.indexOf(",") + 1));
         const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
           [["id", "=", id]], ["employee_id", "state", "employee_statement"],
           { limit: 1 });
