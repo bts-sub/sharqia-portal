@@ -33,6 +33,7 @@ import letterRoutes from "./routes/letters.js";
 import integrationRoutes from "./routes/integration.js";
 import learningRoutes from "./routes/learning.js";
 import disciplineRoutes from "./routes/discipline.js";
+import pushRoutes from "./routes/push.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -128,6 +129,7 @@ app.use("/api", userRoutes);
 app.use("/api", letterRoutes);
 app.use("/api", learningRoutes);
 app.use("/api", disciplineRoutes);
+app.use("/api", pushRoutes);
 
 // تقديم الواجهة (ملف HTML الواحد) — إن وُجد
 const frontendPath = path.resolve(__dirname, "..", config.frontendFile);

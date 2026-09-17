@@ -60,6 +60,52 @@ self.addEventListener("message", (e) => {
   if (e.data === "SKIP_WAITING") self.skipWaiting();
 });
 
+// ───────────────────────────── إشعارات الخلفية ─────────────────────────────
+// الإشعار يصل والتطبيق مغلق: هذا هو موضعه الوحيد. والصفحة لا تعمل حينها،
+// فلا يُقرأ شيءٌ من حالتها — الحمولة تحمل كل ما يلزم لعرضه وفتحه.
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { title: e.data && e.data.text() }; }
+  const title = d.title || "بوابة الموظفين";
+  e.waitUntil(self.registration.showNotification(title, {
+    body: d.body || "",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    lang: "ar",
+    dir: "rtl",
+    tag: d.tag || "sharqia",
+    renotify: true,
+    // اهتزازٌ قصير: إشعار محضر تحقيق أو موعد استدعاء لا يُترك صامتًا في الجيب
+    vibrate: [90, 60, 90],
+    data: d.data || {},
+    requireInteraction: !!d.requireInteraction,
+  }));
+});
+
+// الضغط على الإشعار يفتح التطبيق على موضع الخبر لا على صفحته الرئيسية:
+// إشعارٌ يقول «استدعاء للتحقيق» ثم يفتح الرئيسية يترك الموظف يبحث عن محضره.
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const d = e.notification.data || {};
+  const q = [];
+  if (d.link) q.push("n=" + encodeURIComponent(d.link));
+  if (d.penaltyId) q.push("pid=" + encodeURIComponent(d.penaltyId));
+  if (d.reqId) q.push("req=" + encodeURIComponent(d.reqId));
+  if (d.letterId) q.push("lid=" + encodeURIComponent(d.letterId));
+  const url = "/" + (q.length ? "?" + q.join("&") : "");
+  e.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const w of wins) {
+      if (new URL(w.url).origin !== self.location.origin) continue;
+      // نافذةٌ مفتوحة: تُركَّز وتُبلَّغ بالوجهة بدل فتح نافذةٍ ثانية للتطبيق نفسه
+      await w.focus();
+      w.postMessage({ sq: "notif-open", data: d });
+      return;
+    }
+    await self.clients.openWindow(url);
+  })());
+});
+
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;                       // POST/PATCH تمرّ كما هي

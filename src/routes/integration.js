@@ -7,6 +7,7 @@ import { Router } from "express";
 import { requireIntegrationToken } from "../middleware/integrationAuth.js";
 import { upsertFromOdoo, updateByLogin, setPassword, findByLogin } from "../lib/users.js";
 import { insert } from "../lib/store.js";
+import { sendToUser } from "../lib/push.js";
 import { badRequest, notFound, unauthorized } from "../lib/errors.js";
 import * as odoo from "../lib/odooClient.js";
 import { config } from "../config.js";
@@ -69,6 +70,13 @@ router.post("/integration/notifications", (req, res, next) => {
       ...(letterId ? { letterId: Number(letterId) } : {}),
       at: new Date().toISOString(), source: "odoo",
     });
+    // الدفع إلى أجهزته: الإشعار يصل والتطبيق مغلق، وهو مقصود الإشعار أصلًا.
+    // ولا يُنتظر ولا يُفشِل الاستجابة: الإشعار محفوظٌ في كل حال، وإخفاق
+    // الدفع (جهازٌ قديم أو شبكةُ مزوّد) لا يُرجع خطأً إلى أودو فيُعيد إرساله.
+    sendToUser(user.id, {
+      title, body, tag: "sq-" + notif.id,
+      data: { id: notif.id, link, reqId, penaltyId, letterId },
+    }).catch(() => {});
     res.json({ ok: true, id: notif.id });
   } catch (e) { next(e); }
 });
@@ -122,6 +130,11 @@ router.post("/device/punches", requireAttendanceToken, async (req, res, next) =>
               + (n.device_name ? ` — ${n.device_name}` : ""),
             read: false, at: new Date().toISOString(), source: "device",
           });
+          sendToUser(u.id, {
+            title: `تم تسجيل بصمة ${kind}`,
+            body: `سجّلت بصمة ${kind} الساعة ${n.punch_hm}`,
+            tag: "sq-punch",
+          }).catch(() => {});
         }
       }
     } catch (e) { console.warn("⚠️ تعذّر إرسال إشعارات البصمة:", e.message); }

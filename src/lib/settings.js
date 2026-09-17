@@ -39,6 +39,23 @@ export function setProfileGateMode(mode) {
   return s.profileGate;
 }
 
+/**
+ * شرط تفعيل الإشعارات: "block" يمنع استعمال التطبيق حتى تُفعَّل، و"warn"
+ * يعرض شريط تنبيهٍ فقط. الافتراضي block بقرار الإدارة: الإشعار هو ما يُبلِّغ
+ * الموظف بمحضر التحقيق والطلب العاجل، وتركُه اختياريًّا يُبطل المهل.
+ * ومدير النظام مستثنًى دائمًا — وإلا لحُبس من يملك المفتاح خارج مفتاحه.
+ */
+export function notifGateMode() {
+  return load().notifGate === "warn" ? "warn" : "block";
+}
+export function setNotifGateMode(mode) {
+  const s = load();
+  s.notifGate = mode === "warn" ? "warn" : "block";
+  writeAll(KEY, s);
+  cache = s;
+  return s.notifGate;
+}
+
 export function setTestMode(v) {
   const s = load();
   s.testMode = !!v;
