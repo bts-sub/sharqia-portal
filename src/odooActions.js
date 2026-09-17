@@ -50,7 +50,24 @@ const EMP_ME_FIELDS = [...EMP_FIELDS, "job_id", "mobile_phone", "private_phone",
   "registration_number", "barcode", "joining_date", "identification_id", "passport_id",
   "permit_no", "marital", "birthday", "primary_bank_account_id",
   // الجنسية: تحدّد أيّ رقمٍ يُعرض — الهوية للسعودي والإقامة لغيره
-  "country_id"];
+  "country_id",
+  // تاريخ التعيين الحقيقي: joining_date في أودو هو تاريخ إنشاء السجل
+  "sharqia_hire_date"];
+
+/**
+ * الاسم المختصر للواجهات: الاسم الأول والأخير فقط. الاسم الكامل (رباعيًّا أو
+ * خماسيًّا) يطول في الترحيب والعناوين فيُقطع، ويبقى كاملًا في المستندات.
+ */
+export function shortName(full) {
+  const parts = String(full || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 2) return parts.join(" ");
+  // «عبد الله» و«أبو بكر» اسمٌ واحد مكتوبٌ كلمتين
+  const joiners = new Set(["عبد", "أبو", "ابو", "بن", "بنت", "آل", "ال"]);
+  const first = joiners.has(parts[0]) && parts.length > 2 ? parts[0] + " " + parts[1] : parts[0];
+  const n = parts.length;
+  const last = joiners.has(parts[n - 2]) && n - 2 > 0 ? parts[n - 2] + " " + parts[n - 1] : parts[n - 1];
+  return first === last ? first : first + " " + last;
+}
 
 // نوع التوظيف في أودو إنجليزي — يُعرض في التطبيق تحت «على رأس العمل»
 const EMP_TYPE_AR = {
@@ -492,20 +509,21 @@ async function requestFieldNames() {
 function mapEmployee(rec) {
   if (!rec) return null;
   return {
-    id: "E" + rec.id, odooId: rec.id, name: rec.name,
+    id: "E" + rec.id, odooId: rec.id, name: rec.name, shortName: shortName(rec.name),
     // المسمّى قد يكون نصًّا حرًّا أو مرتبطًا بوظيفة hr.job — نقبل الاثنين
     jobTitle: rec.job_title || rec.job_id?.[1] || "",
     dept: rec.department_id?.[1] || "",
     branch: rec.work_location_id?.[1] || "",
-    // الرقم الوظيفي الحقيقي إن وُجد، وإلا رقم السجل كملاذ أخير
-    empNo: rec.registration_number || rec.barcode || String(rec.id),
+    // الرقم الوظيفي من الملف الأساسي وحده. كان يُعرض رقم السجل الداخلي في
+    // أودو حين يغيب — رقمٌ لا يعرفه أحد يبدو رقمًا وظيفيًّا صحيحًا.
+    empNo: rec.registration_number || rec.barcode || "",
     manager: rec.parent_id?.[1] || "",
     email: rec.work_email || rec.private_email || "",
     // الجوال أولًا: هو ما يملؤه الناس فعلًا، وwork_phone يبقى فارغًا غالبًا
     phone: rec.mobile_phone || rec.work_phone || rec.private_phone || "",
     contract: EMP_TYPE_AR[rec.employee_type] || rec.employee_type || "",
     company: rec.company_id?.[1] || "",
-    hireDate: rec.joining_date || "",
+    hireDate: rec.sharqia_hire_date || rec.joining_date || "",
     nationalIdMasked: maskTail(rec.identification_id),
     iban: maskTail(rec.primary_bank_account_id?.[1]),
     passport: maskTail(rec.passport_id),
@@ -724,6 +742,10 @@ const CUSTODY_STATE_AR = {
   assigned: "مُستلَمة", pending: "بانتظار الاعتماد",
 };
 
+// نسبة اكتمال الملف: تُحسب من أودو، وتُخبَّأ دقيقةً لكل مستخدم كي لا يكلّف
+// كلُّ طلبٍ جديد ثلاث قراءات. تُمسح عند كل تغييرٍ يعرفه الخادم.
+export const completionCache = new Map();
+
 function mapCustody(rec) {
   const today = new Date().toISOString().slice(0, 10);
   const ret = rec.return_date || rec.renew_date || "";
@@ -737,6 +759,10 @@ function mapCustody(rec) {
     status: CUSTODY_STATE_AR[rec.state] || rec.state || "",
     // maint: قاربت أو تجاوزت تاريخ الإرجاع — تُبرز في الواجهة
     maint: !!(ret && ret <= today && rec.state !== "returned"),
+    // إقرار الموظف بالاستلام: مطلوبٌ لكل عهدةٍ مسلَّمة لم يُقرّ بها بعد
+    acked: !!rec.sharqia_ack_on,
+    ackOn: rec.sharqia_ack_on || "",
+    ackRequired: rec.state === "approved" && !rec.sharqia_ack_on,
   };
 }
 
@@ -1036,7 +1062,7 @@ const actions = {
       id: empId ? "E" + empId : (u.login ? "U" + u.login : ""),
       odooId: empId || null,
       name: u.name || u.login || "",
-      jobTitle: "", dept: "", branch: "", empNo: empId ? String(empId) : "",
+      jobTitle: "", dept: "", branch: "", empNo: "", shortName: shortName(u.name || u.login || ""),
       manager: "", email: u.email || "", phone: "", contract: "",
       company: "", leaveBalance: null,
       unavailable: true, reason,
@@ -1053,6 +1079,79 @@ const actions = {
     } catch (e) {
       return { source: "session-fallback", warning: e.message, data: fromSession(e.message) };
     }
+  },
+
+  // نسبة اكتمال ملف الموظف — شرطٌ لفتح الطلبات (عدا «تحديث البيانات»).
+  //   ثلاثة أقسام: أساسية (من الملف الوظيفي)، شخصية (هوية وبنك وتوقيع)،
+  //   وعهد (الإقرار باستلام كل عهدةٍ مسلَّمة). النسبة = ما اكتمل من البنود
+  //   كلّها. تُحسب من أودو مباشرةً لا من بيانات الجهاز.
+  async "employee.completion"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const login = ctx?.user?.login;
+    if (isTestMode()) return { source: "test", data: { percent: 100, complete: true, sections: [] } };
+    if (!empId) {
+      return { source: "odoo", data: { percent: 0, complete: false, unlinked: true, sections: [{
+        key: "basic", label: "البيانات الأساسية", done: 0, total: 1,
+        missing: ["ربط حسابك بملفك الوظيفي — راجع الموارد البشرية"] }] } };
+    }
+    const hit = completionCache.get(login);
+    if (hit && !params?.fresh && Date.now() - hit.at < 60 * 1000) return { source: "odoo", data: hit.data };
+    const [emp] = await odoo.searchRead("hr.employee", [["id", "=", empId]],
+      await availableFields("hr.employee", EMP_ME_FIELDS.filter((f) => f !== "image_128")), { limit: 1 });
+    if (!emp) throw new Error("تعذّر قراءة ملفك الوظيفي من أودو.");
+    const e = mapEmployee(emp);
+    const has = (v) => v != null && String(v).trim() !== "" && String(v).trim() !== "—";
+    const [pu] = login ? await odoo.searchRead("sharqia.portal.user", [["login", "=ilike", login]],
+      await availableFields("sharqia.portal.user", ["has_signature"]), { limit: 1 }) : [];
+    const custody = (await modelFieldNames("hr.custody"))
+      ? await odoo.searchRead("hr.custody", [["employee_id", "=", empId], ["state", "=", "approved"]],
+          await availableFields("hr.custody", ["name", "custody_property_id", "sharqia_ack_on"]), { limit: 100 })
+      : [];
+    const section = (key, label, items) => {
+      const missing = items.filter(([, ok]) => !ok).map(([name]) => name);
+      return { key, label, done: items.length - missing.length, total: items.length, missing };
+    };
+    const sections = [
+      section("basic", "البيانات الأساسية", [
+        ["الرقم الوظيفي", has(e.empNo)],
+        ["المسمّى الوظيفي", has(e.jobTitle)],
+        ["القسم", has(e.dept)],
+        ["المدير المباشر", has(e.manager)],
+        ["رقم الجوال", has(e.phone)],
+        ["البريد الإلكتروني", has(e.email)],
+        ["تاريخ التعيين", has(e.hireDate)],
+      ]),
+      section("personal", "البيانات الشخصية", [
+        [e.idLabel || "رقم الهوية", has(emp.identification_id) || has(emp.permit_no)],
+        ["تاريخ الميلاد", has(emp.birthday)],
+        ["الحالة الاجتماعية", has(emp.marital)],
+        ["الحساب البنكي (الآيبان)", !!emp.primary_bank_account_id],
+        ["التوقيع المعتمد", !!pu?.has_signature],
+      ]),
+      section("custody", "العهد", custody.length
+        ? custody.map((c) => [
+            "الإقرار باستلام: " + (c.custody_property_id?.[1] || c.name || "عهدة"),
+            !!c.sharqia_ack_on])
+        : [["لا عهد بانتظار الإقرار", true]]),
+    ];
+    const total = sections.reduce((s, x) => s + x.total, 0);
+    const done = sections.reduce((s, x) => s + x.done, 0);
+    const percent = total ? Math.floor((done / total) * 100) : 100;
+    const data = { percent, complete: done === total, sections };
+    completionCache.set(login, { at: Date.now(), data });
+    return { source: "odoo", data };
+  },
+
+  // إقرار الموظف باستلام عهدته — مرةً واحدة، ولصاحبها فقط.
+  async "custody.ack"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const id = Number(params?.id);
+    if (!empId || !Number.isInteger(id)) throw new Error("طلب غير صالح");
+    const [cu] = await odoo.searchRead("hr.custody", [["id", "=", id]], ["employee_id", "state"], { limit: 1 });
+    if (!cu || cu.employee_id?.[0] !== empId) throw new Error("هذه العهدة ليست باسمك.");
+    await odoo.execKw("hr.custody", "sharqia_acknowledge", [[id]], { actor_name: ctx?.user?.name || "" });
+    completionCache.delete(ctx?.user?.login);
+    return { source: "odoo", data: { ok: true } };
   },
 
   // تسجيل قراءة التعميم في Odoo (sharqia.portal.announcement.ack)
@@ -1520,7 +1619,7 @@ const actions = {
           const recs = await odoo.searchRead("hr.custody",
             [["employee_id", "=", empId]],
             await availableFields("hr.custody", ["name", "custody_property_id", "date_request",
-              "return_date", "renew_date", "purpose", "state", "notes"]),
+              "return_date", "renew_date", "purpose", "state", "notes", "sharqia_ack_on"]),
             { order: "date_request desc", limit: 100 });
           return { records: recs.map(mapCustody), source: "hr.custody" };
         }
@@ -1980,7 +2079,10 @@ const actions = {
         // مرحلة أولى بلا صاحب تُتخطّى عند الإنشاء لا تُترك تعلق: طلب المدير
         // لنفسه (ولا مدير فوقه بحساب فعّال) كان يقف في «بانتظار المدير
         // المباشر» فلا يعتمده هو — لا اعتماد ذاتيًّا — ولا الموارد البشرية.
-        const flow = FLOW[payload.category] || FLOW.general;
+        // ⚠️ مسار الخدمة لا مسار التصنيف: أودو يمشي بمسار الخدمة (زيادة راتب:
+        // موارد بشرية ← مالية)، وكان هنا يُقرأ مسار التصنيف فتُكتب مرحلةٌ لا
+        // تطابق stage_index — فيُختم توقيع الموارد البشرية في خانة المالية.
+        const flow = flowFor(payload.category, payload.service);
         if (flow[0] === "manager" && flow[1] && flow[1] !== "done"
             && await managerStageIsVacant(owner)) {
           const skip = { state: flow[1] };
@@ -2424,6 +2526,7 @@ const actions = {
           [["login", "=ilike", login]], ["id"], { limit: 1 });
         if (!pu.length) throw new Error("لا يوجد مستخدم مطابق في أودو");
         await odoo.write("sharqia.portal.user", pu[0].id, { signature: b64 });
+        completionCache.delete(login);
         return { ok: true };
       },
       async () => { throw new Error("حفظ التوقيع غير متاح في وضع الاختبار"); },

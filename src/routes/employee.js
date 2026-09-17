@@ -28,6 +28,23 @@ router.post("/employee/photo", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /api/employee/completion → نسبة اكتمال الملف وأقسامه وما ينقصه
+router.get("/employee/completion", async (req, res, next) => {
+  try {
+    const { data } = await runAction("employee.completion",
+      { fresh: req.query.fresh === "1" }, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+// POST /api/custody/:id/ack → إقرار الموظف باستلام عهدته
+router.post("/custody/:id/ack", async (req, res, next) => {
+  try {
+    const { data } = await runAction("custody.ack", { id: req.params.id }, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
 // GET /api/custody → عهد الموظف الحالي (من Open HRMS Custody إن كان مثبّتًا)
 router.get("/custody", async (req, res, next) => {
   try {

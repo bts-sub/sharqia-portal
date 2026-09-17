@@ -38,6 +38,28 @@ async function syncToOdoo(reqObj, user) {
   return null; // بقية الأنواع تبقى في الـ backend (خطابات/عهد/تعاميم…) أو تُضاف لاحقًا
 }
 
+// ---------------------------------------------------------------------------
+// لا طلبات قبل اكتمال الملف (100%): أساسية + شخصية + عهد. «تحديث البيانات»
+// وحده مفتوح دائمًا — هو طريق الإكمال. ومن يرفع طلبًا عن غيره (المدير عن
+// عضو فريقه) لا يُحاسَب بملفه هو.
+// ---------------------------------------------------------------------------
+const COMPLETION_EXEMPT = new Set(["تحديث البيانات"]);
+async function assertProfileComplete(user, p) {
+  if (COMPLETION_EXEMPT.has(String(p.service || "").trim())) return;
+  const self = String(user.odooEmployeeId || "");
+  const ben = String(p.beneficiaryId || "").replace(/^E/, "");
+  if (ben && self && ben !== self) return;
+  const { data } = await runAction("employee.completion", {}, { user });
+  if (data?.complete) return;
+  const missing = (data?.sections || []).flatMap((s) => s.missing).slice(0, 4);
+  const err = forbidden(
+    `ملفك مكتمل بنسبة ${data?.percent ?? 0}% — أكمله إلى 100% لتقديم الطلبات. `
+    + (missing.length ? `الناقص: ${missing.join("، ")}. ` : "")
+    + "حدّث بياناتك من «حسابي ← تحديث البيانات».");
+  err.code = "PROFILE_INCOMPLETE";
+  throw err;
+}
+
 router.post("/requests", async (req, res, next) => {
   try {
     const p = req.body || {};
@@ -63,6 +85,7 @@ router.post("/requests", async (req, res, next) => {
     }
     // Odoo مصدر الحقيقة: في الوضع الحقيقي يُنشأ الطلب في Odoo؛ في الاختبار محليًا
     if (!isTestMode()) {
+      await assertProfileComplete(req.user, p);
       const { data } = await runAction("request.create", p, { user: req.user });
       return res.status(201).json({ odooId: data.odooId, ...data });
     }
@@ -205,6 +228,17 @@ async function assertSignedIfSettlement(user, id) {
       + "ارسم توقيعك أو ارفع صورته، ثم أعد المحاولة.");
 }
 
+// ---------------------------------------------------------------------------
+// كل اعتمادٍ يُختم بتوقيع صاحبه على الطلب، والتوقيع مرجعُ المستند القانوني.
+// اعتمادٌ بلا توقيعٍ محفوظ كان يُخرج نموذجًا فيه الاسم والتاريخ وخانةٌ فارغة.
+// ---------------------------------------------------------------------------
+async function assertApproverSigned(user) {
+  const { data: sig } = await runAction("me.signature.read", {}, { user });
+  if (!sig?.hasSignature)
+    throw badRequest("احفظ توقيعك المعتمد أولًا من «حسابي ← توقيعي المعتمد»، "
+      + "فكل اعتمادٍ يُختم بتوقيعك على المستند.");
+}
+
 router.post("/requests/:id/approve", async (req, res, next) => {
   try {
     if (!isTestMode()) {
@@ -216,6 +250,7 @@ router.post("/requests/:id/approve", async (req, res, next) => {
         await runAction("me.signature", { image: req.body.signature }, { user: req.user });
       await assertSignedIfLetter(req.user, req.params.id);
       await assertSignedIfSettlement(req.user, req.params.id);
+      await assertApproverSigned(req.user);
       const { data } = await runAction("request.approve", { id: Number(req.params.id) }, { user: req.user });
       return res.json(data);
     }
