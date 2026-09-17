@@ -602,6 +602,7 @@ const DISC_FIELDS = ["name", "employee_id", "violation_id", "category",
   "discovered_at", "submitted_on", "investigated_by_id", "investigated_on",
   "hr_reviewed_by_id", "hr_reviewed_on", "hr_review_notes",
   "summons_type", "summons_datetime", "summons_place", "summons_sent_on",
+  "summons_mode", "summons_link", "summons_recorded",
   "summons_ack_on", "summons_ack_by", "summons_refused",
   "statement_on", "statement_updated_on", "statement_revisions",
   "penalty_ladder", "department_id"];
@@ -665,6 +666,9 @@ function mapPenalty(rec) {
     reviewNotes: rec.hr_review_notes || "",
     summonsAt: odooDtToIso(rec.summons_datetime),
     summonsPlace: rec.summons_place || "",
+    summonsMode: rec.summons_mode || "onsite",
+    summonsLink: rec.summons_link || "",
+    summonsRecorded: !!rec.summons_recorded,
     summonsSentOn: odooDtToIso(rec.summons_sent_on),
     summonsAckOn: odooDtToIso(rec.summons_ack_on),
     summonsAckBy: rec.summons_ack_by || "",
@@ -3435,13 +3439,20 @@ const actions = {
         if (params?.accept) {
           const investigator = Number(params?.investigatorId || 0);
           if (!investigator) throw new Error("اختر المحقِّق");
-          if (!params?.summonsAt || !String(params?.summonsPlace || "").trim())
-            throw new Error("موعد الاستدعاء ومكانه مطلوبان");
+          const online = params?.summonsMode === "online";
+          const link = String(params?.summonsLink || "").trim();
+          if (!params?.summonsAt) throw new Error("موعد الاستدعاء مطلوب");
+          if (online && !/^https?:\/\//i.test(link))
+            throw new Error("الجلسة عن بُعد تحتاج رابط اجتماعٍ صحيح");
+          if (!online && !String(params?.summonsPlace || "").trim())
+            throw new Error("مكان الاستدعاء مطلوب في الجلسة الحضورية");
           await odoo.execKw("sharqia.discipline.penalty", "hr_review_accept", [[id]], {
             investigator_id: investigator,
             occurrence: Number(params?.occurrence || 0) || false,
             summons_datetime: isoToOdooDt(params.summonsAt),
-            summons_place: String(params.summonsPlace).trim(),
+            summons_mode: online ? "online" : "onsite",
+            summons_place: String(params?.summonsPlace || "").trim() || false,
+            summons_link: online ? link : false,
             notes: String(params?.notes || "").trim() || false,
             ...actorCtx(ctx),
           });
