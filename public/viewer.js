@@ -176,16 +176,19 @@
   function openImage(src, title) {
     if (!src) return;
     close(true);
+    // ⚠️ ليست صفحةً تُفتح: نافذةٌ تعلو الشاشة وتترك ما خلفها ظاهرًا، فيُعرف
+    //   أنها تُغلق بلمسة. وتبدأ بحجمٍ معتدل ثم تكبر بالتقريب بقدر ما يريد.
     var ov = h("div",
-      "position:fixed;inset:0;z-index:2147483600;background:rgba(8,8,10,.92);display:flex;" +
+      "position:fixed;inset:0;z-index:2147483600;background:rgba(6,6,8,.72);display:flex;" +
       "align-items:center;justify-content:center;padding:16px;direction:rtl;touch-action:none;" +
+      "backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);" +
       "font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;overflow:hidden");
     ov.setAttribute("role", "dialog");
     ov.setAttribute("aria-modal", "true");
 
-    var frame = h("div", "position:relative;max-width:92vw;max-height:82vh;border-radius:18px;overflow:hidden;" +
-      "box-shadow:0 18px 60px rgba(0,0,0,.55);background:#101014;touch-action:none");
-    var img = h("img", "display:block;max-width:92vw;max-height:82vh;object-fit:contain;" +
+    var frame = h("div", "position:relative;max-width:78vw;max-height:56vh;border-radius:20px;overflow:hidden;" +
+      "box-shadow:0 22px 70px rgba(0,0,0,.6);background:#101014;border:1px solid rgba(255,255,255,.12);touch-action:none");
+    var img = h("img", "display:block;max-width:78vw;max-height:56vh;object-fit:contain;" +
       "transform-origin:center center;will-change:transform;user-select:none;-webkit-user-drag:none");
     img.src = src;
     img.alt = title || "";

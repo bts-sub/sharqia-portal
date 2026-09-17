@@ -79,49 +79,30 @@ const MARITAL_AR = {
   widower: "أرمل/أرملة", divorced: "مطلق/مطلقة",
 };
 
-// وقت إغلاق بصمة نُسيت مفتوحة: بداية الدوام + ساعات اليوم المعتادة من تقويم
-// عمل الموظف. لا نُغلقها عند منتصف الليل (يوم بأربع عشرة ساعة) ولا عند وقت
-// الحضور نفسه (يوم بصفر ساعات) — كلاهما رقم كاذب في تقارير الدوام.
-async function autoCloseStamp(empId, checkIn) {
-  let hours = 8;
-  try {
-    const emp = await odoo.searchRead("hr.employee", [["id", "=", empId]],
-      await availableFields("hr.employee", ["resource_calendar_id"]), { limit: 1 });
-    const calId = emp[0]?.resource_calendar_id?.[0];
-    if (calId) {
-      const cal = await odoo.searchRead("resource.calendar", [["id", "=", calId]],
-        ["hours_per_day"], { limit: 1 });
-      if (cal[0]?.hours_per_day > 0) hours = cal[0].hours_per_day;
-    }
-  } catch { /* التقويم اختياري — ثماني ساعات افتراض معقول */ }
-  const start = new Date(String(checkIn).replace(" ", "T") + "Z");
-  // ⚠️ كان الحدّ «نهاية اليوم» يُحسب بتوقيت غرينتش: 23:59Z هي 02:59 في
-  //   الرياض. فكل ورديةٍ مسائية نُسي إغلاقها كانت تُغلق على الساعة الثالثة
-  //   فجرًا بلا يدٍ بشرية — رقمٌ كاذب يدخل الرواتب والعمل الإضافي.
-  //   والصواب ساعات الدوام المعتادة من وقت الحضور، بسقف اثنتي عشرة ساعة:
-  //   لا يوم بصفر ساعة ولا يوم بأربع وعشرين.
-  const capped = Math.min(Math.max(Number(hours) || 8, 1), 12);
-  const end = new Date(start.getTime() + capped * 3600e3);
-  const now = Date.now();
-  // ولا تُكتب لحظةٌ في المستقبل: بصمةٌ نُسيت قبل ساعةٍ تُغلق الآن لا غدًا
-  return new Date(Math.min(end.getTime(), now)).toISOString().slice(0, 19).replace("T", " ");
-}
+
+// الوردية المفتوحة يُنبَّه عليها مرّةً في اليوم لا في كل فتحةٍ للشاشة:
+// شاشة الحضور تُفتح عشرات المرات، وإشعارٌ مكرَّر يُقرأ ضجيجًا فيُهمَل.
+const openShiftPinged = new Map();
 
 /**
- * الإغلاق التلقائي لا يمرّ صامتًا.
+ * وردية بلا انصراف: تبقى مفتوحة، ويُبلَّغ بها أهلها.
  *
- * ساعاتُ يومٍ كامل تدخل الراتب، فإغلاقٌ يقدّره النظام ولا يعلم به أحد يمرّ
- * إلى المسيَّر بلا مراجعة. فيُعلَّم السجل «أُغلق تلقائيًّا»، ويُشعَر صاحبه
- * والموارد البشرية ليصحّحه بطلب «تصحيح انصراف».
+ * ساعاتُ يومٍ كامل تدخل الراتب، وانصرافٌ يقدّره النظام رقمٌ لم يسجّله أحد
+ * ويمرّ إلى المسيَّر بلا مراجعة. فلا يُغلق النظام شيئًا: يُبلَّغ الموظف
+ * والموارد البشرية لتُغلق بطلب «تصحيح انصراف» بيد إنسان يعرف الوقت.
  */
-async function notifyAutoClose(empId, attId, checkIn, closeAt) {
+async function flagOpenShift(empId, attId, checkIn) {
+  const key = `${attId}:${todayLocal()}`;
+  if (openShiftPinged.get(key)) return;
+  openShiftPinged.set(key, true);
+  if (openShiftPinged.size > 500) openShiftPinged.clear();
   try {
     const [emp] = await odoo.searchRead("hr.employee", [["id", "=", empId]], ["name"], { limit: 1 });
-    const inL = localParts(checkIn), outL = localParts(closeAt);
+    const inL = localParts(checkIn);
     const when = inL ? `${inL.date} ${inL.hhmm}` : checkIn;
-    const body = `حضورك المسجَّل في ${when} لم يُغلق بانصراف، فأُغلق تقديريًّا في `
-      + `${outL ? outL.hhmm : ""} بساعات دوامك المعتادة. إن كان انصرافك في وقتٍ آخر `
-      + `فارفع طلب «تصحيح انصراف» ليُصحَّح قبل احتساب الراتب.`;
+    const body = `حضورك المسجَّل في ${when} ما زال مفتوحًا بلا بصمة انصراف. `
+      + `ارفع طلب «تصحيح انصراف» بوقت انصرافك الفعلي ليُغلقه المسؤول — `
+      + `ولن يُحتسب لك يومٌ كامل قبل إغلاقه.`;
     const PU = "sharqia.portal.user";
     const [me] = await odoo.searchRead(PU,
       [["employee_id", "=", empId], ["status", "=", "active"]], ["id"], { limit: 1 });
@@ -130,12 +111,12 @@ async function notifyAutoClose(empId, attId, checkIn, closeAt) {
     const mk = (pu, title, text) => odoo.create("sharqia.portal.notification", {
       portal_user_id: pu, ntype: "system", title, body: text,
     }).catch(() => {});
-    if (me) await mk(me.id, "أُغلقت ورديتك تلقائيًّا", body);
+    if (me) await mk(me.id, "وردية مفتوحة بلا انصراف", body);
     for (const h of hrs) {
-      await mk(h.id, "إغلاق تلقائي لوردية",
-        `${emp?.name || ""}: حضور ${when} بلا انصراف — أُغلق تقديريًّا. يحتاج مراجعة قبل الرواتب.`);
+      await mk(h.id, "وردية مفتوحة بلا انصراف",
+        `${emp?.name || ""}: حضور ${when} بلا بصمة انصراف — تحتاج إغلاقًا بطلب «تصحيح انصراف» قبل الرواتب.`);
     }
-  } catch (e) { console.warn("⚠️ تعذّر إشعار الإغلاق التلقائي:", e.message); }
+  } catch (e) { console.warn("⚠️ تعذّر التنبيه على الوردية المفتوحة:", e.message); }
 }
 
 // نوع الصورة يُستنتج من بايتاتها لا بالتخمين: أودو يخزّن ما رُفع كما هو
@@ -1858,16 +1839,15 @@ const actions = {
             [["employee_id", "=", empId], ["check_out", "=", false]],
             ["id", "check_in"], { limit: 20, order: "check_in desc" }))
             .filter((r) => localParts(r.check_in)?.date !== today);
+          // ⚠️ لا يُغلقها النظام أبدًا.
+          //   ساعاتُ يومٍ تدخل الراتب، وانصرافٌ يقدّره النظام رقمٌ لم يسجّله
+          //   أحد. فتبقى الوردية مفتوحةً كما تركها صاحبها، ويُبلَّغ هو
+          //   والموارد البشرية لتُغلق بطلب «تصحيح انصراف» بيد إنسان.
           for (const r of stale) {
             try {
-              const at = await autoCloseStamp(empId, r.check_in);
-              // ⚠️ لا تُعلَّم «يدوية»: اليدوية يكتبها إنسان ويُسأل عنها، وهذه
-              //   قدّرها النظام. تُعلَّم «أُغلقت تلقائيًّا» ويُشعَر بها أهلها.
-              await odoo.write("hr.attendance", r.id,
-                { check_out: at, ...only({ x_auto_closed: true }) });
+              await flagOpenShift(empId, r.id, r.check_in);
               closedStale++;
-              await notifyAutoClose(empId, r.id, r.check_in, at);
-            } catch (e) { console.warn("⚠️ تعذّر إغلاق بصمة معلّقة", r.id, e.message); }
+            } catch (e) { console.warn("⚠️ تعذّر التنبيه على بصمة معلّقة", r.id, e.message); }
           }
         } catch (e) { console.warn("⚠️ تعذّر فحص البصمات المعلّقة:", e.message); }
 
@@ -2046,14 +2026,15 @@ const actions = {
             if (openDay === todayLocal()) {
               throw new Error("لديك حضور مفتوح اليوم — سجّل الانصراف أولًا.");
             }
-            // بصمة يومٍ سابق نُسي إغلاقها: إبقاؤها مفتوحة يحبس الموظف عن
-            // الحضور إلى الأبد. تُغلق بساعات دوامه المعتادة، وتُعلَّم أنها
-            // إغلاقٌ تلقائي ويُشعَر بها هو والموارد البشرية لتُصحَّح.
-            const closeAt = await autoCloseStamp(empId, openNow[0].check_in);
-            await odoo.write("hr.attendance", openNow[0].id,
-              { check_out: closeAt, ...only({ x_auto_closed: true }) });
-            await notifyAutoClose(empId, openNow[0].id, openNow[0].check_in, closeAt);
-            console.warn(`⚠️ أُغلقت بصمة معلّقة تلقائيًا للموظف ${empId} عند ${closeAt}`);
+            // ⚠️ وردية يومٍ سابق بلا انصراف: لا يُغلقها النظام بوقتٍ يخترعه.
+            //   يُبلَّغ صاحبها والموارد البشرية، ويُقال له صراحةً ما يفعل —
+            //   فتُغلق بطلب «تصحيح انصراف» بوقتٍ يعرفه إنسان لا بتقدير آلة.
+            const inL = localParts(openNow[0].check_in);
+            await flagOpenShift(empId, openNow[0].id, openNow[0].check_in);
+            throw new Error(
+              `لديك وردية مفتوحة من ${inL ? inL.date + " الساعة " + inL.hhmm : "يوم سابق"} `
+              + "لم تُسجَّل لها بصمة انصراف. ارفع طلب «تصحيح انصراف» ليُغلقها المسؤول "
+              + "بالوقت الصحيح، ثم سجّل حضور اليوم.");
           }
           const id = await odoo.create("hr.attendance", {
             employee_id: empId, check_in: now,
