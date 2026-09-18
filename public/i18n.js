@@ -21,6 +21,45 @@
 
   /* القاموس: المفتاح هو النص العربي كما هو في الواجهة حرفًا بحرف. */
   var DICT = {
+    /* ── أُضيفت 2026-09-18: عباراتٌ ظهرت في الفحص بلا ترجمة ── */
+    "مدير":                { en: "Manager", ur: "منیجر", fr: "Manager" },
+    "السلام عليكم":        { en: "Hello", ur: "السلام علیکم", fr: "Bonjour" },
+    "مرحبًا بك،":          { en: "Welcome,", ur: "خوش آمدید،", fr: "Bienvenue," },
+    "لدى:":                { en: "With:", ur: "کے پاس:", fr: "Chez :" },
+    "مهارات":              { en: "Skills", ur: "مہارتیں", fr: "Compétences" },
+    "تعليق جديد على طلب":  { en: "New comment on a request", ur: "درخواست پر نیا تبصرہ", fr: "Nouveau commentaire sur une demande" },
+    "نموذج طلب إجازة موقَّع": { en: "Signed leave request form", fr: "Formulaire de congé signé" },
+    "ما الناقص؟":          { en: "What's missing?", ur: "کیا کمی ہے؟", fr: "Que manque-t-il ?" },
+    "أكمل ملفك لتستطيع تقديم طلباتك": { en: "Complete your profile to submit requests", fr: "Complétez votre profil pour envoyer des demandes" },
+    "أكمل ملفك":           { en: "Complete your profile", ur: "اپنا پروفائل مکمل کریں", fr: "Complétez votre profil" },
+    "إكمال":               { en: "Complete", ur: "مکمل کریں", fr: "Compléter" },
+    "التفاصيل":            { en: "Details", ur: "تفصیلات", fr: "Détails" },
+    "إخفاء التفاصيل":      { en: "Hide details", ur: "تفصیلات چھپائیں", fr: "Masquer les détails" },
+    "أكمله الآن":          { en: "Do it now", fr: "À faire maintenant" },
+    "اطلب تحديثه":         { en: "Request an update", fr: "Demander une mise à jour" },
+    "لدى الموارد البشرية": { en: "With HR", fr: "Auprès des RH" },
+    "طلب تحديث البيانات":  { en: "Request a data update", fr: "Demander une mise à jour" },
+    "رسم التوقيع":         { en: "Draw signature", ur: "دستخط بنائیں", fr: "Dessiner la signature" },
+    "طلب جديد":            { en: "New request", ur: "نئی درخواست", fr: "Nouvelle demande" },
+    "مسح وإعادة الرسم":    { en: "Clear and redraw", fr: "Effacer et redessiner" },
+    "اعتماد التوقيع — بعده لا يُعدَّل": { en: "Confirm signature — it is locked afterwards", fr: "Valider la signature — verrouillée ensuite" },
+    "تعديل التوقيع":       { en: "Signature change", ur: "دستخط کی تبدیلی", fr: "Modification de signature" },
+    "سبب التصعيد (إلزامي)": { en: "Escalation reason (required)", fr: "Motif de l'escalade (obligatoire)" },
+    "ما البيانات المطلوبة من الموظف؟ (إلزامي)": { en: "What information do you need from the employee? (required)", fr: "Quelles informations demandez-vous ? (obligatoire)" },
+    "إرسال الطلب للموظف":  { en: "Send to employee", fr: "Envoyer à l'employé" },
+    "تأكيد التصعيد":       { en: "Confirm escalation", fr: "Confirmer l'escalade" },
+    "استلمتُ الاستدعاء":   { en: "I received the summons", fr: "J'ai reçu la convocation" },
+    "طلب الاستدعاء (PDF)": { en: "Summons (PDF)", fr: "Convocation (PDF)" },
+    "محضر التحقيق (PDF)":  { en: "Investigation record (PDF)", fr: "Procès-verbal (PDF)" },
+    "سجل المحضر":          { en: "Record log", fr: "Journal du procès-verbal" },
+    "مراجعة الموارد البشرية": { en: "HR review", ur: "ایچ آر جائزہ", fr: "Revue RH" },
+    "استدعاء للتحقيق":     { en: "Summons for investigation", fr: "Convocation à l'enquête" },
+    "رفع المخالفة إلى الموارد البشرية": { en: "Send violation to HR", fr: "Transmettre aux RH" },
+    "وردية مفتوحة بلا انصراف": { en: "Open shift with no check-out", fr: "Poste ouvert sans pointage de sortie" },
+    "إشعار تجريبي — بوابة الموظفين": { en: "Test notification — Employee Portal", fr: "Notification de test — Portail des employés" },
+    "مفعّلة":              { en: "Enabled", ur: "فعال", fr: "Activées" },
+    "متوقفة":              { en: "Off", ur: "بند", fr: "Désactivées" },
+    "تعمل":                { en: "On", ur: "چالو", fr: "Actives" },
     /* التنقّل */
     "الرئيسية":            { en: "Home", ur: "ہوم", fr: "Accueil" },
     "الخدمات":             { en: "Services", ur: "خدمات", fr: "Services" },
@@ -1640,9 +1679,37 @@
     var k = text.slice(pre.length, text.length - post.length);
     if (!k) return null;
     var row = DICT[k];
-    if (!row || !row[lang]) return null;
-    // نحافظ على المسافات والفواصل المحيطة حتى لا ينهار تباعد العناصر
-    return pre + row[lang] + post;
+    if (row && row[lang]) {
+      // نحافظ على المسافات والفواصل المحيطة حتى لا ينهار تباعد العناصر
+      return pre + row[lang] + post;
+    }
+    // ⚠️ عناوين الطلبات تُبنى في أودو: «طلب» + اسم الخدمة. وأسماء الخدمات
+    //   في القاموس، فكان العنوان كلُّه يمرّ عربيًّا لأن المطابقة تامّة.
+    //   فيُقتطع البادئ ويُترجَم ما بعده، ويبقى ما ليس في القاموس كما هو.
+    var built = compound(k);
+    return built ? pre + built + post : null;
+  }
+
+  /* صيغٌ مركّبة: «طلب X»، و«تحديث بيانات (n عنصر)» — يُترجم ثابتُها ويبقى
+     متغيّرها. وما لا يُعرف متغيّره لا يُترجَم أصلًا. */
+  var PREFIX = {
+    "طلب ": { en: "Request: ", ur: "درخواست: ", fr: "Demande : " },
+    "تعديل ": { en: "Amend: ", ur: "ترمیم: ", fr: "Modifier : " },
+  };
+  function compound(k) {
+    for (var p in PREFIX) {
+      if (k.indexOf(p) !== 0) continue;
+      var rest = k.slice(p.length);
+      var r = DICT[rest];
+      if (r && r[lang]) return PREFIX[p][lang] + r[lang];
+    }
+    var m = k.match(/^تحديث بيانات \((\d+) عنصر\)$/);
+    if (m) {
+      return lang === "en" ? "Data update (" + m[1] + " item" + (m[1] === "1" ? "" : "s") + ")"
+        : lang === "fr" ? "Mise à jour des données (" + m[1] + ")"
+        : lang === "ur" ? "ڈیٹا اپ ڈیٹ (" + m[1] + ")" : null;
+    }
+    return null;
   }
 
   var baseOf = new WeakMap();     // العقدة → نصّها العربي المصدر
