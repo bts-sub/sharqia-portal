@@ -106,11 +106,43 @@
   //   نفسه في عارض النظام بلا زرّ رجوع — خرج من التطبيق وهو يظنّ أنه ينزّل.
   //   فتُجرَّب ورقةُ المشاركة أولًا (فيها «حفظ في الملفات» ولا تنقل الصفحة)،
   //   ثم رابط التنزيل في سياقٍ منفصل لا يستبدل صفحة التطبيق أبدًا.
+  function toast(text) {
+    var t = h("div",
+      "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom));" +
+      "z-index:2147483640;background:#1E1E22;color:#fff;border:1px solid #ffffff22;border-radius:12px;" +
+      "padding:11px 15px;font:600 13px/1.7 'IBM Plex Sans Arabic',sans-serif;direction:rtl;max-width:88vw;" +
+      "text-align:center;box-shadow:0 12px 34px rgba(0,0,0,.45)", text);
+    document.body.appendChild(t);
+    setTimeout(function () { t.remove(); }, 4200);
+  }
+
+  // ⚠️ التنزيل يحفظ الملف ولا ينقل الموظف عنه.
+  //   الرابط المعتاد (‎<a download>‎) لا يُنزّل شيئًا على آيفون: يفتح الملف
+  //   في عارض النظام فوق التطبيق المثبَّت بلا شريط ولا زرّ رجوع — فيبقى
+  //   صاحبه حبيسًا فيه. فالترتيب: ورقةُ المشاركة (فيها «حفظ في الملفات»)،
+  //   ثم نافذةُ الحفظ في المتصفّحات التي تملكها، ثم رابطُ تنزيلٍ في نفس
+  //   الصفحة — ولا يُفتح الملف في أي حال.
   function saveBlob(blob, name) {
     var file = null;
     try { file = new File([blob], name, { type: blob.type || "application/pdf" }); } catch (e) {}
     if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
-      navigator.share({ files: [file], title: name }).catch(function () {});
+      navigator.share({ files: [file], title: name })
+        .catch(function (e) {
+          if (e && e.name === "AbortError") return;      // أغلق الورقة بنفسه
+          toast("لحفظ الملف: اختر «حفظ في الملفات» من ورقة المشاركة.");
+        });
+      return;
+    }
+    if (window.showSaveFilePicker) {
+      window.showSaveFilePicker({
+        suggestedName: name,
+        types: [{ description: "PDF", accept: { "application/pdf": [".pdf"] } }],
+      }).then(function (handle) {
+        return handle.createWritable().then(function (ws) {
+          return ws.write(blob).then(function () { return ws.close(); });
+        });
+      }).then(function () { toast("حُفظ الملف."); })
+        .catch(function () { /* ألغى الحفظ */ });
       return;
     }
     var url = URL.createObjectURL(blob);
@@ -118,10 +150,13 @@
     a.href = url;
     a.download = name;
     a.rel = "noopener";
-    a.target = "_blank";           // لا يستبدل صفحة التطبيق مهما فعل الجهاز
     document.body.appendChild(a);
     a.click();
     setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
+    // من لم يدعم التنزيل (آيفون قديم بلا مشاركة) لا يُفتح له الملف: يبقى في
+    // العارض ومعه زرّ الرجوع، ويُقال له ما يفعل.
+    var iOS = /iPad|iPhone|iPod/.test(navigator.userAgent || "");
+    if (iOS) toast("جهازك لا يدعم الحفظ المباشر — المستند مفتوح أمامك، واستعمل «مشاركة» من المتصفّح لحفظه.");
   }
 
   function openPdf(url, title) {

@@ -689,6 +689,25 @@ function assertSignatureShape(b64) {
   }
 }
 
+const pdfCache = new Map();
+const PDF_CACHE_TTL = 30 * 60 * 1000, PDF_CACHE_MAX = 60;
+async function renderCached(model, id, method, fields = ["write_date"]) {
+  let stamp = "";
+  try {
+    const [rec] = await odoo.searchRead(model, [["id", "=", id]], fields, { limit: 1 });
+    stamp = String(rec?.write_date || "");
+  } catch { /* تعذّرت قراءة الختم: يُرسم كما كان */ }
+  const key = model + ":" + id + ":" + stamp;
+  const hit = pdfCache.get(key);
+  if (hit && Date.now() - hit.at < PDF_CACHE_TTL) return hit.b64;
+  const b64 = await odoo.execKw(model, method, [[id]]);
+  if (b64 && stamp) {
+    if (pdfCache.size >= PDF_CACHE_MAX) pdfCache.delete(pdfCache.keys().next().value);
+    pdfCache.set(key, { at: Date.now(), b64 });
+  }
+  return b64;
+}
+
 const nowOdooDate = () => new Date().toISOString().slice(0, 10);
 const nowOdooDatetime = () => new Date().toISOString().slice(0, 19).replace("T", " ");
 
@@ -2501,7 +2520,7 @@ const actions = {
         }
         // غلافٌ عامّ في الأدون: أودو يمنع نداء _render_qweb_pdf عن بُعد لأنها
         // خاصّة، وقد ردّها فعلًا حين ناديتُها مباشرةً.
-        const b64 = await odoo.execKw("hr.leave", "sharqia_form_pdf", [[id]]);
+        const b64 = await renderCached("hr.leave", id, "sharqia_form_pdf");
         if (!b64) throw new Error("تعذّر إخراج النموذج");
         return { base64: b64, name: `طلب-إجازة-${id}.pdf` };
       },
@@ -2535,7 +2554,7 @@ const actions = {
           if (!e || e.parent_id?.[0] !== empId)
             throw new Error("هذه العهدة ليست في فريقك");
         }
-        const b64 = await odoo.execKw("hr.custody", "sharqia_receipt_pdf", [[id]]);
+        const b64 = await renderCached("hr.custody", id, "sharqia_receipt_pdf");
         if (!b64) throw new Error("تعذّر إخراج المحضر");
         return { base64: b64, name: `محضر-عهدة-${cu.name || id}.pdf` };
       },
@@ -3442,8 +3461,7 @@ const actions = {
           if (!e || e.parent_id?.[0] !== empId)
             throw new Error("هذا الموظف ليس في فريقك");
         }
-        const b64 = await odoo.execKw("sharqia.discipline.penalty",
-          "sharqia_form_pdf", [[id]]);
+        const b64 = await renderCached("sharqia.discipline.penalty", id, "sharqia_form_pdf");
         if (!b64) throw new Error("تعذّر إخراج المحضر");
         return { base64: b64, name: `محضر-${id}.pdf` };
       },
