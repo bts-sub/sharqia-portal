@@ -1227,9 +1227,10 @@ const actions = {
       return { key, label, done: items.length - missing.length, total: items.length, missing };
     };
     const sections = [
+      // ⚠️ الرقم الوظيفي والمسمّى الوظيفي خارج الشرط بقرار الإدارة: لا
+      //   يمنعان صرفًا ولا يحتاجهما مستند، وغيابُهما شأنُ الموارد البشرية
+      //   لا الموظف — فحبسُ طلباته بهما حبسٌ بما لا يملك إصلاحه.
       section("basic", "البيانات الأساسية", [
-        ["الرقم الوظيفي", has(e.empNo)],
-        ["المسمّى الوظيفي", has(e.jobTitle)],
         ["القسم", has(e.dept)],
         ["المدير المباشر", has(e.manager)],
         ["رقم الجوال", has(e.phone)],
