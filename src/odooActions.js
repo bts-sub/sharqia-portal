@@ -691,6 +691,24 @@ function assertSignatureShape(b64) {
 
 const pdfCache = new Map();
 const PDF_CACHE_TTL = 30 * 60 * 1000, PDF_CACHE_MAX = 60;
+/** ملفٌّ مخزَّن في أودو (خطاب صادر) يُقرأ مرّةً ويُخدَم من الذاكرة. */
+async function storedPdf(model, id, field, extra = []) {
+  let stamp = "";
+  const [head] = await odoo.searchRead(model, [["id", "=", id]], ["write_date", ...extra], { limit: 1 });
+  if (!head) return null;
+  stamp = String(head.write_date || "");
+  const key = model + ":file:" + id + ":" + stamp;
+  const hit = pdfCache.get(key);
+  if (hit && Date.now() - hit.at < PDF_CACHE_TTL) return { ...head, [field]: hit.b64 };
+  const [full] = await odoo.searchRead(model, [["id", "=", id]], [field], { limit: 1 });
+  const b64 = full && full[field];
+  if (b64 && stamp) {
+    if (pdfCache.size >= PDF_CACHE_MAX) pdfCache.delete(pdfCache.keys().next().value);
+    pdfCache.set(key, { at: Date.now(), b64 });
+  }
+  return { ...head, [field]: b64 };
+}
+
 async function renderCached(model, id, method, fields = ["write_date"]) {
   let stamp = "";
   try {
@@ -2745,9 +2763,8 @@ const actions = {
     const role = ctx?.user?.role || "employee";
     return withOdoo(
       async () => {
-        const recs = await odoo.searchRead("sharqia.portal.letter", [["id", "=", id]],
-          ["employee_id", "state", "pdf_file", "pdf_name", "letter_type"], { limit: 1 });
-        const l = recs[0];
+        const l = await storedPdf("sharqia.portal.letter", id, "pdf_file",
+          ["employee_id", "state", "pdf_name", "letter_type"]);
         if (!l) throw new Error("الخطاب غير موجود");
         // خطاب الراتب يحمل بيانات أجر — لا يُفتح إلا لصاحبه أو للموارد البشرية
         if (!["hr", "finance", "admin"].includes(role) && l.employee_id?.[0] !== empId)

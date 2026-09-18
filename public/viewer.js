@@ -207,10 +207,18 @@
         if (!open) return;
         ui.body.innerHTML = "";
         var baseWidth = Math.min(ui.body.clientWidth - 20, 900);
-        var dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+        // ⚠️ الرسم على مرحلتين: صفحةٌ خفيفة تظهر فورًا، ثم تُعاد بدقّتها
+        //   الكاملة بعد ظهورها.
+        //   رسمُ الحروف من الخطّ المضمَّن (وهو ما يُصلح العربية) يكلّف نحو
+        //   ثانية ونصف للصفحة بالدقّة الكاملة، وربعَ ذلك بالدقّة الخفيفة.
+        //   والموظف يريد أن يرى خطابه الآن، لا أن ينتظر أحدّ صورةٍ ممكنة.
+        var dprFull = Math.min(window.devicePixelRatio || 1, 2.5);
+        var dprFast = Math.min(dprFull, 1.25);
+        var dpr = dprFast;
         var zoom = 1, pages = [];
 
-        function draw(width) {
+        function draw(width, quality) {
+          if (quality) dpr = quality;
           var chain = Promise.resolve();
           pages.forEach(function (o) {
             chain = chain.then(function () {
@@ -238,7 +246,7 @@
           });
           ui.body.style.alignItems = zoom > 1 ? "flex-start" : "center";
           clearTimeout(redraw);
-          redraw = setTimeout(function () { if (open) draw(w); }, 220);
+          redraw = setTimeout(function () { if (open) draw(w, dprFull); }, 220);
         }
 
         var pts = {}, startDist = 0, startZ = 1, lastTap = 0;
@@ -293,7 +301,12 @@
             });
           })(p);
         }
-        return chain;
+        // بعد ظهور الصفحات بالدقّة الخفيفة تُعاد بدقّتها الكاملة في الخلفية،
+        // فيقرأ الموظف فورًا ثم تزداد حدّةُ ما يقرأ بلا أن ينتظر شيئًا.
+        return chain.then(function () {
+          if (!open || dprFull <= dprFast) return;
+          setTimeout(function () { if (open && zoom === 1) draw(baseWidth, dprFull); }, 80);
+        });
       });
     }).catch(function (e) {
       if (!open) return;
