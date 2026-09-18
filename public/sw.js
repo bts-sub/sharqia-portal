@@ -18,6 +18,9 @@ const PRECACHE = [
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/i18n.js",
+  // محرّك عرض المستندات: تخزينه مع القشرة يجعل أول خطابٍ يُفتح بلا انتظار
+  "/vendor/pdfjs/pdf.min.js",
+  "/vendor/pdfjs/pdf.worker.min.js",
   // الشعار: أول ما يراه الموظف في الدخول والرئيسية، فلا يُترك لشبكةٍ قد تتأخّر
   "/logo-mark.png?v=2",
   "/logo-mark-dark.png?v=1",

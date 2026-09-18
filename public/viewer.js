@@ -122,9 +122,20 @@
   //   صاحبه حبيسًا فيه. فالترتيب: ورقةُ المشاركة (فيها «حفظ في الملفات»)،
   //   ثم نافذةُ الحفظ في المتصفّحات التي تملكها، ثم رابطُ تنزيلٍ في نفس
   //   الصفحة — ولا يُفتح الملف في أي حال.
+  var IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent || "")
+    || (/Macintosh/.test(navigator.userAgent || "") && "ontouchend" in document);
+
   function saveBlob(blob, name) {
     var file = null;
     try { file = new File([blob], name, { type: blob.type || "application/pdf" }); } catch (e) {}
+    // ⚠️ على آيفون لا يُنقر رابطُ تنزيلٍ أبدًا: النظام يفتح الملف في عارضه
+    //   فوق التطبيق المثبَّت بلا شريط ولا زرّ رجوع — فيُحبس صاحبه فيه ولا
+    //   يخرج إلا بإغلاق التطبيق. فإمّا ورقةُ المشاركة (وفيها «حفظ في
+    //   الملفات») وإمّا لا شيء، والمستند أمامه في العارض على كل حال.
+    if (IS_IOS && !(file && navigator.canShare && navigator.canShare({ files: [file] }))) {
+      toast("المستند مفتوح أمامك. لحفظه في جهازك استعمل زرّ المشاركة في المتصفّح.");
+      return;
+    }
     if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
       navigator.share({ files: [file], title: name })
         .catch(function (e) {
@@ -153,10 +164,6 @@
     document.body.appendChild(a);
     a.click();
     setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
-    // من لم يدعم التنزيل (آيفون قديم بلا مشاركة) لا يُفتح له الملف: يبقى في
-    // العارض ومعه زرّ الرجوع، ويُقال له ما يفعل.
-    var iOS = /iPad|iPhone|iPod/.test(navigator.userAgent || "");
-    if (iOS) toast("جهازك لا يدعم الحفظ المباشر — المستند مفتوح أمامك، واستعمل «مشاركة» من المتصفّح لحفظه.");
   }
 
   function openPdf(url, title) {
@@ -498,6 +505,18 @@
     ev.preventDefault();
     openPdf(p, docTitle(p));
   }, true);
+
+  // ⚠️ محرّك العرض يُحمَّل مسبقًا بعد استقرار التطبيق: تحميله عند أول ضغطة
+  //   يضيف ثانيةً أو ثانيتين على فتح أول مستند — وهي التي تُقرأ «بطئًا».
+  //   ويُتخطّى في وضع توفير البيانات أو الشبكة البطيئة: لا يُنفَق ميغابايت
+  //   على من لن يفتح مستندًا اليوم.
+  (function warm() {
+    try {
+      var c = navigator.connection || {};
+      if (c.saveData || /2g/.test(c.effectiveType || "")) return;
+    } catch (e) {}
+    setTimeout(function () { loadPdfJs().catch(function () {}); }, 5000);
+  })();
 
   window.SQ_viewer = {
     openPdf: openPdf,
