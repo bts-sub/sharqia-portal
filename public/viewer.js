@@ -69,6 +69,24 @@
     return { body: body, actions: actions };
   }
 
+  var ICON_DOWNLOAD =
+    '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
+    '<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+
+  function iconBtn(label, svg, fn) {
+    var b = h("button",
+      "background:#C9A227;color:#1b1b1b;border:none;border-radius:10px;width:38px;height:38px;" +
+      "display:grid;place-items:center;cursor:pointer;padding:0");
+    b.type = "button";
+    b.title = label;
+    b.setAttribute("aria-label", label);
+    b.innerHTML = svg;
+    b.onclick = fn;
+    return b;
+  }
+
   function actionBtn(label, fn) {
     var b = h("button",
       "background:#C9A227;color:#1b1b1b;border:none;border-radius:10px;padding:8px 12px;font:inherit;" +
@@ -83,6 +101,11 @@
     body.appendChild(h("div", "color:" + (color || "#ddd") + ";font-size:14px;margin-top:40px;text-align:center;line-height:1.8", text));
   }
 
+  // ⚠️ التنزيل يُنزِّل ولا يفتح.
+  //   كان الرابط ينقل الصفحة إلى الملف نفسه على بعض الأجهزة، فيجد الموظف
+  //   نفسه في عارض النظام بلا زرّ رجوع — خرج من التطبيق وهو يظنّ أنه ينزّل.
+  //   فتُجرَّب ورقةُ المشاركة أولًا (فيها «حفظ في الملفات» ولا تنقل الصفحة)،
+  //   ثم رابط التنزيل في سياقٍ منفصل لا يستبدل صفحة التطبيق أبدًا.
   function saveBlob(blob, name) {
     var file = null;
     try { file = new File([blob], name, { type: blob.type || "application/pdf" }); } catch (e) {}
@@ -90,12 +113,15 @@
       navigator.share({ files: [file], title: name }).catch(function () {});
       return;
     }
+    var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
+    a.href = url;
     a.download = name;
+    a.rel = "noopener";
+    a.target = "_blank";           // لا يستبدل صفحة التطبيق مهما فعل الجهاز
     document.body.appendChild(a);
     a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
 
   function openPdf(url, title) {
@@ -117,7 +143,8 @@
     ]).then(function (res) {
       var blob = res[0], pdfjs = res[1];
       if (!open) return;
-      ui.actions.appendChild(actionBtn("تنزيل", function () { saveBlob(blob, name); }));
+      // أيقونةُ تنزيلٍ وحدها: الشريط ضيّق، والكلمة تزاحم عنوان المستند
+      ui.actions.appendChild(iconBtn("تنزيل", ICON_DOWNLOAD, function () { saveBlob(blob, name); }));
       return blob.arrayBuffer().then(function (buf) {
         // ⚠️ disableFontFace: الحروف تُرسم من الخطّ المضمَّن في الملف نفسه، لا
         // بتحميله في المتصفّح.
@@ -205,8 +232,6 @@
           e.preventDefault();
           setZoom(zoom * (e.deltaY < 0 ? 1.15 : 0.87), false);
         }, { passive: false });
-        ui.actions.appendChild(actionBtn("+", function () { setZoom(zoom + 0.5, true); }));
-        ui.actions.appendChild(actionBtn("−", function () { setZoom(zoom - 0.5, true); }));
 
         var chain = Promise.resolve();
         for (var p = 1; p <= pdf.numPages; p++) {
