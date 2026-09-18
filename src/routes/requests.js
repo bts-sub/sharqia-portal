@@ -141,7 +141,7 @@ async function assertCanAct(user, id, verb = "الاعتماد", expectStage = n
   if (stage === "employee") {
     // إقرارٌ شخصي لا ينوب فيه أحد عن صاحبه — ولا الأدمن. وهو توقيعُ إبراء
     // ذمّة: من يوقّعه عن غيره يُسقط حقًّا ليس له.
-    if (rec.empId && rec.empId === "E" + user.odooEmployeeId) return;
+    if (rec.empId && rec.empId === "E" + user.odooEmployeeId) return rec;
     throw forbidden("هذه المرحلة إقرارٌ شخصي لصاحب الطلب وحده");
   }
 
@@ -153,24 +153,25 @@ async function assertCanAct(user, id, verb = "الاعتماد", expectStage = n
   if (stage === "manager") {
     if (user.role === "manager") {
       if (String(rec.empId) === "E" + user.odooEmployeeId) throw forbidden("لا يمكنك اعتماد طلبك بنفسك");
-      return;
+      return rec;
     }
     // مرحلةٌ بلا صاحب (الموظف بلا مدير، أو مديره بلا حساب يعتمد) تحبس الطلب
     // إلى الأبد: صاحبه لا يعتمد لنفسه وغيره ليست مرحلته. الموارد البشرية
     // والإدارة يفكّان الاحتباس — وهما من يقع عليهما البديل تنظيميًّا.
-    if (["hr", "admin"].includes(user.role) && await managerStageIsVacant(rec.empId)) return;
+    if (["hr", "admin"].includes(user.role) && await managerStageIsVacant(rec.empId)) return rec;
     throw forbidden("هذا الطلب بانتظار المدير المباشر");
   }
   if (user.role !== stage) {
     // ومديرُ القسم صاحبِ المرحلة يعتمدها ولو لم يحمل دورَها: قرّرت الإدارة
     // أن اعتماد مرحلة التقنية عند مدير قسم تقنية المعلومات، ودورُه في
     // البوابة «مدير» لفريقه — ولا يحمل حسابٌ دورين.
-    if (await ownsStageByDepartment(user.odooEmployeeId, stage)) return;
+    if (await ownsStageByDepartment(user.odooEmployeeId, stage)) return rec;
     // مرحلةٌ لا يحمل دورَها أحد (لا مستخدم مالية مثلًا) تحبس الطلب كما
     // تحبسه مرحلة المدير الشاغرة — والموارد البشرية والإدارة يفكّانها.
-    if (["hr", "admin"].includes(user.role) && await stageRoleIsVacant(stage)) return;
+    if (["hr", "admin"].includes(user.role) && await stageRoleIsVacant(stage)) return rec;
     throw forbidden(`هذا الطلب في مرحلة «${stage}» وليست مرحلتك`);
   }
+  return rec;
 }
 
 router.get("/requests", async (req, res, next) => {
@@ -204,8 +205,7 @@ router.get("/requests/:id", async (req, res, next) => {
 // والأدون يطبع توقيعه المحفوظ لحظةَ إصدار المستند. فالاعتماد بلا توقيع محفوظ
 // يُخرج ورقةً بسطر توقيع فارغ لا تنفع الموظف — ومن ثمّ يُمنع.
 // ---------------------------------------------------------------------------
-async function assertSignedIfLetter(user, id) {
-  const { data } = await runAction("request.read", { id, scope: "all" }, { user });
+async function assertSignedIfLetter(user, data) {
   if (!producesLetter(data)) return;
   const { data: sig } = await runAction("me.signature.read", {}, { user });
   if (!sig?.hasSignature)
@@ -218,8 +218,7 @@ async function assertSignedIfLetter(user, id) {
 // إبراءُ ذمّة، وما يُحتجّ به عند الخلاف هو الخطّ لا سجلّ نقرة. فمرحلةُ العامل
 // فيها لا تمرّ إلا بتوقيع محفوظ باسمه.
 // ---------------------------------------------------------------------------
-async function assertSignedIfSettlement(user, id) {
-  const { data } = await runAction("request.read", { id, scope: "all" }, { user });
+async function assertSignedIfSettlement(user, data) {
   if (!data) return;
   const flow = flowFor(data.category, data.service);
   const stage = data.state === "submitted" ? flow[0] : data.state;
@@ -235,14 +234,19 @@ async function assertSignedIfSettlement(user, id) {
 router.post("/requests/:id/approve", async (req, res, next) => {
   try {
     if (!isTestMode()) {
-      await assertCanAct(req.user, req.params.id, "الاعتماد",
+      // ⚠️ فحصُ المرحلة يُعيد سجلّ الطلب فيُستعمل بعده: كان فحصا التوقيع
+      // يقرآن الطلب كاملًا من أودو، كلٌّ على حدة — قراءتان متطابقتان تكلّفان
+      // نحو ثانيةٍ ونصف قِيست، قبل اعتمادٍ لا يكلّف ربعها. فكان المستخدم
+      // يضغط «اعتماد» ويظنّه معلّقًا. وما يحتاجه الفحصان هو الخدمة والتصنيف
+      // والحالة، وثلاثتها في سجلّ المرحلة أصلًا.
+      const rec = await assertCanAct(req.user, req.params.id, "الاعتماد",
         req.body?.expectStage);
       // التوقيع يُحفظ قبل الاعتماد لا بعده: الخطاب يُولَّد داخل الاعتماد نفسه،
       // فتوقيعٌ يُحفظ بعده يأتي متأخرًا عن المستند الذي صدر بلا توقيع.
       if (req.body?.signature)
         await runAction("me.signature", { image: req.body.signature }, { user: req.user });
-      await assertSignedIfLetter(req.user, req.params.id);
-      await assertSignedIfSettlement(req.user, req.params.id);
+      await assertSignedIfLetter(req.user, rec);
+      await assertSignedIfSettlement(req.user, rec);
       const { data } = await runAction("request.approve", { id: Number(req.params.id) }, { user: req.user });
       return res.json(data);
     }
