@@ -254,6 +254,20 @@ router.post("/requests/:id/approve", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// طلب معلومات من صاحب الطلب، أو تصعيده — كلاهما بسببٍ مكتوب لا بضغطة
+router.post("/requests/:id/note", async (req, res, next) => {
+  try {
+    const escalate = !!req.body?.escalate;
+    await assertCanAct(req.user, req.params.id, escalate ? "التصعيد" : "طلب المعلومات");
+    const { data } = await runAction("request.note", {
+      id: Number(req.params.id), note: req.body?.note || "", escalate,
+    }, { user: req.user });
+    res.json(data);
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر إتمام الإجراء"));
+  }
+});
+
 router.post("/requests/:id/reject", async (req, res, next) => {
   try {
     if (!isTestMode()) {

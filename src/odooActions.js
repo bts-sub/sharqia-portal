@@ -2563,6 +2563,32 @@ const actions = {
     );
   },
 
+  /** طلب بياناتٍ من صاحب الطلب، أو تصعيده — بسببٍ مكتوب يُسجَّل ويُبلَّغ به. */
+  async "request.note"(params, ctx) {
+    const id = Number(params?.id || 0);
+    const note = String(params?.note || "").trim();
+    const escalate = !!params?.escalate;
+    if (!id) throw new Error("معرّف الطلب مطلوب");
+    if (!note) throw new Error(escalate ? "اكتب سبب التصعيد" : "اكتب البيانات المطلوبة");
+    if (note.length > 2000) throw new Error("النص طويل — الحد 2000 حرف");
+    return withOdoo(
+      async () => {
+        await odoo.execKw("sharqia.portal.request",
+          escalate ? "action_escalate" : "action_request_info", [[id]], {
+            note,
+            context: {
+              portal_actor: ctx?.user?.name || "",
+              portal_actor_login: ctx?.user?.login || "",
+              portal_actor_employee: Number(ctx?.user?.odooEmployeeId) || 0,
+            },
+          });
+        return { ok: true };
+      },
+      async () => ({ ok: true }),
+      { forceLiveErrors: true }
+    );
+  },
+
   async "request.reject"(params, ctx) {
     return withOdoo(
       async () => {
