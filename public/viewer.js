@@ -100,7 +100,7 @@
 
   function openPdf(url, title) {
     var ui = shell(title || "المستند");
-    message(ui.body, "جارٍ فتح المستند…");
+    ui.body.appendChild(h("div","width:min(86vw,640px);aspect-ratio:1/1.414;border-radius:6px;background:#ffffff14;margin-top:6px"));
     var name = (title || "document").replace(/[\\/:*?"<>|]+/g, " ").trim() + ".pdf";
     var viewUrl = url + (url.indexOf("?") >= 0 ? "&" : "?") + "view=1";
     Promise.all([
