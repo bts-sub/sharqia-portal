@@ -837,6 +837,8 @@ export const SERVICE_FLOW = {
   // تبديل التوقيع المحفوظ: تقنية المعلومات وحدها تعتمده، وباعتماده يُمسح
   // القديم فيرسم صاحبه توقيعه الجديد.
   "تعديل التوقيع": ["it", "done"],
+  // مهمّة عمل: مدير صاحبها ثم الموارد البشرية
+  "مهمة عمل": ["manager", "hr", "done"],
   "تعديل راتب": ["hr", "finance", "done"],
   "زيادة راتب": ["hr", "finance", "done"],
   "مكافأة": ["hr", "finance", "done"],
@@ -3532,6 +3534,27 @@ const actions = {
       }),
       async () => ({ limitHours: 72 }),
       { emptyOnError: () => ({ limitHours: 72, unavailable: true }) }
+    );
+  },
+
+  /** دليل الزملاء — لاختيار مرافقي مهمّة العمل. */
+  async "employee.colleagues"(params, ctx) {
+    const empId = Number(ctx?.user?.odooEmployeeId) || 0;
+    return withOdoo(
+      async () => {
+        const recs = await odoo.searchRead("hr.employee", [],
+          ["name", "job_title", "department_id", "parent_id"],
+          { limit: 400, order: "name" });
+        return {
+          records: recs.filter((r) => r.id !== empId).map((r) => ({
+            id: r.id, name: r.name || "", job: r.job_title || "",
+            department: r.department_id?.[1] || "",
+            managerId: r.parent_id?.[0] || 0, manager: r.parent_id?.[1] || "",
+          })),
+        };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
     );
   },
 

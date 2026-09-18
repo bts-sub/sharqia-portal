@@ -29,6 +29,16 @@ router.post("/employee/photo", async (req, res, next) => {
 });
 
 // GET /api/employee/completion → نسبة اكتمال الملف وأقسامه وما ينقصه
+// GET /api/employee/colleagues → دليل الزملاء (اسم ووظيفة وقسم)
+//   تحتاجه مهمّة العمل: من يرافقك فيها؟ والدليل الداخلي ليس سرًّا — الأسماء
+//   والأقسام معروفة في المنشأة، ولا يخرج منه راتبٌ ولا رقم هوية.
+router.get("/employee/colleagues", async (req, res, next) => {
+  try {
+    const { data } = await runAction("employee.colleagues", {}, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
 router.get("/employee/completion", async (req, res, next) => {
   try {
     const { data } = await runAction("employee.completion",
@@ -61,6 +71,9 @@ router.get("/custody/:id/receipt", async (req, res, next) => {
       { id: req.params.id }, { user: req.user });
     const buf = Buffer.from(data.base64, "base64");
     res.setHeader("Content-Type", "application/pdf");
+    // المستند نفسه لا يتغيّر ما دام مفتوحًا: تخزينٌ خاصّ بالمتصفّح دقائقَ
+    // يجعل إعادة فتحه فوريّة، ولا يُشارَك مع مستخدمٍ آخر (private).
+    res.setHeader("Cache-Control", "private, max-age=300");
     res.setHeader("Content-Disposition",
       `inline; filename*=UTF-8''${encodeURIComponent(data.name)}`);
     res.setHeader("Content-Length", buf.length);

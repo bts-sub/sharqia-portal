@@ -287,6 +287,9 @@ router.get("/requests/:id/letter", async (req, res, next) => {
       { id: req.params.id }, { user: req.user });
     const buf = Buffer.from(data.base64, "base64");
     res.setHeader("Content-Type", "application/pdf");
+    // المستند نفسه لا يتغيّر ما دام مفتوحًا: تخزينٌ خاصّ بالمتصفّح دقائقَ
+    // يجعل إعادة فتحه فوريّة، ولا يُشارَك مع مستخدمٍ آخر (private).
+    res.setHeader("Cache-Control", "private, max-age=300");
     res.setHeader("Content-Disposition",
       `inline; filename*=UTF-8''${encodeURIComponent(data.name)}`);
     res.setHeader("Content-Length", buf.length);

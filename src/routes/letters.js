@@ -54,6 +54,9 @@ router.get("/letters/:id/pdf", async (req, res, next) => {
     // ?view=1 يعرضه في قارئ المتصفح؛ الافتراضي تنزيل لأن الموظف يطلبه ورقةً
     const inline = ["1", "true"].includes(String(req.query.view));
     res.setHeader("Content-Type", "application/pdf");
+    // المستند نفسه لا يتغيّر ما دام مفتوحًا: تخزينٌ خاصّ بالمتصفّح دقائقَ
+    // يجعل إعادة فتحه فوريّة، ولا يُشارَك مع مستخدمٍ آخر (private).
+    res.setHeader("Cache-Control", "private, max-age=300");
     res.setHeader("Content-Disposition",
       `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(data.name)}`);
     res.setHeader("Content-Length", buf.length);
