@@ -50,7 +50,9 @@ async function assertProfileComplete(user, p) {
   const self = String(user.odooEmployeeId || "");
   const ben = String(p.beneficiaryId || "").replace(/^E/, "");
   if (ben && self && ben !== self) return;
-  const { data } = await runAction("employee.completion", {}, { user });
+  // ⚠️ قراءةٌ حيّة لا من الذاكرة المؤقتة: من أكمل بياناته قبل لحظةٍ يجب أن
+  //   تُفتح له الطلبات الآن، لا بعد دقيقةٍ يظنّ فيها أن المنع لم يرتفع.
+  const { data } = await runAction("employee.completion", { fresh: true }, { user });
   if (data?.complete) return;
   const missing = (data?.sections || []).flatMap((s) => s.missing).slice(0, 4);
   const err = forbidden(
