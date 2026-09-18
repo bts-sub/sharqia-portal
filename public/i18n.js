@@ -25,6 +25,7 @@
     "مدير":                { en: "Manager", ur: "منیجر", fr: "Manager" },
     "السلام عليكم":        { en: "Hello", ur: "السلام علیکم", fr: "Bonjour" },
     "مرحبًا بك،":          { en: "Welcome,", ur: "خوش آمدید،", fr: "Bienvenue," },
+    "مرحبًا بك":           { en: "Welcome", ur: "خوش آمدید", fr: "Bienvenue" },
     "لدى:":                { en: "With:", ur: "کے پاس:", fr: "Chez :" },
     "مهارات":              { en: "Skills", ur: "مہارتیں", fr: "Compétences" },
     "تعليق جديد على طلب":  { en: "New comment on a request", ur: "درخواست پر نیا تبصرہ", fr: "Nouveau commentaire sur une demande" },
@@ -1678,6 +1679,12 @@
     var post = (text.match(TAIL) || [""])[0];
     var k = text.slice(pre.length, text.length - post.length);
     if (!k) return null;
+    // علامات الترقيم العربية تُقلب إلى اللاتينية في اللغات اللاتينية:
+    // «Welcome،» تُقرأ خطأً مطبعيًّا لا ترجمةً.
+    if (lang === "en" || lang === "fr") {
+      pre = pre.replace(/،/g, ",").replace(/؛/g, ";").replace(/؟/g, "?");
+      post = post.replace(/،/g, ",").replace(/؛/g, ";").replace(/؟/g, "?");
+    }
     var row = DICT[k];
     if (row && row[lang]) {
       // نحافظ على المسافات والفواصل المحيطة حتى لا ينهار تباعد العناصر
