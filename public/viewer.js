@@ -137,8 +137,77 @@
       }).then(function (pdf) {
         if (!open) return;
         ui.body.innerHTML = "";
-        var width = Math.min(ui.body.clientWidth - 20, 900);
+        var baseWidth = Math.min(ui.body.clientWidth - 20, 900);
         var dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+        var zoom = 1, pages = [];
+
+        function draw(width) {
+          var chain = Promise.resolve();
+          pages.forEach(function (o) {
+            chain = chain.then(function () {
+              if (!open) return;
+              var vp = o.page.getViewport({ scale: (width / o.base.width) * dpr });
+              o.canvas.width = vp.width; o.canvas.height = vp.height;
+              o.canvas.style.width = width + "px";
+              return o.page.render({ canvasContext: o.canvas.getContext("2d"), viewport: vp }).promise;
+            });
+          });
+          return chain;
+        }
+
+        // ⚠️ التقريب يُعيد الرسم لا يُكبّر الصورة: تكبير اللوحة يجعل الخط
+        //   مهترئًا وهو ما جاء الموظف ليقرأه. فتُرسم الصفحات من جديد بالمقاس
+        //   الجديد، والقرص بالإصبعين يُغيّره كما يُغيّره في أي عارضٍ آخر.
+        var redraw = null;
+        function setZoom(z, anim) {
+          zoom = Math.min(4, Math.max(1, z));
+          var w = Math.round(baseWidth * zoom);
+          pages.forEach(function (o) {
+            o.canvas.style.transition = anim ? "width .15s ease" : "none";
+            o.canvas.style.width = w + "px";
+            o.canvas.style.maxWidth = "none";
+          });
+          ui.body.style.alignItems = zoom > 1 ? "flex-start" : "center";
+          clearTimeout(redraw);
+          redraw = setTimeout(function () { if (open) draw(w); }, 220);
+        }
+
+        var pts = {}, startDist = 0, startZ = 1, lastTap = 0;
+        function dist2() {
+          var k = Object.keys(pts);
+          if (k.length < 2) return 0;
+          return Math.hypot(pts[k[0]].x - pts[k[1]].x, pts[k[0]].y - pts[k[1]].y);
+        }
+        ui.body.style.touchAction = "pan-x pan-y";
+        ui.body.addEventListener("pointerdown", function (e) {
+          pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+          if (Object.keys(pts).length === 2) { startDist = dist2(); startZ = zoom; }
+        });
+        ui.body.addEventListener("pointermove", function (e) {
+          if (!pts[e.pointerId]) return;
+          pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+          if (Object.keys(pts).length >= 2 && startDist) {
+            e.preventDefault();
+            setZoom(startZ * (dist2() / startDist), false);
+          }
+        }, { passive: false });
+        function endPt(e) {
+          delete pts[e.pointerId];
+          if (Object.keys(pts).length < 2) startDist = 0;
+          var now = Date.now();
+          if (e.type === "pointerup" && now - lastTap < 320) { setZoom(zoom > 1.2 ? 1 : 2, true); lastTap = 0; }
+          else if (e.type === "pointerup") lastTap = now;
+        }
+        ui.body.addEventListener("pointerup", endPt);
+        ui.body.addEventListener("pointercancel", endPt);
+        ui.body.addEventListener("wheel", function (e) {
+          if (!e.ctrlKey && !e.metaKey) return;      // عجلةٌ وحدها تمرير لا تقريب
+          e.preventDefault();
+          setZoom(zoom * (e.deltaY < 0 ? 1.15 : 0.87), false);
+        }, { passive: false });
+        ui.actions.appendChild(actionBtn("+", function () { setZoom(zoom + 0.5, true); }));
+        ui.actions.appendChild(actionBtn("−", function () { setZoom(zoom - 0.5, true); }));
+
         var chain = Promise.resolve();
         for (var p = 1; p <= pdf.numPages; p++) {
           (function (n) {
@@ -146,11 +215,12 @@
               if (!open) return;
               return pdf.getPage(n).then(function (page) {
                 var base = page.getViewport({ scale: 1 });
-                var vp = page.getViewport({ scale: (width / base.width) * dpr });
+                var vp = page.getViewport({ scale: (baseWidth / base.width) * dpr });
                 var c = document.createElement("canvas");
                 c.width = vp.width; c.height = vp.height;
-                c.style.cssText = "width:" + width + "px;max-width:100%;height:auto;background:#fff;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.4)";
+                c.style.cssText = "width:" + baseWidth + "px;max-width:100%;height:auto;background:#fff;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.4)";
                 ui.body.appendChild(c);
+                pages.push({ page: page, base: base, canvas: c });
                 return page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
               });
             });
