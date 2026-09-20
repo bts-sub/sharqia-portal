@@ -622,6 +622,7 @@ const DISC_FIELDS = ["name", "employee_id", "violation_id", "category",
   "decided_on", "applied_on", "reported_by_id",
   "employee_signed_on", "hr_signed_on", "hr_signed_by_id",
   "discovered_at", "submitted_on", "investigated_by_id", "investigated_on",
+  "investigator_signed_on",
   "hr_reviewed_by_id", "hr_reviewed_on", "hr_review_notes",
   "summons_type", "summons_datetime", "summons_place", "summons_sent_on",
   "summons_mode", "summons_link", "summons_recorded",
@@ -761,6 +762,8 @@ function mapPenalty(rec) {
     investigatorId: rec.investigated_by_id?.[0] || 0,
     investigator: rec.investigated_by_id?.[1] || "",
     investigatedOn: rec.investigated_on || null,
+    signedByInvestigator: !!rec.investigator_signed_on,
+    investigatorSignedOn: odooDtToIso(rec.investigator_signed_on),
     reviewedBy: rec.hr_reviewed_by_id?.[1] || "",
     reviewedOn: odooDtToIso(rec.hr_reviewed_on),
     reviewNotes: rec.hr_review_notes || "",
@@ -3673,7 +3676,8 @@ const actions = {
       async () => {
         if (!id || !empId) throw new Error("بيانات ناقصة");
         const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
-          [["id", "=", id]], ["employee_id", "state", "investigated_by_id", "hr_signed_on"],
+          [["id", "=", id]], ["employee_id", "state", "investigated_by_id",
+            "hr_signed_on", "investigator_signed_on"],
           { limit: 1 });
         if (!rec) throw new Error("المخالفة غير موجودة");
         if (rec.employee_id?.[0] === empId) throw new Error("لا تكتب محضر مخالفتك");
@@ -3681,7 +3685,8 @@ const actions = {
         if (!isInvestigator && !["hr", "admin"].includes(role))
           throw new Error("المحضر يكتبه المحقِّق المكلَّف");
         if (rec.state !== "investigation") throw new Error("المحضر يُكتب أثناء التحقيق");
-        if (rec.hr_signed_on) throw new Error("المحضر موقَّع، فلا يُعدَّل");
+        if (rec.hr_signed_on || rec.investigator_signed_on)
+          throw new Error("المحضر موقَّع، فلا يُعدَّل");
         await odoo.write("sharqia.discipline.penalty", [id], {
           investigation_notes: String(params?.text || "").trim(),
         });
@@ -3741,7 +3746,8 @@ const actions = {
           throw new Error("التوقيع مطلوب");
         assertSignatureShape(image.slice(image.indexOf(",") + 1));
         const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
-          [["id", "=", id]], ["employee_id", "state", "employee_statement"],
+          [["id", "=", id]], ["employee_id", "state", "employee_statement",
+            "investigated_by_id", "investigation_notes", "employee_signed_on"],
           { limit: 1 });
         if (!rec) throw new Error("المخالفة غير موجودة");
         const b64 = image.slice(image.indexOf(",") + 1);
@@ -3757,6 +3763,22 @@ const actions = {
           await odoo.callButton("sharqia.discipline.penalty",
             "action_employee_signed", [id]);
           return { ok: true, party: "employee" };
+        }
+
+        // المحقِّق المكلَّف يوقّع محضره هو: سمع الأقوال وكتبها، فتوقيعه شاهدُ
+        // السماع. وبه يكتمل المحضر ويصير الجزاء جاهزًا لاعتماد الموارد
+        // البشرية — لا تُطالَب بتوقيعٍ على تحقيقٍ لم تحضره.
+        if (rec.investigated_by_id?.[0] === empId) {
+          if (!rec.employee_signed_on)
+            throw new Error("لم يوقّع الموظف على أقواله بعد");
+          if (!String(rec.investigation_notes || "").trim())
+            throw new Error("اكتب محضر التحقيق قبل التوقيع عليه");
+          await odoo.write("sharqia.discipline.penalty", [id], {
+            investigator_signature: b64, investigator_signed_on: nowOdooDatetime(),
+          });
+          await odoo.callButton("sharqia.discipline.penalty",
+            "action_investigator_signed", [id]);
+          return { ok: true, party: "investigator" };
         }
 
         if (!["hr", "admin"].includes(role))
