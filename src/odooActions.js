@@ -2305,7 +2305,11 @@ const actions = {
           ["state", "!=", "employee"]];
       }
       domain = orDomains(ownAck, roleDomain) || [["id", "=", 0]];
-    } else domain = [["employee_id", "=", empId]];
+    } else {
+      // «طلباتي» تضمّ المهمّات التي رُشِّح فيها مرافقًا: اسمه فيها وغيابُه
+      // عن موقعه يُبنى عليها، فلا تُخفى عنه.
+      domain = ["|", ["employee_id", "=", empId], ["companion_ids", "in", [empId]]];
+    }
     return withOdoo(
       async () => {
         const fields = await requestReadFields();
@@ -2399,8 +2403,13 @@ const actions = {
     return withOdoo(
       async () => {
         const domain = numeric ? [["id", "=", numeric]] : [["name", "=", raw]];
-        // موظف عادي لا يقرأ طلب غيره
-        if (params?.scope !== "all" && empId) domain.push(["employee_id", "=", empId]);
+        // موظف عادي لا يقرأ طلب غيره — إلا مهمّةً هو مرافقٌ فيها.
+        //   ⚠️ المرافق يصله إشعار «أنت ضمن مهمّة عمل» فيفتحه، فكان يُردّ
+        //   بـ«الطلب غير موجود»: اسمه في الطلب ولا يُؤذن له بقراءته.
+        if (params?.scope !== "all" && empId) {
+          domain.push("|", ["employee_id", "=", empId],
+            ["companion_ids", "in", [empId]]);
+        }
         const fields = await requestReadFields();
         const recs = await odoo.searchRead("sharqia.portal.request", domain, fields, { limit: 1 });
         if (!recs.length) return null;
