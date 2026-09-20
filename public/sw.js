@@ -10,20 +10,29 @@
 const VERSION = "v96";
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
+// ⚠️ ملفاتٌ لا تتغيّر أبدًا (محرّك العرض والخطوط والأيقونات): ذاكرتها لا
+// تحمل رقم الإصدار، فلا تُمحى مع كل نشر. كانت تُمحى وتُنزَّل من جديد —
+// ١٫٥ ميجابايت من pdf.js وحده — فيبطئ كل إصدارٍ أجهزةَ الموظفين جميعًا.
+const STATIC = "static-v1";
+const IMMUTABLE = /^\/(vendor|fonts|icons)\//;
 
 // ما يكفي لفتح التطبيق بلا شبكة
 const PRECACHE = [
   "/",
   "/manifest.webmanifest",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
   "/i18n.js",
-  // محرّك عرض المستندات: تخزينه مع القشرة يجعل أول خطابٍ يُفتح بلا انتظار
-  "/vendor/pdfjs/pdf.min.js",
-  "/vendor/pdfjs/pdf.worker.min.js",
   // الشعار: أول ما يراه الموظف في الدخول والرئيسية، فلا يُترك لشبكةٍ قد تتأخّر
   "/logo-mark.png?v=2",
   "/logo-mark-dark.png?v=1",
+];
+
+// لا يتغيّر بتغيّر الإصدار، فيُخزَّن مرّةً واحدة ويبقى
+const PRECACHE_STATIC = [
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  // محرّك عرض المستندات: تخزينه يجعل الخطاب يُفتح بلا انتظار تنزيله
+  "/vendor/pdfjs/pdf.min.js",
+  "/vendor/pdfjs/pdf.worker.min.js",
   "/fonts/IBMPlexSansArabic-Regular.ttf",
   "/fonts/IBMPlexSansArabic-SemiBold.ttf",
   "/fonts/Tajawal-Bold.ttf",
@@ -31,8 +40,16 @@ const PRECACHE = [
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
-    caches.open(SHELL)
-      .then((c) => c.addAll(PRECACHE))
+    Promise.all([
+      caches.open(SHELL).then((c) => c.addAll(PRECACHE)),
+      caches.open(STATIC).then(async (c) => {
+        // ما هو مخزَّنٌ سلفًا لا يُنزَّل ثانيةً
+        const have = await c.keys();
+        const has = new Set(have.map((r) => new URL(r.url).pathname));
+        const need = PRECACHE_STATIC.filter((p) => !has.has(p));
+        if (need.length) await c.addAll(need);
+      }),
+    ])
       .then(() => self.skipWaiting())
       .catch(() => self.skipWaiting())   // فشل تخزين أصل واحد لا يمنع التثبيت
   );
@@ -41,7 +58,9 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k !== SHELL && k !== ASSETS).map((k) => caches.delete(k)));
+    await Promise.all(keys
+      .filter((k) => k !== SHELL && k !== ASSETS && k !== STATIC)
+      .map((k) => caches.delete(k)));
     await self.clients.claim();
 
     // (3) تطبيقٌ مثبّت على iOS لا تنتهي صفحته بإغلاقه — تُستعاد من الذاكرة
@@ -137,7 +156,29 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // (3) الأصول: الشبكة أولًا كذلك، والذاكرة شبكة نجاة عند انقطاعها.
+  // (3) ما لا يتغيّر: من الذاكرة مباشرةً بلا سؤال الشبكة.
+  //   محرّك العرض ١٫٥ ميجابايت وخطوطٌ بمئات الكيلوبايت، وكلها ثابتة لا
+  //   تتبدّل بإصدار. وكانت تُطلب من الشبكة في كل فتحة، فيقف الموظف ينتظر
+  //   تنزيلها قبل أن يظهر الخطاب — وهو ما اشتُكي منه: «الخطاب يطول».
+  if (IMMUTABLE.test(url.pathname)) {
+    e.respondWith((async () => {
+      const hit = await caches.match(req, { cacheName: STATIC });
+      if (hit) return hit;
+      try {
+        const res = await fetch(req);
+        if (res && res.status === 200 && res.type === "basic") {
+          const c = await caches.open(STATIC);
+          c.put(req, res.clone());
+        }
+        return res;
+      } catch {
+        return (await caches.match(req)) || Response.error();
+      }
+    })());
+    return;
+  }
+
+  // (4) بقيّة الأصول: الشبكة أولًا، والذاكرة شبكة نجاة عند انقطاعها.
   //   كانت «الذاكرة أولًا مع تحديث في الخلفية»، وهي تُخدّم النسخة السابقة
   //   دائمًا: بعد كل نشر يبقى الموظف على i18n.js القديم حتى الفتحة التالية —
   //   فيرى قاموس ترجمة متأخرًا بإصدار كامل ويظنّ أن الترجمة لم تُصلَح.
