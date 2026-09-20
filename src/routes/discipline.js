@@ -195,6 +195,20 @@ router.post("/discipline/:id/decide", async (req, res, next) => {
   }
 });
 
+// البتّ في تظلّم الموظف: قبولًا يُسقط الجزاء، أو رفضًا بردٍّ مكتوب.
+router.post("/discipline/:id/grievance", async (req, res, next) => {
+  try {
+    if (!["hr", "admin"].includes(req.user.role))
+      throw forbidden("البتّ في التظلّم للموارد البشرية");
+    const { data } = await runAction("discipline.grievance", {
+      id: req.params.id, accept: !!req.body?.accept, reply: req.body?.reply,
+    }, { user: req.user });
+    res.json(data);
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر البتّ في التظلّم"));
+  }
+});
+
 // توقيع المحضر. الطرف يُستنتج على الخادم من صاحب المخالفة ودور الموقّع،
 // فلا يقول العميل من هو.
 router.post("/discipline/:id/sign", async (req, res, next) => {

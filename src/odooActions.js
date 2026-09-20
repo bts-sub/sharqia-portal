@@ -622,7 +622,8 @@ const DISC_FIELDS = ["name", "employee_id", "violation_id", "category",
   "decided_on", "applied_on", "reported_by_id",
   "employee_signed_on", "hr_signed_on", "hr_signed_by_id",
   "discovered_at", "submitted_on", "investigated_by_id", "investigated_on",
-  "investigator_signed_on",
+  "investigator_signed_on", "grievance_on", "grievance_due_on",
+  "grievance_reply", "grievance_decided_on", "grievance_accepted",
   "hr_reviewed_by_id", "hr_reviewed_on", "hr_review_notes",
   "summons_type", "summons_datetime", "summons_place", "summons_sent_on",
   "summons_mode", "summons_link", "summons_recorded",
@@ -749,6 +750,11 @@ function mapPenalty(rec) {
     investigation: rec.investigation_notes || "",
     decision: rec.decision_notes || "",
     grievance: rec.grievance || "",
+    grievanceOn: rec.grievance_on || null,
+    grievanceDueOn: rec.grievance_due_on || null,
+    grievanceReply: rec.grievance_reply || "",
+    grievanceDecidedOn: odooDtToIso(rec.grievance_decided_on),
+    grievanceAccepted: !!rec.grievance_accepted,
     decidedOn: rec.decided_on || null, appliedOn: rec.applied_on || null,
     reportedBy: rec.reported_by_id?.[1] || "",
     signedByEmployee: !!rec.employee_signed_on,
@@ -3417,6 +3423,12 @@ const actions = {
         const vals = { [field]: text };
         if (params?.grievance) vals.grievance_on = nowOdooDate();
         await odoo.write("sharqia.discipline.penalty", [id], vals);
+        // ⚠️ التظلّم كان يُحفظ في حقله ولا يعلم به أحد: يُنفَّذ الجزاء
+        // واعتراضُ صاحبه مكتوبٌ لم يقرأه أحد. الآن يُبلَّغ من يبتّ فيه.
+        if (params?.grievance) {
+          await odoo.callButton("sharqia.discipline.penalty",
+            "action_grievance_filed", [id]);
+        }
         return { ok: true };
       },
       async () => ({ ok: false }),
@@ -3536,6 +3548,33 @@ const actions = {
           throw new Error("اعتماد الجزاء للموارد البشرية");
         await odoo.callButton("sharqia.discipline.penalty",
           apply ? "action_apply" : "action_decide", [id], actorCtx(ctx));
+        const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
+          [["id", "=", id]], ["state"], { limit: 1 });
+        return { ok: true, state: rec?.state || "" };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** بتُّ الموارد البشرية في تظلّم الموظف — قبولًا يُسقط الجزاء أو رفضًا بردّ.
+   *
+   *  والردّ مكتوبٌ في الحالين: قرارٌ يمسّ أجر العامل لا يُردّ عليه بضغطة،
+   *  وردُّ المنشأة هو ما تحتجّ به إن وصل الأمر إلى مكتب العمل.
+   */
+  async "discipline.grievance"(params, ctx) {
+    const role = ctx?.user?.role || "employee";
+    const id = Number(params?.id || 0);
+    const accept = !!params?.accept;
+    const reply = String(params?.reply || "").trim();
+    return withOdoo(
+      async () => {
+        if (!id) throw new Error("معرّف المخالفة مطلوب");
+        if (!["hr", "admin"].includes(role))
+          throw new Error("البتّ في التظلّم للموارد البشرية");
+        if (!reply) throw new Error("اكتب ردّك على التظلّم");
+        await odoo.execKw("sharqia.discipline.penalty", "grievance_decide",
+          [[id]], { ...actorCtx(ctx), accept, reply });
         const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
           [["id", "=", id]], ["state"], { limit: 1 });
         return { ok: true, state: rec?.state || "" };
