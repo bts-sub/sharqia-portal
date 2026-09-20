@@ -267,6 +267,19 @@ router.post("/requests/:id/approve", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// ردّ المرافق في مهمّة عمل، أو ردّ مديره على انتدابه. الطرف يُستنتج من
+// العلاقة على الخادم، فلا يقول العميل من هو.
+router.post("/requests/:id/companion", async (req, res, next) => {
+  try {
+    const { data } = await runAction("mission.respond", {
+      lineId: req.body?.lineId, accept: !!req.body?.accept, note: req.body?.note,
+    }, { user: req.user });
+    res.json(data);
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر تسجيل الردّ"));
+  }
+});
+
 // طلب معلومات من صاحب الطلب، أو تصعيده — كلاهما بسببٍ مكتوب لا بضغطة
 router.post("/requests/:id/note", async (req, res, next) => {
   try {

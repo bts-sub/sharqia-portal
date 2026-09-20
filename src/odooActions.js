@@ -2313,8 +2313,13 @@ const actions = {
     return withOdoo(
       async () => {
         const fields = await requestReadFields();
+        // ⚠️ صندوق المعتمِد يُرتَّب بالأولوية ثم بالأحدث: «عاجلة» كانت تُختار
+        // في النموذج ولا يترتّب عليها شيء، فيظنّ صاحبها أنه تعجّل وطلبُه في
+        // آخر القائمة. أما «طلباتي» فتبقى بالأحدث — ترتيبُ صاحبها زمنيّ.
+        const order = params?.scope === "inbox"
+          ? "priority desc, create_date desc" : "create_date desc";
         let recs = await odoo.searchRead("sharqia.portal.request", domain, fields,
-          { order: "create_date desc", limit: 200 });
+          { order, limit: 200 });
         // inbox=true تعلّم الطلب بأنه ينتظر إجراء صاحب الجلسة، فتعرضه شاشة
         // المدير حتى لو تعذّر تحميل قائمة الفريق.
         const inbox = params?.scope === "inbox";
@@ -2451,8 +2456,30 @@ const actions = {
         } catch (e) {
           console.warn("⚠️ تعذّرت قراءة تعليقات الطلب:", e.message);
         }
+        // مهمّة العمل: ردود المرافقين ومديريهم — يراها الجميع، ويردّ عليها
+        // صاحبُ سطرها وحده. والموارد البشرية تقرأ منها من يذهب فعلًا.
+        let companions = [];
+        try {
+          const lines = await odoo.searchRead("sharqia.portal.mission.companion",
+            [["request_id", "=", recs[0].id]],
+            ["employee_id", "manager_id", "state", "note", "responded_on",
+              "mgr_state", "mgr_note", "mgr_on"], { limit: 50 });
+          companions = lines.map((l) => ({
+            lineId: l.id,
+            empId: l.employee_id?.[0] || 0, name: l.employee_id?.[1] || "",
+            managerId: l.manager_id?.[0] || 0, manager: l.manager_id?.[1] || "",
+            state: l.state, note: l.note || "", respondedOn: odooDtToIso(l.responded_on),
+            mgrState: l.mgr_state, mgrNote: l.mgr_note || "", mgrOn: odooDtToIso(l.mgr_on),
+            canRespond: !!empId && l.employee_id?.[0] === empId && l.state === "pending",
+            canManage: !!empId && l.manager_id?.[0] === empId
+              && l.state === "accepted" && l.mgr_state === "pending",
+          }));
+        } catch (e) {
+          console.warn("⚠️ تعذّرت قراءة ردود المرافقين:", e.message);
+        }
         return maskConfidential(
-          { ...mapRequestRecord(recs[0]), mgrVacant, inbox, docUrl, comments }, viewerKey);
+          { ...mapRequestRecord(recs[0]), mgrVacant, inbox, docUrl, comments, companions },
+          viewerKey);
       },
       async () => null
     );
@@ -3560,6 +3587,44 @@ const actions = {
         const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
           [["id", "=", id]], ["state"], { limit: 1 });
         return { ok: true, state: rec?.state || "" };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** ردّ المرافق على ترشيحه في مهمّة عمل، أو ردّ مديره على انتدابه.
+   *
+   *  الطرف يُستنتج من العلاقة لا من وسيطٍ يرسله العميل: صاحب السطر يردّ
+   *  ردَّ المرافق، ومديرُه يردّ ردَّ المدير. ومن ليس أحدَهما لا يردّ.
+   */
+  async "mission.respond"(params, ctx) {
+    const empId = Number(ctx?.user?.odooEmployeeId || 0);
+    const lineId = Number(params?.lineId || 0);
+    const yes = !!params?.accept;
+    const note = String(params?.note || "").trim();
+    return withOdoo(
+      async () => {
+        if (!lineId || !empId) throw new Error("بيانات ناقصة");
+        const [line] = await odoo.searchRead("sharqia.portal.mission.companion",
+          [["id", "=", lineId]], ["employee_id", "manager_id", "state", "mgr_state"],
+          { limit: 1 });
+        if (!line) throw new Error("سطر المرافقة غير موجود");
+        const mine = line.employee_id?.[0] === empId;
+        const asManager = line.manager_id?.[0] === empId;
+        if (!mine && !asManager)
+          throw new Error("هذه المرافقة ليست لك ولا لفريقك");
+        // المرافق يردّ أولًا، ثم مديره — ومن كان الاثنين يمرّ بالترتيب نفسه
+        const asCompanion = mine && line.state === "pending";
+        if (!yes && !note)
+          throw new Error(asCompanion
+            ? "اكتب سبب اعتذارك عن المرافقة"
+            : "اكتب سبب رفضك انتداب موظفك");
+        await odoo.execKw("sharqia.portal.mission.companion",
+          asCompanion ? "companion_respond" : "manager_respond", [[lineId]],
+          asCompanion ? { ...actorCtx(ctx), accept: yes, note }
+            : { ...actorCtx(ctx), approve: yes, note });
+        return { ok: true, as: asCompanion ? "companion" : "manager" };
       },
       async () => ({ ok: false }),
       { forceLiveErrors: true }
