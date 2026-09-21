@@ -585,9 +585,12 @@ const CLOSED_STATES = ["done", "rejected", "cancelled"];
 // قرّرت الإدارة أن اعتماد مرحلة التقنية عند مدير ذلك القسم، فيُعرَف بإدارته
 // لا بدوره. والمطابقة بكلمات اسم القسم لا بمعرّفٍ ثابت: الأقسام تُنشأ
 // وتُسمّى في أودو، ومعرّفٌ مكتوبٌ في الكود يعطب أوّلَ ما يُعاد ترتيبها.
+// ⚠️ مطابقة لما في الأدون (portal_request.py → STAGE_DEPT_WORDS)، فلا تفترق
+// قراءةُ الطرفين: الخادم يأذن لمن لا يُشعره الأدون، أو العكس.
 const STAGE_DEPT_WORDS = {
   it: ["تقني", "معلومات", "حاسب", "it"],
   finance: ["مالي", "ماليه", "مالية", "محاسب", "finance"],
+  hr: ["موارد", "شؤون الموظفين", "hr"],
 };
 
 export async function ownedStagesByDepartment(empId) {
@@ -2334,7 +2337,14 @@ const actions = {
         roleDomain = [["state", "not in", CLOSED_STATES],
           ["state", "!=", "employee"]];
       }
-      domain = orDomains(ownAck, asCompanion, asCompanionMgr, roleDomain)
+      // ⚠️ ومديرُ القسم صاحبِ المرحلة يراها في صندوقه ولو لم يحمل دورَها:
+      // مديرُ قسم التقنية تُعتمد عنده مراحل التقنية، ومديرُ المالية مراحلُها.
+      // وكان المرشِّح بعد القراءة يسمح بها والنطاقُ لا يجلبها أصلًا — فلا
+      // تصله إلا طلباتُ فريقه، ويبقى اعتمادٌ مطلوبٌ منه لا يراه.
+      const deptOwned = [...(await ownedStagesByDepartment(empId))];
+      const deptDomain = deptOwned.length
+        ? [["state", "in", deptOwned]] : null;
+      domain = orDomains(ownAck, asCompanion, asCompanionMgr, deptDomain, roleDomain)
         || [["id", "=", 0]];
     } else {
       // «طلباتي» تضمّ المهمّات التي رُشِّح فيها مرافقًا: اسمه فيها وغيابُه
