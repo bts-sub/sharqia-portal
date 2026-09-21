@@ -2356,6 +2356,24 @@ const actions = {
         // مراحلُ يملكها هذا المستخدم بإدارته لا بدوره — تُقرأ مرّةً للقائمة
         // كلّها لا لكل طلب.
         const deptStages = await ownedStagesByDepartment(empId);
+        // مهمّاتٌ تنتظر هذا المستخدم بعينه: مرافقًا لم يردّ، أو مديرًا لم
+        // يعتمد انتداب موظفه. تُقرأ أسطرها مرّةً للقائمة كلّها لا لكل طلب.
+        const myMission = new Set();
+        try {
+          const missionIds = recs.filter((r) => (r.companion_ids || []).length)
+            .map((r) => r.id);
+          if (empId && missionIds.length) {
+            const mine = await odoo.searchRead("sharqia.portal.mission.companion",
+              ["&", ["request_id", "in", missionIds],
+                "|", "&", ["employee_id", "=", empId], ["state", "=", "pending"],
+                "&", ["manager_id", "=", empId],
+                "&", ["state", "=", "accepted"], ["mgr_state", "=", "pending"]],
+              ["request_id"], { limit: 200 });
+            mine.forEach((l) => myMission.add(l.request_id?.[0]));
+          }
+        } catch (e) {
+          console.warn("⚠️ تعذّرت قراءة أسطر المرافقين للوارد:", e.message);
+        }
         // ⚠️ صندوق الوارد ما ينتظر إجراءك أنت، لا كلَّ ما هو مفتوح. والنطاق
         // وحده لا يكفي: المرحلة الجارية تُحسب من مسار الخدمة لا من الحالة —
         // طلبٌ حالته «submitted» قد تكون أولى مراحله الموارد البشرية لا
@@ -2368,6 +2386,13 @@ const actions = {
             const stage = r.state === "submitted" ? flow[0] : r.state;
             // مرحلة «إقرار الموظف» يملكها صاحب الطلب وحده مهما كان دوره
             if (stage === "employee") return !!empId && r.employee_id?.[0] === empId;
+            // ⚠️ ومهمّةٌ رُشِّح فيها مرافقًا تنتظر ردَّه هو لا دورَه: كانت
+            // تُقصى هنا بعد أن جاء بها النطاق، لأن مرحلتها ليست مرحلة أحد.
+            // وكذلك انتدابُ موظفٍ من فريقه ينتظر اعتمادَه مديرًا.
+            if (myMission.has(r.id)) return true;
+            // ومرحلة المرافقين لا يراها في وارده من لا سطر له فيها: ليست
+            // مرحلة الموارد البشرية ولا المدير حتى يردّ أهلُها.
+            if (stage === "companions") return false;
             // ⚠️ المدير يُصفّى بعضويّة المسار لا بالمرحلة الجارية: اعتمادُه
             // مطلوبٌ فيه فيتابعه إلى نهايته، ويبقى في «منجزة» بعد موافقته.
             // ولو صُفّي بالمرحلة لاختفى لحظةَ اعتماده. وما ليس في مساره
