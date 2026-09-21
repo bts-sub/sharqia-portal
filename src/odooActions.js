@@ -830,10 +830,17 @@ function mapAppraisal(rec) {
 // «و»، فلجمعها بـ «أو» يلزم إظهار الـ n-1 عاملَ «&» أولًا.
 const andAll = (leaves) =>
   leaves.length <= 1 ? [...leaves] : [...Array(leaves.length - 1).fill("&"), ...leaves];
+/** «أو» بين نطاقاتٍ كلُّ واحدٍ منها قائمةُ شروطٍ صِرفة.
+ *
+ *  ⚠️ كلُّ نطاق يُحوَّل إلى تعبيرٍ سابقٍ كاملٍ مرّةً واحدة ثم تُدمج التعابير.
+ *  وكان الدمج يُعيد andAll على ما صار تعبيرًا فيه «|» و«&»، وهي تعدّ الرموز
+ *  شروطًا فتُضيف عطفًا زائدًا — فيخرج نطاقٌ مشوَّه يردّ نتائج غير مقصودة.
+ *  ظهر في صندوق الوارد: مهمّةُ المرافق لا تصله وقد جاء بها النطاق.
+ */
 const orDomains = (...parts) => {
-  const live = parts.filter((p) => p?.length);
+  const live = parts.filter((p) => p?.length).map((p) => andAll(p));
   if (!live.length) return null;
-  return live.reduce((acc, cur) => (acc ? ["|", ...andAll(acc), ...andAll(cur)] : cur));
+  return live.reduce((acc, cur) => ["|", ...acc, ...cur]);
 };
 
 // مسارات الاعتماد — مطابقة لـ FLOW في الأدون (models/portal_request.py)
