@@ -3402,7 +3402,10 @@ const actions = {
                                   ["investigated_by_id", "=", empId]];
         else return { records: [] };
         const recs = await odoo.searchRead("sharqia.discipline.penalty", domain,
-          DISC_FIELDS, { limit: 200, order: "state, occurred_on desc, id desc" });
+          // ⚠️ بالأحدث لا بالحالة: الترتيب بالحالة يرفع «المنفَّذ» و«الملغى»
+          // إلى أعلى القائمة أبجديًّا، فيقرأ المسؤول قديمًا مقضيًّا قبل
+          // مخالفةِ اليوم التي تنتظره.
+          DISC_FIELDS, { limit: 200, order: "occurred_on desc, id desc" });
         // المحقِّق المكلَّف يكتب المحضر — والشاشة تعرف ذلك من هنا
         return {
           records: recs.map(mapPenalty).map((p) => ({
@@ -3505,7 +3508,7 @@ const actions = {
       async () => {
         if (!id || !empId) throw new Error("بيانات ناقصة");
         const [rec] = await odoo.searchRead("sharqia.discipline.penalty",
-          [["id", "=", id]], ["employee_id", "state", "employee_signed_on"], { limit: 1 });
+          [["id", "=", id]], ["employee_id", "state", "employee_signed_on", "employee_statement"], { limit: 1 });
         if (!rec || rec.employee_id?.[0] !== empId)
           throw new Error("هذه المخالفة ليست عليك");
         const text = String(params?.text || "").trim();
@@ -3520,6 +3523,7 @@ const actions = {
         } else if (!["decided", "applied"].includes(rec.state)) {
           throw new Error("التظلّم يكون على قرارٍ صادر");
         }
+        const existing = String(rec.employee_statement || "").trim();
         const field = params?.grievance ? "grievance" : "employee_statement";
         // وقت الإدلاء وتاريخ التعديل يختمهما أودو نفسه عند الكتابة
         const vals = { [field]: text };
@@ -3530,6 +3534,12 @@ const actions = {
         if (params?.grievance) {
           await odoo.callButton("sharqia.discipline.penalty",
             "action_grievance_filed", [id]);
+        } else {
+          // ⚠️ والمكلَّف بالتحقيق يُبلَّغ بأقوال الموظف ساعةَ كتابتها لا بعد
+          // توقيعها: كان يجلس ينتظر خبرًا لا يأتيه والأقوال أمامه منذ ساعات.
+          await odoo.execKw("sharqia.discipline.penalty",
+            "action_statement_written", [[id]],
+            { ...actorCtx(ctx), updated: !!existing }).catch(() => {});
         }
         return { ok: true };
       },
