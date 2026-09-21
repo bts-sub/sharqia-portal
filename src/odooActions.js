@@ -350,6 +350,8 @@ const REQUEST_READ_BASE = ["name", "employee_id", "category", "service", "title"
   // المرفقات ومقدّم الطلب: بدونهما لا يرى المدير ما أرفقه الموظف ولا يعرف
   // من قدّم الطلب حين يُقدَّم نيابةً عن غيره
   "attachment_ids", "requested_by",
+  // المرافقون: بهم تبدأ مهمّة العمل بمرحلة موافقتهم — فيُقرأ المسار صحيحًا
+  "companion_ids",
   // مرجع السجل المُنشأ عند الاعتماد — به يعرف التطبيق أن نتيجة هذا الطلب
   // خطابٌ فيعرض زر تنزيله. بدونه لا يصل المرجع للواجهة إطلاقًا.
   "odoo_ref_model", "odoo_ref_id",
@@ -828,10 +830,10 @@ function mapAppraisal(rec) {
 // «و»، فلجمعها بـ «أو» يلزم إظهار الـ n-1 عاملَ «&» أولًا.
 const andAll = (leaves) =>
   leaves.length <= 1 ? [...leaves] : [...Array(leaves.length - 1).fill("&"), ...leaves];
-const orDomains = (a, b) => {
-  if (!a?.length) return b?.length ? b : null;
-  if (!b?.length) return a;
-  return ["|", ...andAll(a), ...andAll(b)];
+const orDomains = (...parts) => {
+  const live = parts.filter((p) => p?.length);
+  if (!live.length) return null;
+  return live.reduce((acc, cur) => (acc ? ["|", ...andAll(acc), ...andAll(cur)] : cur));
 };
 
 // مسارات الاعتماد — مطابقة لـ FLOW في الأدون (models/portal_request.py)
@@ -895,8 +897,18 @@ export const SIGN_ON_EMPLOYEE_STAGE = new Set(["مخالصة", "مستحقات �
 export const AMOUNT_REQUIRED = new Set(["مخالصة", "مستحقات نهاية الخدمة"]);
 
 /** مسار الطلب: الخدمة أولًا ثم التصنيف — الأخصّ يغلب الأعمّ. */
-export const flowFor = (category, service) =>
-  SERVICE_FLOW[String(service || "").trim()] || FLOW[category] || FLOW.general;
+/** مسار الطلب — والمهمّة بمرافقين تبدأ بمرحلتهم كما في أودو تمامًا.
+ *
+ *  ⚠️ المسار يُوصف في ثلاثة مواضع (هنا، وportal_request.py، وحزمة الواجهة)،
+ *  فأيُّ تعديلٍ هنا يلزم أخويه — واختلافُها يجعل الشاشة تعرض مرحلةً والخادم
+ *  يحاسب على أخرى.
+ */
+export const flowFor = (category, service, withCompanions = false) => {
+  const base = SERVICE_FLOW[String(service || "").trim()]
+    || FLOW[category] || FLOW.general;
+  return withCompanions && !base.includes("companions")
+    ? ["companions", ...base] : base;
+};
 
 // حالات العهدة (hr.custody من Open HRMS + موديل الأدون) → نص عربي
 const CUSTODY_STATE_AR = {
@@ -2292,6 +2304,17 @@ const actions = {
       // ويُستثنى غيرُه منها فلا تظهر للموارد البشرية كأنها تنتظرهم.
       const ownAck = empId
         ? [["employee_id", "=", empId], ["state", "=", "employee"]] : null;
+      // ⚠️ ومهمّةٌ رُشِّح فيها مرافقًا تنتظر ردَّه هو: مرحلتها الأولى موافقته،
+      // فتكون في صندوقه مهما كان دوره. وكذلك انتدابُ موظفٍ من فريقه ينتظر
+      // اعتمادَه مديرًا — وهي طلباتُ غيره لا تظهر في وارده بلا هذا.
+      const asCompanion = empId
+        ? [["companion_line_ids.employee_id", "=", empId],
+          ["companion_line_ids.state", "=", "pending"],
+          ["state", "=", "companions"]] : null;
+      const asCompanionMgr = empId
+        ? [["companion_line_ids.manager_id", "=", empId],
+          ["companion_line_ids.state", "=", "accepted"],
+          ["companion_line_ids.mgr_state", "=", "pending"]] : null;
       let roleDomain = null;
       if (role === "manager" && empId) {
         // ⚠️ ولا شرطَ حالةٍ هنا: المدير يتابع طلبات فريقه إلى نهايتها. كان
@@ -2304,7 +2327,8 @@ const actions = {
         roleDomain = [["state", "not in", CLOSED_STATES],
           ["state", "!=", "employee"]];
       }
-      domain = orDomains(ownAck, roleDomain) || [["id", "=", 0]];
+      domain = orDomains(ownAck, asCompanion, asCompanionMgr, roleDomain)
+        || [["id", "=", 0]];
     } else {
       // «طلباتي» تضمّ المهمّات التي رُشِّح فيها مرافقًا: اسمه فيها وغيابُه
       // عن موقعه يُبنى عليها، فلا تُخفى عنه.
@@ -2340,7 +2364,7 @@ const actions = {
         // بها — وترى الموارد البشرية ما ينتظر المديرين. فتُصفّى بالمرحلة.
         if (inbox && role !== "admin") {
           recs = recs.filter((r) => {
-            const flow = flowFor(r.category, r.service);
+            const flow = flowFor(r.category, r.service, ((r.companion_ids||[]).length>0));
             const stage = r.state === "submitted" ? flow[0] : r.state;
             // مرحلة «إقرار الموظف» يملكها صاحب الطلب وحده مهما كان دوره
             if (stage === "employee") return !!empId && r.employee_id?.[0] === empId;
@@ -2371,7 +2395,7 @@ const actions = {
             // كائن «الموظف الحالي» فيها ثابتٌ بمعرّفٍ فارغ في الوضع الحقيقي.
             //
             // فالمرحلة التي يملكها صاحب الطلب تُعلَّم دائمًا، في أي نطاق.
-            const flow = flowFor(r.category, r.service);
+            const flow = flowFor(r.category, r.service, ((r.companion_ids||[]).length>0));
             const stage = r.state === "submitted" ? flow[0] : r.state;
             // ⚠️ الرايةُ تقول «ينتظر إجراءك أنت الآن» لا «هو في قائمتك»:
             // صارت قائمةُ المدير تضمّ ما اعتمده وانتهى، فلو رُفعت الراية على
@@ -2425,7 +2449,7 @@ const actions = {
         // ⚠️ inbox تصل مع القائمة ولا تصل مع القراءة المفردة — فشاشة التفاصيل
         // كانت تجهل أن الطلب ينتظر صاحبه، فلا تعرض له زرّ الإقرار. والمرحلة
         // مرحلتُه وهو وحده من يملكها.
-        const flow = flowFor(recs[0].category, recs[0].service);
+        const flow = flowFor(recs[0].category, recs[0].service, ((recs[0].companion_ids||[]).length>0));
         const stage = recs[0].state === "submitted" ? flow[0] : recs[0].state;
         const inbox = stage === "employee" && !!empId && owner === empId;
         const docUrl = await requestDocUrl(recs[0]);
@@ -3485,10 +3509,11 @@ const actions = {
         if (!id) throw new Error("معرّف الطلب مطلوب");
         const [rec] = await odoo.searchRead("sharqia.portal.request",
           [["id", "=", id]],
-          ["name", "state", "stage_index", "service", "category", "employee_id"],
+          ["name", "state", "stage_index", "service", "category", "employee_id",
+            "companion_ids"],
           { limit: 1 });
         if (!rec) throw new Error("الطلب غير موجود");
-        const flow = flowFor(rec.category, rec.service);
+        const flow = flowFor(rec.category, rec.service, ((rec.companion_ids||[]).length>0));
         const idx = Math.min(Math.max(Number(rec.stage_index || 0), 0), flow.length - 1);
         return {
           id: rec.id, name: rec.name, state: rec.state,
