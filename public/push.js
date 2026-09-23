@@ -43,19 +43,42 @@
   (function () {
     var G = (isNative && CAP.Plugins) ? CAP.Plugins.Geolocation : null;
     if (!G || !navigator.geolocation) return;
+    // دقّةٌ عالية (GPS) دائمًا: الموقع الشبكيّ يبعد مئات الأمتار فيقع خارج
+    // النطاق وإن كان الموظف داخله — وهو سبب «الموقع مش ظابط».
     function toOpts(o) {
       o = o || {};
-      return { enableHighAccuracy: !!o.enableHighAccuracy,
-               timeout: o.timeout || 15000, maximumAge: o.maximumAge || 0 };
+      return { enableHighAccuracy: true, timeout: o.timeout || 20000, maximumAge: 0 };
+    }
+    function locSettings(opt) {
+      try {
+        var NS = CAP.Plugins && CAP.Plugins.NativeSettings;
+        if (NS && NS.openAndroid) return NS.openAndroid({ option: opt });
+      } catch (e) {}
+      return Promise.resolve();
     }
     function get(ok, err, opts) {
-      G.requestPermissions().then(function () {
-        return G.getCurrentPosition(toOpts(opts));
-      }).then(function (p) {
-        try { ok({ coords: p.coords, timestamp: p.timestamp || Date.now() }); } catch (e) {}
+      G.requestPermissions().then(function (pr) {
+        var granted = pr && (pr.location === "granted" || pr.coarseLocation === "granted");
+        if (!granted) {
+          card("إذن الموقع مطلوب", [
+            "التطبيق يحتاج إذن الموقع لتسجيل الحضور وإثبات تواجدك.",
+            "افتح إعدادات التطبيق ← الأذونات ← الموقع ← اسمح.",
+          ], "فتح إعدادات التطبيق", function () { locSettings("application_details"); });
+          if (err) try { err({ code: 1, message: "permission" }); } catch (x) {}
+          return;
+        }
+        return G.getCurrentPosition(toOpts(opts)).then(function (p) {
+          try { ok({ coords: p.coords, timestamp: p.timestamp || Date.now() }); } catch (e) {}
+        }).catch(function (e2) {
+          // إذنٌ ممنوح والموقع فشل: خدمة الموقع (GPS) مغلقة أو بلا إشارة.
+          card("شغّل خدمة الموقع (GPS)", [
+            "خدمة الموقع في جهازك مغلقة أو لا تلتقط إشارة.",
+            "شغّل «الموقع/GPS» من الإعدادات وكن في مكانٍ مكشوف، ثم أعد المحاولة.",
+          ], "فتح إعدادات الموقع", function () { locSettings("location"); });
+          if (err) try { err({ code: 2, message: (e2 && e2.message) || "location off" }); } catch (x) {}
+        });
       }).catch(function (e) {
-        var denied = e && /denied|permission/i.test(e.message || "");
-        if (err) try { err({ code: denied ? 1 : 2, message: (e && e.message) || "location" }); } catch (e2) {}
+        if (err) try { err({ code: 2, message: (e && e.message) || "location" }); } catch (x) {}
       });
     }
     var watches = {};
