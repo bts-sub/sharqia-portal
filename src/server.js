@@ -35,6 +35,7 @@ import learningRoutes from "./routes/learning.js";
 import disciplineRoutes from "./routes/discipline.js";
 import pushRoutes from "./routes/push.js";
 import cardRoutes from "./routes/card.js";
+import downloadRoutes from "./routes/download.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -134,6 +135,8 @@ app.use("/api", pushRoutes);
 // البطاقة المهنية: يحمل مساري /api/me/card و /c/:token — يُركّب قبل التقاط
 // الواجهة لكل المسارات (app.get("*")) وإلا ابتلعت الصفحةُ العامةَ الرابطَ.
 app.use(cardRoutes);
+// صفحة التنزيل الذكية (/download و /app) — قبل التقاط الواجهة لكل المسارات.
+app.use(downloadRoutes);
 
 // تقديم الواجهة (ملف HTML الواحد) — إن وُجد
 const frontendPath = path.resolve(__dirname, "..", config.frontendFile);
