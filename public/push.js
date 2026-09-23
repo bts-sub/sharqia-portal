@@ -108,16 +108,35 @@
         if (err) try { err({ code: denied ? 1 : 2, message: msg || "location" }); } catch (x) {}
       });
     }
+    var diagShown = false;
+    function geoDiag(perm, rawMsg) {
+      if (diagShown) return; diagShown = true;
+      var C = window.Capacitor;
+      card("تشخيص الموقع", [
+        "Capacitor: " + (C ? "موجود" : "غير موجود"),
+        "إضافة Geolocation: " + (C && C.Plugins && C.Plugins.Geolocation ? "موجودة" : "غير موجودة"),
+        "إذن الموقع: " + (perm || "?"),
+        "الخطأ: " + (rawMsg || "—"),
+      ], "أعد المحاولة", function () { location.reload(); });
+    }
     var watches = {};
     function watch(ok, err, opts) {
       var G = capGeo();
       if (!G) return origWatch(ok, err, opts);
       var wid = "sq" + Math.random().toString(36).slice(2);
-      G.requestPermissions().catch(function () {}).then(function () {
-        return G.watchPosition(toOpts(opts), function (p, e) {
-          if (e) { if (err) try { err({ code: 2, message: e.message || "location" }); } catch (x) {} return; }
-          if (p && ok) try { ok({ coords: p.coords, timestamp: p.timestamp || Date.now() }); } catch (x) {}
+      // فحصٌ فوريّ لمرّة: نجيب موقعًا مباشرةً، وإن فشل نُظهر تشخيصًا بالسبب الدقيق.
+      G.requestPermissions().catch(function () { return null; }).then(function (pr) {
+        var ps = pr && (pr.location || pr.coarseLocation);
+        return G.getCurrentPosition(toOpts(opts)).then(function (p) {
+          if (ok) try { ok({ coords: p.coords, timestamp: p.timestamp || Date.now() }); } catch (x) {}
+        }).catch(function (e) {
+          geoDiag(ps, e && e.message);
+          if (err) try { err({ code: 2, message: (e && e.message) || "location" }); } catch (x) {}
         });
+      });
+      G.watchPosition(toOpts(opts), function (p, e) {
+        if (e) { if (err) try { err({ code: 2, message: e.message || "location" }); } catch (x) {} return; }
+        if (p && ok) try { ok({ coords: p.coords, timestamp: p.timestamp || Date.now() }); } catch (x) {}
       }).then(function (id) { watches[wid] = id; }).catch(function () {});
       return wid;
     }
