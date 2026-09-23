@@ -99,8 +99,9 @@ export function countFor(userId) {
 /** يُرسل إلى كل أجهزة الموظف، ويحذف ما ردّ الخادمُ بأنه لم يعد قائمًا. */
 export async function sendToUser(userId, payload) {
   loadKeys();
+  // لا خروجَ مبكّر إن خلت اشتراكات Web Push: قد يكون للموظف توكن FCM (التطبيق
+  // الأصلي) بلا اشتراك متصفّح — فالخروج هنا كان يمنع إشعار التطبيق الأصلي.
   const subs = readAll("pushSubs").filter((s) => s.userId === userId);
-  if (!subs.length) return { sent: 0, gone: 0 };
   const body = JSON.stringify(payload);
   let sent = 0;
   const gone = [];
