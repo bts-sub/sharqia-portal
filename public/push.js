@@ -28,6 +28,15 @@
     || window.navigator.standalone === true;
   var supported = "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
 
+  // ─── التطبيق الأصلي (Capacitor) ───
+  // داخل غلاف التطبيق لا يوجد Web Push، فالإذن يُطلب أصليًّا عبر إضافة
+  // الإشعارات المحليّة (تُظهر حوار الإذن على أندرويد، وزرًّا يفتح إعدادات
+  // التطبيق إن مُنع). فوجودُ الإضافة يعني «مدعوم».
+  var CAP = window.Capacitor;
+  var isNative = !!(CAP && typeof CAP.isNativePlatform === "function" && CAP.isNativePlatform());
+  var LN = (isNative && CAP.Plugins) ? CAP.Plugins.LocalNotifications : null;
+  if (LN) supported = true;
+
   function perm() {
     try { return Notification.permission; } catch (e) { return "unsupported"; }
   }
@@ -237,6 +246,7 @@
         state.exempt = !!j.exempt;
         state.ready = true;
         var block = state.gate === "block" && !state.exempt;
+        if (LN) return nativeGate(block, afterAsk);   // التطبيق الأصلي: إذنٌ أصليّ
         if (!supported) { if (block) blockUnsupported(); else warnBanner(); return; }
         var p = perm();
         if (p === "granted") {
@@ -270,6 +280,49 @@
         blockGeo(r2 === "denied");
       });
     });
+  }
+
+  // ─── حاجز التطبيق الأصلي: إذنُ إشعاراتٍ أصليّ + فتحُ الإعدادات ───
+  function nativeSettings() {
+    try {
+      var NS = CAP.Plugins && CAP.Plugins.NativeSettings;
+      if (NS && NS.openAndroid) return NS.openAndroid({ option: "app_notification" });
+      if (NS && NS.open) return NS.open({ optionAndroid: "app_notification" });
+    } catch (e) {}
+    return Promise.resolve();
+  }
+
+  function nativePanel(block, denied) {
+    if (!block) { warnBanner(); return; }
+    card("فعِّل إشعارات التطبيق", [
+      "بها تصلك محاضر التحقيق ومواعيد الاستدعاء والطلبات التي تنتظر اعتمادك.",
+      denied ? "الإشعارات محظورة — افتح إعدادات التطبيق وفعّلها ثم أعد الفحص."
+             : "اضغط «تفعيل الإشعارات» ثم «سماح».",
+    ], denied ? "فتح إعدادات التطبيق" : "تفعيل الإشعارات", function () {
+      if (denied) { nativeSettings(); return; }
+      LN.requestPermissions().then(function (r) {
+        if (r && r.display === "granted") { clear(); check(true); }
+        else { nativePanel(block, true); }
+      }).catch(function () { nativePanel(block, true); });
+    });
+  }
+
+  function nativeGate(block, afterAsk) {
+    return LN.checkPermissions().then(function (st) {
+      var d = st && st.display;
+      if (d === "granted") { clear(); dropWarn(); return; }
+      if (d === "denied") { if (block) nativePanel(block, true); else warnBanner(); return; }
+      // "prompt": يُطلب الإذن مرّةً تلقائيًّا عند الفتح، وإلا فبزرٍّ صريح
+      if (!afterAsk) {
+        return LN.requestPermissions().then(function (r) {
+          var g = r && r.display;
+          if (g === "granted") { clear(); dropWarn(); return; }
+          if (g === "denied") { if (block) nativePanel(block, true); else warnBanner(); return; }
+          if (block) nativePanel(block, false); else warnBanner();
+        }).catch(function () { if (block) nativePanel(block, false); });
+      }
+      if (block) nativePanel(block, false); else warnBanner();
+    }).catch(function () { clear(); });   // فشلُ الإضافة لا يحجب التطبيق
   }
 
   window.SQ_PUSH = {
