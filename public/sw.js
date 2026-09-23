@@ -1,13 +1,15 @@
 // ===========================================================================
 // sw.js — عامل الخدمة: يجعل البوابة قابلة للتثبيت ويُبقيها تفتح بلا اتصال.
 //
-// قاعدتان لا تُخالَفان:
-//   1) لا يُخزَّن أي رد من /api إطلاقًا. الردود تحمل بيانات الموظف وجلسته،
-//      وتخزينها على القرص يجعلها تُقرأ بعد الخروج أو على جهاز مشترك.
-//   2) صفحة التطبيق تُطلب من الشبكة أولًا. لو خُدِّمت من الذاكرة أولًا لبقي
-//      الموظف على نسخة قديمة بعد كل نشر حتى يفرّغ ذاكرة متصفحه.
+// قواعد:
+//   1) كتابةُ /api (POST/PATCH/DELETE) لا تُخزَّن أبدًا — تمرّ بمهلةٍ فلا تتعلّق.
+//   2) قراءةُ /api (GET) تُخزَّن لتُقرأ بلا اتصال (وصولٌ سريع وعملٌ بلا نت)،
+//      لكنها بيانات موظفٍ وجلسة — فتُمسح عند كل تسجيل دخولٍ أو خروج كي لا
+//      يقرأ أحدٌ بياناتِ من سبقه على الجهاز نفسه.
+//   3) لا شبكةَ بلا مهلة: على اتصالٍ بطيء نلجأ للذاكرة بدل ترك الواجهة معلّقة.
+//   4) صفحةُ التطبيق تُعرَض من الذاكرة فورًا وتُحدَّث خلفَها (فتحٌ فوري).
 // ===========================================================================
-const VERSION = "v96";
+const VERSION = "v97";
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 // ⚠️ ملفاتٌ لا تتغيّر أبدًا (محرّك العرض والخطوط والأيقونات): ذاكرتها لا
@@ -15,6 +17,20 @@ const ASSETS = `assets-${VERSION}`;
 // ١٫٥ ميجابايت من pdf.js وحده — فيبطئ كل إصدارٍ أجهزةَ الموظفين جميعًا.
 const STATIC = "static-v1";
 const IMMUTABLE = /^\/(vendor|fonts|icons)\//;
+const APIDATA = `apidata-${VERSION}`;      // كاش قراءات GET /api (للعمل بلا اتصال)
+
+// fetch بمهلة: على شبكةٍ بطيئة لا تُترك الواجهة معلّقة إلى الأبد — علاج «بيقف كتير».
+function fetchT(req, ms) {
+  return new Promise((resolve, reject) => {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => { ctl.abort(); reject(new Error("timeout")); }, ms);
+    fetch(req, { signal: ctl.signal }).then(
+      (r) => { clearTimeout(timer); resolve(r); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+}
+async function clearApiCache() { try { await caches.delete(APIDATA); } catch (e) {} }
 
 // ما يكفي لفتح التطبيق بلا شبكة
 const PRECACHE = [
@@ -59,7 +75,7 @@ self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(keys
-      .filter((k) => k !== SHELL && k !== ASSETS && k !== STATIC)
+      .filter((k) => k !== SHELL && k !== ASSETS && k !== STATIC && k !== APIDATA)
       .map((k) => caches.delete(k)));
     await self.clients.claim();
 
@@ -130,11 +146,43 @@ self.addEventListener("notificationclick", (e) => {
 
 self.addEventListener("fetch", (e) => {
   const req = e.request;
-  if (req.method !== "GET") return;                       // POST/PATCH تمرّ كما هي
-
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;        // لا نتدخّل في نطاق آخر
-  if (url.pathname.startsWith("/api/")) return;           // (1) بيانات الجلسة لا تُخزَّن
+
+  // ─── /api: مهلةٌ فلا تتعلّق، وكاشُ قراءاتٍ للعمل بلا اتصال ───
+  if (url.pathname.startsWith("/api/")) {
+    // الدخول/الخروج: يمرّ ثم يُمسح كاش القراءات — بيانات جلسةٍ لا تُقرأ لمن بعده.
+    if (url.pathname === "/api/login" || url.pathname === "/api/logout") {
+      e.respondWith((async () => {
+        try { return await fetchT(req, 20000); }
+        finally { clearApiCache(); }
+      })());
+      return;
+    }
+    // الكتابة (رفع طلب…): مهلةٌ سخيّة كي لا تتعلّق للأبد ثم تفشل بوضوح — بلا
+    // كاش ولا إعادةٍ تلقائية (إعادةُ POST بلا مفتاح تكرارٍ تُنشئ طلبين).
+    if (req.method !== "GET") {
+      e.respondWith(fetchT(req, 30000));
+      return;
+    }
+    if (url.pathname.startsWith("/api/health")) return;   // فحوصٌ لا معنى لتخزينها
+    // القراءات: الشبكة أولًا بمهلة، ثم آخر نسخةٍ محفوظة عند الانقطاع أو البطء.
+    e.respondWith((async () => {
+      try {
+        const fresh = await fetchT(req, 8000);
+        if (fresh && fresh.status === 200) {
+          const c = await caches.open(APIDATA);
+          c.put(req, fresh.clone());
+        }
+        return fresh;
+      } catch {
+        return (await caches.match(req, { cacheName: APIDATA })) || Response.error();
+      }
+    })());
+    return;
+  }
+
+  if (req.method !== "GET") return;                       // غير /api وغير GET يمرّ كما هو
 
   // (2) صفحات التطبيق: النسخة المحفوظة تُعرض فورًا، والشبكة تُحدّثها خلفَها.
   //   كانت الشبكة أولًا، فكل فتحةٍ تنتظر تنزيل الصفحة كاملة (نحو 150 كيلوبايت
