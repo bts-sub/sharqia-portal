@@ -283,6 +283,18 @@
   }
 
   // ─── حاجز التطبيق الأصلي: إذنُ إشعاراتٍ أصليّ + فتحُ الإعدادات ───
+  // الموقع أيضًا يُطلب أصليًّا: في الغلاف لا يظهر حوار المتصفّح، فنطلب إذن
+  // الموقع عبر إضافة Geolocation (حوار أندرويد) بعد الإشعارات — كما يريد
+  // المستخدم «سماح» زي الإشعارات — فيعمل تسجيلُ الحضور بعده.
+  function nativeGeo() {
+    var G = CAP.Plugins && CAP.Plugins.Geolocation;
+    if (!G) return Promise.resolve();
+    return G.checkPermissions().then(function (st) {
+      if (st && (st.location === "granted" || st.coarseLocation === "granted")) return;
+      return G.requestPermissions();
+    }).catch(function () {});
+  }
+
   function nativeSettings() {
     try {
       var NS = CAP.Plugins && CAP.Plugins.NativeSettings;
@@ -310,13 +322,13 @@
   function nativeGate(block, afterAsk) {
     return LN.checkPermissions().then(function (st) {
       var d = st && st.display;
-      if (d === "granted") { clear(); dropWarn(); return; }
+      if (d === "granted") { return nativeGeo().then(function () { clear(); dropWarn(); }); }
       if (d === "denied") { if (block) nativePanel(block, true); else warnBanner(); return; }
       // "prompt": يُطلب الإذن مرّةً تلقائيًّا عند الفتح، وإلا فبزرٍّ صريح
       if (!afterAsk) {
         return LN.requestPermissions().then(function (r) {
           var g = r && r.display;
-          if (g === "granted") { clear(); dropWarn(); return; }
+          if (g === "granted") { return nativeGeo().then(function () { clear(); dropWarn(); }); }
           if (g === "denied") { if (block) nativePanel(block, true); else warnBanner(); return; }
           if (block) nativePanel(block, false); else warnBanner();
         }).catch(function () { if (block) nativePanel(block, false); });
