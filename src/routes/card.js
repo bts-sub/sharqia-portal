@@ -43,6 +43,18 @@ function shareableCard(emp, user) {
   };
 }
 
+// رقم واتساب بصيغة دولية بلا + ولا صفر بادئ. wa.me يرفض الصيغة المحلّية
+// (مثل 0501234567) فلا يجد الحساب — فنحوّلها إلى 9665XXXXXXXX.
+function waNumber(phone) {
+  let d = String(phone || "").replace(/[^0-9]/g, "");
+  if (!d) return "";
+  if (d.startsWith("00")) d = d.slice(2);          // 00966… → 966…
+  if (d.startsWith("966")) return d;               // دولي بالفعل
+  if (d.startsWith("0")) return "966" + d.slice(1);// 05X… → 9665X…
+  if (d.length === 9 && d.startsWith("5")) return "966" + d; // 5XXXXXXXX
+  return d;                                        // رقم أجنبي: كما هو
+}
+
 // هروب قيم vCard 3.0 (فاصلة/فاصلة منقوطة/شرطة مائلة/سطر جديد).
 const vesc = (v) => String(v || "").replace(/\\/g, "\\\\")
   .replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
@@ -196,7 +208,7 @@ router.get("/c/:token", async (req, res) => {
       ${c.branch ? row("الفرع", c.branch) : ""}
       <div class="btns">
         <a class="btn primary" href="/c/${hesc(snap.token)}/vcf">أضف جهة الاتصال</a>
-        ${c.phone ? `<a class="btn ghost" href="https://wa.me/${hesc(String(c.phone).replace(/[^0-9]/g, ""))}">واتساب</a>` : ""}
+        ${waNumber(c.phone) ? `<a class="btn ghost" href="https://wa.me/${hesc(waNumber(c.phone))}">واتساب</a>` : ""}
       </div>
       <div class="qr">${linkQr}</div>
       <div class="foot">بطاقة مهنية — العباءة الشرقية</div>
