@@ -71,6 +71,9 @@ function baseUrl(req) {
   return `${req.protocol}://${req.get("host")}`;
 }
 
+// الـ SVG المُعاد للتطبيق يُحقن كما هو، فنجعله يملأ حاويته (viewBox يتكفّل بالقياس).
+const respSvg = (svg) => svg.replace(/<svg /, '<svg style="width:100%;height:100%;display:block" ');
+
 function upsertSnapshot(token, userId, card) {
   const all = readAll("shareCards");
   const rest = all.filter((s) => s.token !== token);
@@ -102,7 +105,7 @@ router.get("/api/me/card", requireAuth, async (req, res, next) => {
       QRCode.toString(url, { ...opt, type: "svg" }),
     ]);
     res.set("Cache-Control", "private, no-store");
-    res.json({ card, token, url, vcfUrl, vcardQr, linkQr });
+    res.json({ card, token, url, vcfUrl, vcardQr: respSvg(vcardQr), linkQr: respSvg(linkQr) });
   } catch (e) { next(e); }
 });
 
