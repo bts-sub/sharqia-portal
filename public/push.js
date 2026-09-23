@@ -73,14 +73,14 @@
       try { if (watches[wid]) { G.clearWatch({ id: watches[wid] }); delete watches[wid]; } } catch (e) {}
     }
     var shim = { getCurrentPosition: get, watchPosition: watch, clearWatch: clearW };
-    try { Object.defineProperty(navigator, "geolocation", { configurable: true, value: shim }); }
-    catch (e) {
-      try {
-        navigator.geolocation.getCurrentPosition = get;
-        navigator.geolocation.watchPosition = watch;
-        navigator.geolocation.clearWatch = clearW;
-      } catch (e2) {}
-    }
+    // نُصلح الدوال على الكائن الأصلي أولًا (يغطّي أيّ مرجعٍ مُلتقَط مسبقًا)،
+    // ثم نستبدل الكائن احتياطًا لمن يقرأ navigator.geolocation حديثًا.
+    try {
+      navigator.geolocation.getCurrentPosition = get;
+      navigator.geolocation.watchPosition = watch;
+      navigator.geolocation.clearWatch = clearW;
+    } catch (e) {}
+    try { Object.defineProperty(navigator, "geolocation", { configurable: true, value: shim }); } catch (e2) {}
   })();
 
   function perm() {
