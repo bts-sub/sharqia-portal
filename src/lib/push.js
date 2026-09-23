@@ -14,6 +14,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import webpush from "web-push";
 import { readAll, writeAll } from "./store.js";
+import { sendFcm, fcmConfigured } from "./fcm.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const KEYS_FILE = path.resolve(__dirname, "../../data/push-keys.json");
@@ -67,8 +68,32 @@ export function removeSubscription(endpoint) {
   return all.length - rest.length;
 }
 
+// ── توكنات FCM للتطبيق الأصلي (Android) ──
+// الغلاف الأصلي لا يشترك بـ Web Push، بل يسجّل توكن FCM. التوكن هو المفتاح:
+// الجهاز الواحد لا يتكرّر مهما أُعيد التسجيل.
+export function saveFcmToken(userId, token, meta = {}) {
+  if (!token || typeof token !== "string") throw new Error("توكن FCM غير صالح");
+  const all = readAll("fcmTokens");
+  const rest = all.filter((t) => t.token !== token);
+  rest.unshift({
+    token, userId,
+    ua: String(meta.ua || "").slice(0, 200),
+    at: new Date().toISOString(),
+  });
+  writeAll("fcmTokens", rest);
+  return true;
+}
+
+export function removeFcmToken(token) {
+  const all = readAll("fcmTokens");
+  const rest = all.filter((t) => t.token !== token);
+  if (rest.length !== all.length) writeAll("fcmTokens", rest);
+  return all.length - rest.length;
+}
+
 export function countFor(userId) {
-  return readAll("pushSubs").filter((s) => s.userId === userId).length;
+  return readAll("pushSubs").filter((s) => s.userId === userId).length
+    + readAll("fcmTokens").filter((t) => t.userId === userId).length;
 }
 
 /** يُرسل إلى كل أجهزة الموظف، ويحذف ما ردّ الخادمُ بأنه لم يعد قائمًا. */
@@ -94,5 +119,21 @@ export async function sendToUser(userId, payload) {
     const all = readAll("pushSubs");
     writeAll("pushSubs", all.filter((s) => !gone.includes(s.endpoint)));
   }
-  return { sent, gone: gone.length };
+  // FCM: أجهزة التطبيق الأصلي (Android) تصلها الإشعارات عبر خدمة جوجل
+  // والتطبيق مغلق. يُرسَل إلى كل توكنات الموظف، ويُحذف المنتهي منها.
+  let fcm = 0;
+  if (fcmConfigured()) {
+    const toks = readAll("fcmTokens").filter((t) => t.userId === userId);
+    const goneT = [];
+    await Promise.all(toks.map(async (t) => {
+      const r = await sendFcm(t.token, payload).catch(() => ({ ok: false, gone: false }));
+      if (r.ok) fcm++;
+      else if (r.gone) goneT.push(t.token);
+    }));
+    if (goneT.length) {
+      const all = readAll("fcmTokens");
+      writeAll("fcmTokens", all.filter((t) => !goneT.includes(t.token)));
+    }
+  }
+  return { sent, gone: gone.length, fcm };
 }

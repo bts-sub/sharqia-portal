@@ -8,7 +8,8 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { badRequest } from "../lib/errors.js";
-import { publicKey, saveSubscription, removeSubscription, countFor, sendToUser } from "../lib/push.js";
+import { publicKey, saveSubscription, removeSubscription, countFor, sendToUser,
+  saveFcmToken, removeFcmToken } from "../lib/push.js";
 import { notifGateMode } from "../lib/settings.js";
 
 const router = Router();
@@ -33,6 +34,24 @@ router.post("/push/subscribe", requireAuth, (req, res, next) => {
     saveSubscription(req.user.id, sub, { ua: req.get("user-agent") });
     res.json({ ok: true, devices: countFor(req.user.id) });
   } catch (e) { next(e?.status ? e : badRequest(e?.message || "تعذّر تسجيل الجهاز")); }
+});
+
+// التطبيق الأصلي (Android/FCM) يسجّل توكن جهازه هنا بدل اشتراك Web Push.
+router.post("/push/native", requireAuth, (req, res, next) => {
+  try {
+    const token = String(req.body?.token || "");
+    if (!token) throw badRequest("token مطلوب");
+    saveFcmToken(req.user.id, token, { ua: req.get("user-agent") });
+    res.json({ ok: true, devices: countFor(req.user.id) });
+  } catch (e) { next(e?.status ? e : badRequest(e?.message || "تعذّر تسجيل الجهاز")); }
+});
+
+router.post("/push/native/unsubscribe", requireAuth, (req, res, next) => {
+  try {
+    const token = String(req.body?.token || "");
+    if (!token) throw badRequest("token مطلوب");
+    res.json({ ok: true, removed: removeFcmToken(token) });
+  } catch (e) { next(e); }
 });
 
 router.post("/push/unsubscribe", requireAuth, (req, res, next) => {

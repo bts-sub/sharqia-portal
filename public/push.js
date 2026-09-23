@@ -35,7 +35,33 @@
   var CAP = window.Capacitor;
   var isNative = !!(CAP && typeof CAP.isNativePlatform === "function" && CAP.isNativePlatform());
   var LN = (isNative && CAP.Plugins) ? CAP.Plugins.LocalNotifications : null;
-  if (LN) supported = true;
+  var PN = (isNative && CAP.Plugins) ? CAP.Plugins.PushNotifications : null;
+  var NOTIF = PN || LN;                 // إضافة الإشعارات (الدفع FCM أولًا)
+  if (NOTIF) supported = true;
+
+  // تسجيل جهاز FCM: يطلب الدفع توكنًا فنرسله للخادم، فيصلك الإشعار والتطبيق
+  // مغلق عبر خدمة جوجل. تُربَط المستمعات مرّةً واحدة.
+  function registerFcm() {
+    if (!PN) return Promise.resolve(false);
+    if (!registerFcm._wired) {
+      registerFcm._wired = true;
+      try {
+        PN.addListener("registration", function (t) {
+          if (t && t.value) api("/api/push/native", { token: t.value }).catch(function () {});
+        });
+        PN.addListener("pushNotificationActionPerformed", function (ev) {
+          try {
+            var d = (ev && ev.notification && ev.notification.data) || {};
+            if (window.SQ_navFn) {
+              if (d.link === "discipline") window.SQ_navFn({ name: "discipline", focus: Number(d.penaltyId || 0) });
+              else window.SQ_navFn({ name: "tab", tab: "notifs" });
+            }
+          } catch (e) {}
+        });
+      } catch (e) {}
+    }
+    return PN.register().then(function () { return true; }).catch(function () { return false; });
+  }
 
   // navigator.geolocation لا يعمل داخل الغلاف الأصلي (WebView)، فنوجّه دواله
   // إلى إضافة Capacitor Geolocation: موقعٌ أصليّ بإذنٍ أصليّ. بهذا يعمل زرّ
@@ -315,7 +341,7 @@
         state.exempt = !!j.exempt;
         state.ready = true;
         var block = state.gate === "block" && !state.exempt;
-        if (LN) return nativeGate(block, afterAsk);   // التطبيق الأصلي: إذنٌ أصليّ
+        if (NOTIF) return nativeGate(block, afterAsk);   // التطبيق الأصلي: إذنٌ أصليّ + FCM
         if (!supported) { if (block) blockUnsupported(); else warnBanner(); return; }
         var p = perm();
         if (p === "granted") {
@@ -381,24 +407,25 @@
              : "اضغط «تفعيل الإشعارات» ثم «سماح».",
     ], denied ? "فتح إعدادات التطبيق" : "تفعيل الإشعارات", function () {
       if (denied) { nativeSettings(); return; }
-      LN.requestPermissions().then(function (r) {
-        if (r && r.display === "granted") { clear(); check(true); }
+      NOTIF.requestPermissions().then(function (r) {
+        if (permGranted(r)) { registerFcm(); clear(); check(true); }
         else { nativePanel(block, true); }
       }).catch(function () { nativePanel(block, true); });
     });
   }
 
+  function permGranted(r) { return r && (r.receive || r.display) === "granted"; }
+  function permDenied(r) { return r && (r.receive || r.display) === "denied"; }
+
   function nativeGate(block, afterAsk) {
-    return LN.checkPermissions().then(function (st) {
-      var d = st && st.display;
-      if (d === "granted") { return nativeGeo().then(function () { clear(); dropWarn(); }); }
-      if (d === "denied") { if (block) nativePanel(block, true); else warnBanner(); return; }
+    return NOTIF.checkPermissions().then(function (st) {
+      if (permGranted(st)) { registerFcm(); return nativeGeo().then(function () { clear(); dropWarn(); }); }
+      if (permDenied(st)) { if (block) nativePanel(block, true); else warnBanner(); return; }
       // "prompt": يُطلب الإذن مرّةً تلقائيًّا عند الفتح، وإلا فبزرٍّ صريح
       if (!afterAsk) {
-        return LN.requestPermissions().then(function (r) {
-          var g = r && r.display;
-          if (g === "granted") { return nativeGeo().then(function () { clear(); dropWarn(); }); }
-          if (g === "denied") { if (block) nativePanel(block, true); else warnBanner(); return; }
+        return NOTIF.requestPermissions().then(function (r) {
+          if (permGranted(r)) { registerFcm(); return nativeGeo().then(function () { clear(); dropWarn(); }); }
+          if (permDenied(r)) { if (block) nativePanel(block, true); else warnBanner(); return; }
           if (block) nativePanel(block, false); else warnBanner();
         }).catch(function () { if (block) nativePanel(block, false); });
       }
