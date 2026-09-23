@@ -67,50 +67,53 @@
   // إلى إضافة Capacitor Geolocation: موقعٌ أصليّ بإذنٍ أصليّ. بهذا يعمل زرّ
   // «تحديد موقعي» وتسجيلُ الحضور دون تغيير كود الموقع في التطبيق.
   (function () {
-    var G = (isNative && CAP.Plugins) ? CAP.Plugins.Geolocation : null;
-    if (!G || !navigator.geolocation) return;
-    // دقّةٌ عالية (GPS) دائمًا: الموقع الشبكيّ يبعد مئات الأمتار فيقع خارج
-    // النطاق وإن كان الموظف داخله — وهو سبب «الموقع مش ظابط».
-    function toOpts(o) {
-      o = o || {};
-      return { enableHighAccuracy: true, timeout: o.timeout || 20000, maximumAge: 0 };
+    if (!navigator.geolocation) return;
+    var origGet = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
+    var origWatch = navigator.geolocation.watchPosition.bind(navigator.geolocation);
+    var origClear = navigator.geolocation.clearWatch.bind(navigator.geolocation);
+    // القرار «أصلي/متصفّح» يُتّخذ لحظةَ الاستدعاء لا التحميل: جسرُ Capacitor قد
+    // يتأخّر عن تنفيذ هذا الملف، فلو قرّرنا الآن فاتنا الغلاف. في المتصفّح
+    // العادي نُبقي السلوك الأصلي.
+    function capGeo() {
+      var C = window.Capacitor;
+      return (C && C.Plugins && typeof C.isNativePlatform === "function"
+        && C.isNativePlatform()) ? C.Plugins.Geolocation : null;
     }
     function locSettings(opt) {
       try {
-        var NS = CAP.Plugins && CAP.Plugins.NativeSettings;
+        var C = window.Capacitor, NS = C && C.Plugins ? C.Plugins.NativeSettings : null;
         if (NS && NS.openAndroid) return NS.openAndroid({ option: opt });
       } catch (e) {}
       return Promise.resolve();
     }
+    // دقّةٌ عالية (GPS) دائمًا: الموقع الشبكيّ يبعد مئات الأمتار فيقع خارج النطاق.
+    function toOpts(o) { o = o || {}; return { enableHighAccuracy: true, timeout: o.timeout || 20000, maximumAge: 0 }; }
     function get(ok, err, opts) {
-      G.requestPermissions().then(function (pr) {
-        var granted = pr && (pr.location === "granted" || pr.coarseLocation === "granted");
-        if (!granted) {
-          card("إذن الموقع مطلوب", [
-            "التطبيق يحتاج إذن الموقع لتسجيل الحضور وإثبات تواجدك.",
-            "افتح إعدادات التطبيق ← الأذونات ← الموقع ← اسمح.",
-          ], "فتح إعدادات التطبيق", function () { locSettings("application_details"); });
-          if (err) try { err({ code: 1, message: "permission" }); } catch (x) {}
-          return;
-        }
-        return G.getCurrentPosition(toOpts(opts)).then(function (p) {
-          try { ok({ coords: p.coords, timestamp: p.timestamp || Date.now() }); } catch (e) {}
-        }).catch(function (e2) {
-          // إذنٌ ممنوح والموقع فشل: خدمة الموقع (GPS) مغلقة أو بلا إشارة.
-          card("شغّل خدمة الموقع (GPS)", [
-            "خدمة الموقع في جهازك مغلقة أو لا تلتقط إشارة.",
-            "شغّل «الموقع/GPS» من الإعدادات وكن في مكانٍ مكشوف، ثم أعد المحاولة.",
-          ], "فتح إعدادات الموقع", function () { locSettings("location"); });
-          if (err) try { err({ code: 2, message: (e2 && e2.message) || "location off" }); } catch (x) {}
-        });
-      }).catch(function (e) {
-        if (err) try { err({ code: 2, message: (e && e.message) || "location" }); } catch (x) {}
+      var G = capGeo();
+      if (!G) return origGet(ok, err, opts);
+      G.requestPermissions().catch(function () {}).then(function () {
+        return G.getCurrentPosition(toOpts(opts));
+      }).then(function (p) {
+        try { ok({ coords: p.coords, timestamp: p.timestamp || Date.now() }); } catch (e) {}
+      }).catch(function (e2) {
+        var msg = (e2 && e2.message) || "";
+        var denied = /denied|permission/i.test(msg);
+        card(denied ? "إذن الموقع مطلوب" : "شغّل خدمة الموقع (GPS)",
+          denied ? ["التطبيق يحتاج إذن الموقع لتسجيل الحضور.",
+                    "افتح إعدادات التطبيق ← الأذونات ← الموقع ← اسمح."]
+                 : ["خدمة الموقع مغلقة أو لا تلتقط إشارة.",
+                    "شغّل «الموقع/GPS» من الإعدادات وكن في مكانٍ مكشوف ثم أعد المحاولة."],
+          denied ? "فتح إعدادات التطبيق" : "فتح إعدادات الموقع",
+          function () { locSettings(denied ? "application_details" : "location"); });
+        if (err) try { err({ code: denied ? 1 : 2, message: msg || "location" }); } catch (x) {}
       });
     }
     var watches = {};
     function watch(ok, err, opts) {
+      var G = capGeo();
+      if (!G) return origWatch(ok, err, opts);
       var wid = "sq" + Math.random().toString(36).slice(2);
-      G.requestPermissions().then(function () {
+      G.requestPermissions().catch(function () {}).then(function () {
         return G.watchPosition(toOpts(opts), function (p, e) {
           if (e) { if (err) try { err({ code: 2, message: e.message || "location" }); } catch (x) {} return; }
           if (p && ok) try { ok({ coords: p.coords, timestamp: p.timestamp || Date.now() }); } catch (x) {}
@@ -119,11 +122,11 @@
       return wid;
     }
     function clearW(wid) {
-      try { if (watches[wid]) { G.clearWatch({ id: watches[wid] }); delete watches[wid]; } } catch (e) {}
+      var G = capGeo();
+      if (!G || !watches[wid]) return origClear(wid);
+      try { G.clearWatch({ id: watches[wid] }); delete watches[wid]; } catch (e) {}
     }
     var shim = { getCurrentPosition: get, watchPosition: watch, clearWatch: clearW };
-    // نُصلح الدوال على الكائن الأصلي أولًا (يغطّي أيّ مرجعٍ مُلتقَط مسبقًا)،
-    // ثم نستبدل الكائن احتياطًا لمن يقرأ navigator.geolocation حديثًا.
     try {
       navigator.geolocation.getCurrentPosition = get;
       navigator.geolocation.watchPosition = watch;
