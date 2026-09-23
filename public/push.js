@@ -37,6 +37,52 @@
   var LN = (isNative && CAP.Plugins) ? CAP.Plugins.LocalNotifications : null;
   if (LN) supported = true;
 
+  // navigator.geolocation لا يعمل داخل الغلاف الأصلي (WebView)، فنوجّه دواله
+  // إلى إضافة Capacitor Geolocation: موقعٌ أصليّ بإذنٍ أصليّ. بهذا يعمل زرّ
+  // «تحديد موقعي» وتسجيلُ الحضور دون تغيير كود الموقع في التطبيق.
+  (function () {
+    var G = (isNative && CAP.Plugins) ? CAP.Plugins.Geolocation : null;
+    if (!G || !navigator.geolocation) return;
+    function toOpts(o) {
+      o = o || {};
+      return { enableHighAccuracy: !!o.enableHighAccuracy,
+               timeout: o.timeout || 15000, maximumAge: o.maximumAge || 0 };
+    }
+    function get(ok, err, opts) {
+      G.requestPermissions().then(function () {
+        return G.getCurrentPosition(toOpts(opts));
+      }).then(function (p) {
+        try { ok({ coords: p.coords, timestamp: p.timestamp || Date.now() }); } catch (e) {}
+      }).catch(function (e) {
+        var denied = e && /denied|permission/i.test(e.message || "");
+        if (err) try { err({ code: denied ? 1 : 2, message: (e && e.message) || "location" }); } catch (e2) {}
+      });
+    }
+    var watches = {};
+    function watch(ok, err, opts) {
+      var wid = "sq" + Math.random().toString(36).slice(2);
+      G.requestPermissions().then(function () {
+        return G.watchPosition(toOpts(opts), function (p, e) {
+          if (e) { if (err) try { err({ code: 2, message: e.message || "location" }); } catch (x) {} return; }
+          if (p && ok) try { ok({ coords: p.coords, timestamp: p.timestamp || Date.now() }); } catch (x) {}
+        });
+      }).then(function (id) { watches[wid] = id; }).catch(function () {});
+      return wid;
+    }
+    function clearW(wid) {
+      try { if (watches[wid]) { G.clearWatch({ id: watches[wid] }); delete watches[wid]; } } catch (e) {}
+    }
+    var shim = { getCurrentPosition: get, watchPosition: watch, clearWatch: clearW };
+    try { Object.defineProperty(navigator, "geolocation", { configurable: true, value: shim }); }
+    catch (e) {
+      try {
+        navigator.geolocation.getCurrentPosition = get;
+        navigator.geolocation.watchPosition = watch;
+        navigator.geolocation.clearWatch = clearW;
+      } catch (e2) {}
+    }
+  })();
+
   function perm() {
     try { return Notification.permission; } catch (e) { return "unsupported"; }
   }
