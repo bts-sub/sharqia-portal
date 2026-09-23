@@ -149,6 +149,10 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;        // لا نتدخّل في نطاق آخر
 
+  // ملفُ تثبيتٍ (APK) يمرّ للشبكة مباشرةً بلا اعتراض: وإلا خدَمه معالجُ التنقّل
+  // صفحةَ التطبيق (يخدم "/" لأيّ تنقّل) بدل تنزيل الملف.
+  if (url.pathname.endsWith(".apk")) return;
+
   // ─── /api: مهلةٌ فلا تتعلّق، وكاشُ قراءاتٍ للعمل بلا اتصال ───
   if (url.pathname.startsWith("/api/")) {
     // الدخول/الخروج: يمرّ ثم يُمسح كاش القراءات — بيانات جلسةٍ لا تُقرأ لمن بعده.
