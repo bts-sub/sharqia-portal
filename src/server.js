@@ -36,6 +36,7 @@ import disciplineRoutes from "./routes/discipline.js";
 import pushRoutes from "./routes/push.js";
 import cardRoutes from "./routes/card.js";
 import downloadRoutes from "./routes/download.js";
+import legalRoutes from "./routes/legal.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -137,6 +138,8 @@ app.use("/api", pushRoutes);
 app.use(cardRoutes);
 // صفحة التنزيل الذكية (/download و /app) — قبل التقاط الواجهة لكل المسارات.
 app.use(downloadRoutes);
+// صفحة سياسة الخصوصية (/privacy) — مطلوبة لنشر المتاجر، قبل التقاط الواجهة.
+app.use(legalRoutes);
 
 // تقديم الواجهة (ملف HTML الواحد) — إن وُجد
 const frontendPath = path.resolve(__dirname, "..", config.frontendFile);

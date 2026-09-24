@@ -156,6 +156,7 @@ self.addEventListener("fetch", (e) => {
   // صفحة التنزيل الذكية: تمرّ للشبكة بلا اعتراض، وإلا خدَمها معالجُ التنقّل
   // صفحةَ التطبيق (يخدم "/" لأيّ تنقّل) بدل صفحة اختيار النظام.
   if (url.pathname === "/download" || url.pathname === "/app") return;
+  if (url.pathname === "/privacy" || url.pathname === "/privacy-policy") return;
 
   // ─── /api: مهلةٌ فلا تتعلّق، وكاشُ قراءاتٍ للعمل بلا اتصال ───
   if (url.pathname.startsWith("/api/")) {
