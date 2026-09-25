@@ -97,6 +97,20 @@ if (config.corsOrigin) app.use(cors({ origin: config.corsOrigin, credentials: tr
 app.get("/api/health", (req, res) =>
   res.json({ ok: true, version: config.version, env: config.env, testMode: isTestMode() }));
 
+// سجلّ أخطاء العميل — لتشخيص الشاشة البيضاء على أجهزة الموظفين (WebView).
+// بلا مصادقة كي يعمل قبل الدخول؛ لا يُخزَّن شيءٌ حسّاس (رسالة الخطأ والـUA فقط).
+app.post("/api/clientlog", (req, res) => {
+  try {
+    const b = req.body || {};
+    console.warn("🖥️ CLIENTERR " + JSON.stringify({
+      msg: String(b.msg || "").slice(0, 300), src: String(b.src || "").slice(0, 200),
+      ln: b.ln, cl: b.cl, stack: String(b.stack || "").slice(0, 700),
+      ver: b.ver, ua: String(b.ua || "").slice(0, 220), url: String(b.url || "").slice(0, 200),
+    }));
+  } catch { /* لا نُفشل أبدًا */ }
+  res.status(204).end();
+});
+
 // تشخيص الاتصال بأودو.
 //   عام: حالة فقط — تكفي لمراقبة التشغيل (UptimeRobot) ولا تكشف شيئًا.
 //   بالتفاصيل: للأدمن فقط عبر ?key=<INTEGRATION_TOKEN> — الرابط واسم قاعدة
