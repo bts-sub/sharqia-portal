@@ -3707,6 +3707,33 @@ const actions = {
     );
   },
 
+  /** أقسامُ المنشأة ومسمّياتها الوظيفية — تُقرأ من أودو لتُعرض في النموذج.
+   *
+   *  ⚠️ هذا أوّلُ ما يُقرأ من البابِ المفتوح، وحدودُه مقصودة: أسماءٌ فقط،
+   *  لا معرّفات ولا موظفين ولا عدد. ومن كتب قسمًا بيده لا يُطابَق أحدٌ به.
+   */
+  async "intake.options"() {
+    return withOdoo(
+      async () => {
+        const deps = await odoo.searchRead("hr.department", [],
+          ["name"], { limit: 120, order: "name" });
+        const jobs = await odoo.searchRead("hr.job", [], ["name"], { limit: 200, order: "name" });
+        // ومسمّياتٌ يستعملها موظفون ولا وظيفةَ معرَّفة لها: تُجمع كما هي
+        const used = await odoo.searchRead("hr.employee", [["job_title", "!=", false]],
+          ["job_title"], { limit: 400 });
+        const set = new Set();
+        jobs.forEach((j) => j.name && set.add(String(j.name).trim()));
+        used.forEach((e) => e.job_title && set.add(String(e.job_title).trim()));
+        return {
+          departments: deps.map((d) => d.name).filter(Boolean),
+          jobs: [...set].filter(Boolean).sort((a, b) => a.localeCompare(b, "ar")),
+        };
+      },
+      async () => ({ departments: [], jobs: [] }),
+      { emptyOnError: () => ({ departments: [], jobs: [] }) }
+    );
+  },
+
   /** بياناتُ الموظف القائم لتعبئة نموذج الملف — يصحّحها هو لا يكتبها من فراغ. */
   async "intake.mine"(params, ctx) {
     const empId = Number(ctx?.user?.odooEmployeeId || 0);

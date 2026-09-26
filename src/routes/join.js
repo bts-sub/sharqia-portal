@@ -120,6 +120,20 @@ function buildIntakeVals(b) {
 }
 
 
+// قوائمُ الاختيار: أقسامٌ ومسمّيات من أودو. تُخبَّأ عشر دقائق — قائمةٌ
+// تتغيّر مرّةً في الشهر لا تُقرأ مع كل فتحةٍ للصفحة.
+let OPTS = { at: 0, data: { departments: [], jobs: [] } };
+router.get("/join/options", async (req, res, next) => {
+  try {
+    if (Date.now() - OPTS.at > 10 * 60 * 1000) {
+      const { data } = await runAction("intake.options", {}, { user: null });
+      OPTS = { at: Date.now(), data: data || { departments: [], jobs: [] } };
+    }
+    res.set("Cache-Control", "public, max-age=600");
+    res.json(OPTS.data);
+  } catch (e) { res.json({ departments: [], jobs: [] }); }
+});
+
 router.post("/join/:token", async (req, res, next) => {
   try {
     const ip = req.ip || req.headers["x-forwarded-for"] || "—";

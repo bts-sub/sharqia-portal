@@ -122,8 +122,8 @@
       title: { ar: "البيانات الوظيفية", en: "Employment details" },
       sub: { ar: "ما تعرفه عن وظيفتك — وتصحّحه الموارد البشرية عند الحاجة.", en: "What you know; HR will refine it if needed." },
       fields: [
-        { k: "job_title", ar: "المسمى الوظيفي", en: "Job title", ph: "فنّي خياطة" },
-        { k: "department_txt", ar: "القسم", en: "Department", ph: "الإنتاج" },
+        { k: "job_title", ar: "المسمى الوظيفي", en: "Job title", src: "jobs", ph: "اكتب مسمّاك" },
+        { k: "department_txt", ar: "القسم", en: "Department", src: "departments", ph: "اكتب اسم قسمك" },
         { k: "branch", ar: "الفرع", en: "Branch", ph: "المصنع الجديد" },
         { k: "hire_date", ar: "تاريخ المباشرة", en: "Start date", type: "date" },
         { k: "contract_type", ar: "نوع العقد", en: "Contract type", opts: [
@@ -161,12 +161,14 @@
       title: { ar: "المرفقات", en: "Attachments" },
       sub: { ar: "صورةٌ واضحة من الجوال تكفي — حتى ٦ ميجابايت للملف.", en: "A clear phone photo is enough — up to 6 MB each." },
       files: [
-        { k: "id_copy", ar: "الهوية / الإقامة", en: "ID / Iqama", req: true },
+        // شهادةُ الآيبان وحدها إجبارية: عليها يُبنى تحويل الراتب، وخطأُ رقمٍ
+        // فيها يُرجع الحوالة. وصورةُ الهوية تُطلب ولا تُشترط.
+        { k: "iban_copy", ar: "شهادة الآيبان", en: "IBAN letter", req: true },
+        { k: "id_copy", ar: "الهوية / الإقامة", en: "ID / Iqama" },
         { k: "cv_copy", ar: "السيرة الذاتية", en: "CV / Résumé" },
         { k: "qual_copy", ar: "المؤهل العلمي", en: "Qualification certificate" },
         { k: "certs_copy", ar: "الشهادات", en: "Certificates" },
         { k: "photo", ar: "صورة شخصية", en: "Personal photo" },
-        { k: "iban_copy", ar: "شهادة الآيبان", en: "IBAN letter" },
         { k: "other_copy", ar: "مرفقات أخرى", en: "Other attachments" },
       ],
     },
@@ -181,6 +183,8 @@
   var FILE_MAX = 6 * 1024 * 1024;
   var state = { data: {}, files: {}, step: 0, ack: false };
   var dirty = false;
+  // أقسامُ المنشأة ومسمّياتها — تُجلب مرّةً وتُملأ بها القوائم
+  var OPTS = { departments: [], jobs: [] };
 
   // ─────────────────────── الحفظ التلقائي ───────────────────────
   // المرفقات لا تُحفظ محليًّا: صورتان تتجاوزان سعة التخزين فيسقط الحفظ كله
@@ -262,7 +266,47 @@
     if (f.req) lb.appendChild(el("em", { text: " *" }));
     return lb;
   }
+  // قائمةٌ من أودو مع بابٍ للكتابة: من لم يجد قسمه أو مسمّاه كتبه بيده،
+  // ولا يُحبَس على قائمةٍ ناقصة — والموارد البشرية تُسوّيه عند المراجعة.
+  function pickNode(f) {
+    var wrap = el("div", { class: "fld" + (f.full ? " full" : ""), "data-k": f.k });
+    wrap.appendChild(label(f));
+    var list = (OPTS[f.src] || []);
+    var cur = (state.data[f.k] || "").toString();
+    var known = cur && list.indexOf(cur) >= 0;
+    var sel = el("select", { id: "fld-" + f.k });
+    sel.appendChild(el("option", { value: "", text: L === "ar" ? "اختر…" : "Select…" }));
+    list.forEach(function (v) { sel.appendChild(el("option", { value: v, text: v })); });
+    sel.appendChild(el("option", { value: "__other", text: L === "ar" ? "غير موجود — أكتبه" : "Not listed — type it" }));
+    sel.value = known ? cur : (cur ? "__other" : "");
+    var free = el("input", {
+      type: "text", placeholder: f.ph || "", style: "margin-top:8px",
+      hidden: known || !cur ? true : false,
+    });
+    free.value = known ? "" : cur;
+    function sync() {
+      var v = sel.value === "__other" ? free.value.trim() : sel.value;
+      state.data[f.k] = v; dirty = true; save(); paintProgress(); paintTabs();
+    }
+    sel.addEventListener("change", function () {
+      free.hidden = sel.value !== "__other";
+      if (sel.value !== "__other") free.value = "";
+      else setTimeout(function () { free.focus(); }, 30);
+      sync();
+    });
+    free.addEventListener("input", sync);
+    wrap.appendChild(sel);
+    wrap.appendChild(free);
+    if (!list.length) {
+      // القائمة لم تصل بعد (أو تعذّرت): الحقل يبقى صالحًا للكتابة
+      free.hidden = false; sel.hidden = true;
+    }
+    wrap.appendChild(el("div", { class: "hint" }));
+    return wrap;
+  }
+
   function fieldNode(f) {
+    if (f.src) return pickNode(f);
     var wrap = el("div", { class: "fld" + (f.full ? " full" : ""), "data-k": f.k });
     wrap.appendChild(label(f));
     var input;
@@ -614,6 +658,16 @@
   });
 
   paintStatic();
+
+  // القوائم تُجلب مبكّرًا فتكون جاهزةً قبل أن يبلغ القسم الوظيفي
+  fetch("/api/join/options")
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      if (!j) return;
+      OPTS = { departments: j.departments || [], jobs: j.jobs || [] };
+      if (!$("#wiz").hidden && SEC[state.step] && SEC[state.step].id === "job") render();
+    })
+    .catch(function () { /* تبقى الحقول كتابةً حرّة */ });
 
   if (MINE) {
     document.querySelector("[data-t='h1']").textContent = "تحديث ملفّي الوظيفي";
