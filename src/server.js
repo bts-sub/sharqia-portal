@@ -134,6 +134,11 @@ app.get("/api/health/odoo", async (req, res) => {
 });
 
 // المسارات
+// ⚠️ ملفّ الموظف الذاتي قبل كل راوترٍ يحرس ما يمرّ به: راوتراتٌ كثيرة
+// تبدأ بـ router.use(requireAuth)، وهي تحرس كل نداءٍ يمرّ بها لا ما
+// تُطابقه وحده. فبابٌ مفتوحٌ بعدها لا يُفتح أبدًا — يُردّ بـ«الجلسة غير
+// صالحة» قبل أن يبلغه النداء.
+app.use("/api", joinRoutes);
 app.use("/api", integrationRoutes);
 app.use("/api", authRoutes);
 app.use("/api", odooRoutes);
@@ -160,9 +165,6 @@ app.use(downloadRoutes);
 app.use(legalRoutes);
 // مستقبِل ADMS/Push لأجهزة البصمة ZKTeco (/iclock/*) — قبل التقاط الواجهة.
 app.use(iclockRoutes);
-// ملفّ الموظف الذاتي: البابُ الوحيد المفتوح بلا حساب — يكتب ولا يقرأ،
-// ومحدودٌ بالمعدّل والحجم داخل مساره.
-app.use("/api", joinRoutes);
 
 // تقديم الواجهة (ملف HTML الواحد) — إن وُجد
 const frontendPath = path.resolve(__dirname, "..", config.frontendFile);
