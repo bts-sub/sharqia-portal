@@ -38,6 +38,7 @@ import cardRoutes from "./routes/card.js";
 import downloadRoutes from "./routes/download.js";
 import legalRoutes from "./routes/legal.js";
 import certRoutes from "./routes/certs.js";
+import iclockRoutes from "./routes/iclock.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -156,6 +157,8 @@ app.use(cardRoutes);
 app.use(downloadRoutes);
 // صفحة سياسة الخصوصية (/privacy) — مطلوبة لنشر المتاجر، قبل التقاط الواجهة.
 app.use(legalRoutes);
+// مستقبِل ADMS/Push لأجهزة البصمة ZKTeco (/iclock/*) — قبل التقاط الواجهة.
+app.use(iclockRoutes);
 
 // تقديم الواجهة (ملف HTML الواحد) — إن وُجد
 const frontendPath = path.resolve(__dirname, "..", config.frontendFile);
