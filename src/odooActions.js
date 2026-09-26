@@ -3690,18 +3690,14 @@ const actions = {
           [id] = [].concat(await odoo.execKw("sharqia.employee.intake", "create", [[vals]]));
           await odoo.execKw("sharqia.employee.intake", "action_submit", [[id]]);
         } catch (e) {
+          // ⚠️ رقمُ هويةٍ مسجَّل لم يعد رفضًا — يصير الملفُّ تحديثًا لصاحبه
+          // في أودو. وما بقي من أخطاء يُسجَّل برمزٍ يُعطاه الزائر، فيُعرف
+          // عند المراجعة ما رُدّ ولماذا بلا أن يُفشي الباب شيئًا لمن يجرّب.
           const msg = String(e?.message || "");
-          if (/مسجَّل للموظف|لا يُفتح ملفّان/.test(msg)) {
-            // ⚠️ الرسالة تُعمَّم عمدًا: إقرارُ الخادم بأن الرقم مسجَّلٌ عندنا
-            // يجعل هذا البابَ أداةَ تحقّقٍ من أرقام الهويات. لكنّ السببَ
-            // يُسجَّل برمزٍ يُعطاه الزائر، فيُعرف عند المراجعة ما رُدّ ولماذا
-            // — وإلا بقي «تعذّر قبول الملف» لغزًا لا يُفكّ.
-            const code = "J" + Math.random().toString(36).slice(2, 6).toUpperCase();
-            console.warn(`⚠️ رُدّ ملفُّ التحاق [${code}]: ${msg.split("\n")[0].slice(0, 160)}`);
-            throw new Error(`تعذّر قبول الملف — راجع إدارة الموارد البشرية. (رمز ${code})`);
-          }
-          console.warn("⚠️ رُدّ ملفُّ التحاق:", msg.split("\n")[0].slice(0, 200));
-          throw e;
+          const code = "J" + Math.random().toString(36).slice(2, 6).toUpperCase();
+          console.warn(`⚠️ رُدّ ملفُّ التحاق [${code}]: ${msg.split("\n")[0].slice(0, 200)}`);
+          if (/رقم الهوية|الجوال|تاريخ|هويةٌ منتهية/.test(msg)) throw e;
+          throw new Error(`تعذّر قبول الملف — راجع إدارة الموارد البشرية. (رمز ${code})`);
         }
         const [rec] = await odoo.searchRead("sharqia.employee.intake",
           [["id", "=", id]], ["name"], { limit: 1 });
