@@ -9,8 +9,28 @@
 import { Router } from "express";
 import { runAction } from "../odooActions.js";
 import { badRequest, tooMany } from "../lib/errors.js";
+import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
+
+// ---------------------------------------------------------------------------
+// الموظف القائم: يفتحها من التطبيق ببياناته مُعبّأة فيصحّحها، ولا يُنشأ له
+// سجلٌّ ثانٍ — ملفُّه يُربط بسجلّه، والاعتمادان يُحدّثانه لا يُنشئانه.
+// ---------------------------------------------------------------------------
+router.get("/me/intake", requireAuth, async (req, res, next) => {
+  try {
+    const { data } = await runAction("intake.mine", {}, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e?.status ? e : badRequest(e?.message || "تعذّرت القراءة")); }
+});
+
+router.post("/me/intake", requireAuth, async (req, res, next) => {
+  try {
+    const vals = buildIntakeVals(req.body || {});
+    const { data } = await runAction("intake.submitMine", { vals }, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e?.status ? e : badRequest(e?.message || "تعذّر إرسال الملف")); }
+});
 
 // ذاكرةُ المعدّل: عنوان → أوقات الإرسال. تُنظَّف من القديم في كل نداء،
 // فلا تنمو بلا حدّ ولا تحتاج مهمّةً مجدولة.
@@ -32,6 +52,54 @@ function rateOk(ip) {
 
 const clean = (v, max = 120) => String(v == null ? "" : v).trim().slice(0, max);
 
+/** تنظيفُ ما وصل وبناءُ قيم الملف — بابان يستعملانها فلا يفترق تحقّقهما. */
+function buildIntakeVals(b) {
+  const idNumber = clean(b.id_number, 10).replace(/\D/g, "");
+  const mobile = clean(b.mobile, 15).replace(/\D/g, "");
+  if (!clean(b.full_name_ar)) throw badRequest("الاسم بالعربية مطلوب");
+  if (idNumber.length !== 10) throw badRequest("رقم الهوية أو الإقامة عشرة أرقام");
+  if (!/^05\d{8}$/.test(mobile)) throw badRequest("رقم الجوال يبدأ بـ05 ويتكوّن من عشرة أرقام");
+
+  const vals = {
+    full_name_ar: clean(b.full_name_ar),
+    full_name_en: clean(b.full_name_en),
+    id_type: b.id_type === "iqama" ? "iqama" : "national",
+    id_number: idNumber,
+    id_expiry: clean(b.id_expiry, 10),
+    passport_no: clean(b.passport_no, 30),
+    birthday: clean(b.birthday, 10),
+    gender: ["male", "female"].includes(b.gender) ? b.gender : "",
+    marital: ["single", "married", "divorced", "widower"].includes(b.marital) ? b.marital : "",
+    children: Math.max(0, Math.min(20, Number(b.children) || 0)),
+    mobile,
+    email: clean(b.email, 120),
+    address: clean(b.address, 200),
+    emergency_name: clean(b.emergency_name),
+    emergency_phone: clean(b.emergency_phone, 15),
+    job_title: clean(b.job_title),
+    hire_date: clean(b.hire_date, 10),
+    bank_name: clean(b.bank_name),
+    iban: clean(b.iban, 34).replace(/\s/g, ""),
+  };
+
+  // المرفقات: base64 بلا ترويسة، بسقفٍ لكلٍّ منها وللمجموع
+  let total = 0;
+  for (const key of ["photo", "id_copy", "iban_copy", "cv_copy"]) {
+    const raw = typeof b[key] === "string" ? b[key] : "";
+    if (!raw) continue;
+    const data = raw.includes(",") ? raw.slice(raw.indexOf(",") + 1) : raw;
+    if (!/^[A-Za-z0-9+/=\s]+$/.test(data.slice(0, 120))) continue;
+    const bytes = Math.round(data.length * 0.75);
+    if (bytes > 6 * 1024 * 1024) throw badRequest(`الملف «${key}» أكبر من ٦ ميجابايت`);
+    total += bytes;
+    if (total > 24 * 1024 * 1024) throw badRequest("مجموع المرفقات أكبر من ٢٤ ميجابايت");
+    vals[key] = data;
+    if (key !== "photo") vals[`${key}_name`] = clean(b[`${key}_name`], 80) || `${key}.bin`;
+  }
+  return vals;
+}
+
+
 router.post("/join/:token", async (req, res, next) => {
   try {
     const ip = req.ip || req.headers["x-forwarded-for"] || "—";
@@ -39,52 +107,9 @@ router.post("/join/:token", async (req, res, next) => {
       throw tooMany("أُرسل ملفّان من هذا الجهاز خلال ساعة. "
         + "إن كنت تُصحّح ملفًّا أرسلته فاتصل بالموارد البشرية.");
     }
-    const b = req.body || {};
-    const idNumber = clean(b.id_number, 10).replace(/\D/g, "");
-    const mobile = clean(b.mobile, 15).replace(/\D/g, "");
-    if (!clean(b.full_name_ar)) throw badRequest("الاسم بالعربية مطلوب");
-    if (idNumber.length !== 10) throw badRequest("رقم الهوية أو الإقامة عشرة أرقام");
-    if (!/^05\d{8}$/.test(mobile)) throw badRequest("رقم الجوال يبدأ بـ05 ويتكوّن من عشرة أرقام");
-
-    const payload = {
-      token: clean(req.params.token, 64),
-      full_name_ar: clean(b.full_name_ar),
-      full_name_en: clean(b.full_name_en),
-      id_type: b.id_type === "iqama" ? "iqama" : "national",
-      id_number: idNumber,
-      id_expiry: clean(b.id_expiry, 10),
-      passport_no: clean(b.passport_no, 30),
-      birthday: clean(b.birthday, 10),
-      gender: ["male", "female"].includes(b.gender) ? b.gender : "",
-      marital: ["single", "married", "divorced", "widower"].includes(b.marital) ? b.marital : "",
-      children: Math.max(0, Math.min(20, Number(b.children) || 0)),
-      mobile,
-      email: clean(b.email, 120),
-      address: clean(b.address, 200),
-      emergency_name: clean(b.emergency_name),
-      emergency_phone: clean(b.emergency_phone, 15),
-      job_title: clean(b.job_title),
-      hire_date: clean(b.hire_date, 10),
-      bank_name: clean(b.bank_name),
-      iban: clean(b.iban, 34).replace(/\s/g, ""),
-      files: {},
-    };
-
-    // المرفقات: base64 بلا ترويسة، وبسقفٍ لكلٍّ منها وللمجموع
-    let total = 0;
-    for (const key of ["photo", "id_copy", "iban_copy", "cv_copy"]) {
-      const raw = typeof b[key] === "string" ? b[key] : "";
-      if (!raw) continue;
-      const data = raw.includes(",") ? raw.slice(raw.indexOf(",") + 1) : raw;
-      if (!/^[A-Za-z0-9+/=\s]+$/.test(data.slice(0, 120))) continue;
-      const bytes = Math.round(data.length * 0.75);
-      if (bytes > 6 * 1024 * 1024) throw badRequest(`الملف «${key}» أكبر من ٦ ميجابايت`);
-      total += bytes;
-      if (total > 24 * 1024 * 1024) throw badRequest("مجموع المرفقات أكبر من ٢٤ ميجابايت");
-      payload.files[key] = { data, name: clean(b[`${key}_name`], 80) };
-    }
-
-    const { data } = await runAction("intake.submit", payload, { user: null });
+    const vals = buildIntakeVals(req.body || {});
+    vals.token = clean(req.params.token, 64);
+    const { data } = await runAction("intake.submit", { vals }, { user: null });
     res.json(data);
   } catch (e) {
     next(e?.status ? e : badRequest(e?.message || "تعذّر إرسال الملف"));

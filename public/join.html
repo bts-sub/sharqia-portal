@@ -183,6 +183,37 @@
   var msg = document.getElementById("msg");
   var form = document.getElementById("f");
   var btn = document.getElementById("send");
+  // «me» يعني موظفًا قائمًا فتحها من التطبيق بجلسته: يُصحّح بياناته لا
+  // يكتبها من فراغ، وملفُّه يُربط بسجلّه فلا يُنشأ له سجلٌّ ثانٍ.
+  var MINE = token === "me";
+
+  if (MINE) {
+    document.title = "تحديث ملفّي — بيت العباءة الشرقية";
+    fetch("/api/me/intake", { credentials: "include" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j) {
+          show("bad", "افتح الصفحة من داخل التطبيق بعد تسجيل الدخول.");
+          btn.disabled = true;
+          return;
+        }
+        if (j.pending) {
+          document.getElementById("form-area").style.display = "none";
+          document.getElementById("done").style.display = "block";
+          document.getElementById("done-title").textContent = "لك ملفٌّ قيد المراجعة";
+          document.getElementById("done-text").textContent =
+            "رقمه " + j.pending.ref + " — انتظر البتّ فيه قبل إرسال تصحيحٍ جديد.";
+          return;
+        }
+        Object.keys(j.data || {}).forEach(function (k) {
+          var el = form.elements[k];
+          if (el && j.data[k] !== "" && j.data[k] != null) el.value = j.data[k];
+        });
+        show("good", "بياناتك الحالية معبّأة — صحّح ما تغيّر ثم أرسل. "
+          + "التغييرُ لا يُطبَّق حتى تعتمده الموارد البشرية والاعتماد النهائي.");
+      })
+      .catch(function () { show("bad", "تعذّر جلب بياناتك — أعد فتح الصفحة."); });
+  }
 
   function show(kind, text) {
     msg.className = "msg " + kind;
@@ -227,17 +258,23 @@
         }
         if (got) { body[key] = got.data; body[key + "_name"] = got.name; }
       }
-      var res = await fetch("/api/join/" + encodeURIComponent(token || "open"), {
-        method: "POST", headers: { "Content-Type": "application/json" },
+      var res = await fetch(MINE ? "/api/me/intake"
+        : "/api/join/" + encodeURIComponent(token || "open"), {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       var out = await res.json().catch(function () { return {}; });
       if (!res.ok) throw new Error(out.error || "تعذّر الإرسال — حاول مرّةً أخرى.");
       document.getElementById("form-area").style.display = "none";
       document.getElementById("done").style.display = "block";
-      document.getElementById("done-text").textContent =
-        "رقم ملفّك: " + (out.ref || "—") + ". تراجعه إدارة الموارد البشرية ثم يُعتمد نهائيًّا، "
-        + "وسنتواصل معك على الجوال الذي أدخلته.";
+      document.getElementById("done-title").textContent =
+        MINE ? "وصل تصحيحك" : "وصل ملفّك";
+      document.getElementById("done-text").textContent = MINE
+        ? "رقمه " + (out.ref || "—") + ". تراجعه الموارد البشرية ثم يُعتمد نهائيًّا، "
+          + "وعندها تُحدَّث بياناتك في النظام."
+        : "رقم ملفّك: " + (out.ref || "—") + ". تراجعه إدارة الموارد البشرية ثم يُعتمد نهائيًّا، "
+          + "وسنتواصل معك على الجوال الذي أدخلته.";
       msg.className = "msg";
     } catch (err) {
       show("bad", err.message || "تعذّر الإرسال.");

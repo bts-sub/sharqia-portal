@@ -3679,32 +3679,11 @@ const actions = {
   async "intake.submit"(params) {
     return withOdoo(
       async () => {
-        const files = params?.files || {};
-        const vals = {
-          full_name_ar: params.full_name_ar,
-          full_name_en: params.full_name_en || false,
-          id_type: params.id_type || "national",
-          id_number: params.id_number,
-          id_expiry: params.id_expiry || false,
-          passport_no: params.passport_no || false,
-          birthday: params.birthday || false,
-          gender: params.gender || false,
-          marital: params.marital || false,
-          children: params.children || 0,
-          mobile: params.mobile,
-          email: params.email || false,
-          address: params.address || false,
-          emergency_name: params.emergency_name || false,
-          emergency_phone: params.emergency_phone || false,
-          job_title: params.job_title || false,
-          hire_date: params.hire_date || false,
-          bank_name: params.bank_name || false,
-          iban: params.iban || false,
-        };
-        for (const [key, f] of Object.entries(files)) {
-          if (!f?.data) continue;
-          vals[key] = f.data;
-          if (key !== "photo") vals[`${key}_name`] = f.name || `${key}.bin`;
+        // القيم تُبنى وتُنظَّف في المسار (buildIntakeVals) — موضعٌ واحد
+        // لتحقّقٍ يستعمله البابان، فلا يفترق المفتوح عن المحمي.
+        const vals = { ...(params?.vals || {}) };
+        for (const k of Object.keys(vals)) {
+          if (vals[k] === "" || vals[k] == null) delete vals[k];
         }
         let id = 0;
         try {
@@ -3719,6 +3698,71 @@ const actions = {
           }
           throw e;
         }
+        const [rec] = await odoo.searchRead("sharqia.employee.intake",
+          [["id", "=", id]], ["name"], { limit: 1 });
+        return { ok: true, ref: rec?.name || "" };
+      },
+      async () => { throw new Error("غير متاح في وضع الاختبار"); },
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** بياناتُ الموظف القائم لتعبئة نموذج الملف — يصحّحها هو لا يكتبها من فراغ. */
+  async "intake.mine"(params, ctx) {
+    const empId = Number(ctx?.user?.odooEmployeeId || 0);
+    return withOdoo(
+      async () => {
+        if (!empId) throw new Error("حسابك غير مربوط بملفٍّ وظيفي");
+        const [emp] = await odoo.searchRead("hr.employee", [["id", "=", empId]],
+          await availableFields("hr.employee", [
+            "name", "identification_id", "permit_no", "passport_id", "birthday",
+            "marital", "children", "mobile_phone", "work_email", "private_street",
+            "emergency_contact", "emergency_phone", "job_title", "department_id",
+          ]), { limit: 1 });
+        if (!emp) throw new Error("تعذّر قراءة ملفك الوظيفي");
+        // ملفٌّ مفتوحٌ لصاحبه: لا يُفتح ثانٍ فوقه — تصحيحان متوازيان على
+        // سجلٍّ واحد يتدافعان، ولا يُعرف أيُّهما الأخير.
+        const [open] = await odoo.searchRead("sharqia.employee.intake",
+          [["employee_id", "=", empId], ["state", "in", ["submitted", "hr_ok"]]],
+          ["name", "state"], { limit: 1 });
+        return {
+          pending: open ? { ref: open.name, state: open.state } : null,
+          data: {
+            full_name_ar: emp.name || "",
+            id_type: emp.permit_no ? "iqama" : "national",
+            id_number: emp.identification_id || emp.permit_no || "",
+            passport_no: emp.passport_id || "",
+            birthday: emp.birthday || "",
+            marital: emp.marital || "",
+            children: emp.children || 0,
+            mobile: emp.mobile_phone || "",
+            email: emp.work_email || "",
+            address: emp.private_street || "",
+            emergency_name: emp.emergency_contact || "",
+            emergency_phone: emp.emergency_phone || "",
+            job_title: emp.job_title || "",
+          },
+        };
+      },
+      async () => ({ pending: null, data: {} }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** ملفُّ موظفٍ قائم: يُربط بسجلّه فلا يُنشأ سجلٌّ ثانٍ له. */
+  async "intake.submitMine"(params, ctx) {
+    const empId = Number(ctx?.user?.odooEmployeeId || 0);
+    return withOdoo(
+      async () => {
+        if (!empId) throw new Error("حسابك غير مربوط بملفٍّ وظيفي");
+        const [open] = await odoo.searchRead("sharqia.employee.intake",
+          [["employee_id", "=", empId], ["state", "in", ["submitted", "hr_ok"]]],
+          ["name"], { limit: 1 });
+        if (open) throw new Error(`لك ملفٌّ قيد المراجعة (${open.name}) — انتظر البتّ فيه.`);
+        const vals = { ...(params?.vals || {}), employee_id: empId };
+        const [id] = [].concat(await odoo.execKw("sharqia.employee.intake", "create", [[vals]]));
+        await odoo.execKw("sharqia.employee.intake", "action_submit", [[id]],
+          actorCtx(ctx));
         const [rec] = await odoo.searchRead("sharqia.employee.intake",
           [["id", "=", id]], ["name"], { limit: 1 });
         return { ok: true, ref: rec?.name || "" };
