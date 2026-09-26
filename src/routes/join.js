@@ -56,7 +56,12 @@ const clean = (v, max = 120) => String(v == null ? "" : v).trim().slice(0, max);
 function buildIntakeVals(b) {
   const idNumber = clean(b.id_number, 10).replace(/\D/g, "");
   const mobile = clean(b.mobile, 15).replace(/\D/g, "");
-  if (!clean(b.full_name_ar)) throw badRequest("الاسم بالعربية مطلوب");
+  // ⚠️ الاسم الرباعي يُركَّب هنا لا في الواجهة وحدها: النموذج يأخذه أجزاءً،
+  // ومن نادى الخادم مباشرةً لا يمرّ بتركيب الصفحة — فيُردّ بلا اسمٍ وهو كتبه.
+  const fullAr = clean(b.full_name_ar)
+    || [b.name_first, b.name_father, b.name_grand, b.name_family]
+      .map((p) => clean(p, 40)).filter(Boolean).join(" ");
+  if (!fullAr) throw badRequest("الاسم بالعربية مطلوب");
   if (idNumber.length !== 10) throw badRequest("رقم الهوية أو الإقامة عشرة أرقام");
   if (!/^05\d{8}$/.test(mobile)) throw badRequest("رقم الجوال يبدأ بـ05 ويتكوّن من عشرة أرقام");
 
@@ -65,7 +70,7 @@ function buildIntakeVals(b) {
     name_father: clean(b.name_father, 40),
     name_grand: clean(b.name_grand, 40),
     name_family: clean(b.name_family, 40),
-    full_name_ar: clean(b.full_name_ar),
+    full_name_ar: fullAr,
     full_name_en: clean(b.full_name_en),
     nationality_txt: clean(b.nationality_txt, 60),
     city: clean(b.city, 60),
