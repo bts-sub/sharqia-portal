@@ -3,89 +3,164 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="theme-color" content="#14110D"/>
 <title>ملفّ الموظف — بيت العباءة الشرقية</title>
 <link rel="icon" href="/logo-mark.png?v=2"/>
 <style>
-  /* هويةُ الشركة نفسها التي في التطبيق: الذهبيّ على أبيضَ دافئ، وخطُّ
-     IBM Plex Arabic — فمن يفتح الرابط يعرف أنه في بيت العباءة الشرقية. */
+  /* ⚠️ شعارُ المنشأة ذهبيٌّ وأبيض على شفاف: نصفُه يختفي على خلفيةٍ بيضاء.
+     فله لوحٌ داكن — كما في هوية الشركة نفسها — يظهر عليه كاملًا. */
   @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
   @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-SemiBold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
+
   :root {
-    --gold: #C9A227; --gold-soft: #FBF6E6; --ink: #202020; --mut: #7A7A7A;
-    --line: #E8E4DC; --bg: #FAF8F4; --card: #FFFFFF; --bad: #EF4444; --ok: #15803D;
+    --gold: #C9A227; --gold-2: #E3C05A; --gold-soft: #FBF5E4;
+    --ink: #1C1A16; --mut: #79736A; --line: #ECE7DC;
+    --bg: #F7F5F0; --card: #FFFFFF; --dark: #14110D;
+    --bad: #DC2626; --ok: #15803D;
+    --shadow: 0 1px 2px rgba(20,17,13,.05), 0 8px 24px rgba(20,17,13,.06);
   }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { scroll-behavior: smooth; }
   body { margin: 0; background: var(--bg); color: var(--ink);
-         font-family: "PlexAr", system-ui, "Segoe UI", sans-serif; font-size: 15px; }
-  .wrap { max-width: 760px; margin: 0 auto; padding: 0 16px 56px; }
-  header { background: #fff; border-bottom: 1px solid var(--line); padding: 18px 0; margin-bottom: 18px; }
-  header .in { max-width: 760px; margin: 0 auto; padding: 0 16px; display: flex; align-items: center; gap: 12px; }
-  header img { height: 46px; }
-  header .t { font-weight: 700; font-size: 17px; }
-  header .s { color: var(--mut); font-size: 12.5px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-          padding: 18px; margin-bottom: 14px; }
-  .card h2 { margin: 0 0 4px; font-size: 15.5px; }
-  .card p.hint { margin: 0 0 14px; color: var(--mut); font-size: 12.5px; line-height: 1.8; }
-  label { display: block; font-size: 13px; font-weight: 700; margin: 12px 0 5px; }
+    font-family: "PlexAr", system-ui, "Segoe UI", sans-serif; font-size: 15px; line-height: 1.7; }
+
+  /* ───── الترويسة: لوحٌ داكن يحمل الشعار ───── */
+  .hero { position: relative; background: var(--dark); overflow: hidden;
+    padding: 30px 16px 64px; text-align: center; }
+  .hero::before { content: ""; position: absolute; inset: -60% 30% auto -30%; height: 320px;
+    background: radial-gradient(closest-side, rgba(201,162,39,.30), transparent 70%); }
+  .hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 34px;
+    background: var(--bg); border-radius: 34px 34px 0 0; }
+  .hero > * { position: relative; z-index: 1; }
+  .hero img { height: 66px; max-width: 78%; object-fit: contain; }
+  .hero h1 { margin: 16px 0 4px; font-size: 21px; color: #fff; letter-spacing: .2px; }
+  .hero p { margin: 0; color: rgba(255,255,255,.62); font-size: 13px; }
+
+  .wrap { max-width: 720px; margin: -30px auto 0; padding: 0 16px 120px; }
+
+  /* ───── شريط الخطوات ───── */
+  .steps { display: flex; gap: 8px; margin-bottom: 16px; }
+  .steps div { flex: 1; background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 10px 8px; text-align: center; font-size: 11.5px;
+    color: var(--mut); box-shadow: var(--shadow); }
+  .steps div b { display: block; font-size: 13px; color: var(--ink); margin-bottom: 2px; }
+  .steps div.on { border-color: var(--gold); background: var(--gold-soft); }
+  .steps div.on b { color: #8A6D12; }
+
+  /* ───── البطاقات ───── */
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 20px; margin-bottom: 14px; box-shadow: var(--shadow); position: relative; }
+  .card > h2 { margin: 0 0 16px; font-size: 15.5px; display: flex; align-items: center; gap: 10px; }
+  .card > h2 span.n { width: 26px; height: 26px; border-radius: 9px; flex: 0 0 26px;
+    background: linear-gradient(140deg, var(--gold-2), var(--gold)); color: #fff;
+    display: grid; place-items: center; font-size: 12.5px; font-weight: 700; }
+  .intro { background: linear-gradient(140deg, #fff, var(--gold-soft)); }
+  .intro p { margin: 0; color: var(--mut); font-size: 13px; }
+  .intro b { color: var(--ink); }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+  .grid .full { grid-column: 1 / -1; }
+  @media (max-width: 620px) { .grid { grid-template-columns: 1fr; } }
+
+  label { display: block; font-size: 12.5px; font-weight: 700; color: #4C4740; margin-bottom: 6px; }
   label .req { color: var(--bad); }
-  input, select, textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--line);
-    border-radius: 10px; font-family: inherit; font-size: 14.5px; background: #fff; color: var(--ink); }
-  input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); border-color: var(--gold); }
-  .row { display: flex; gap: 12px; flex-wrap: wrap; }
-  .row > div { flex: 1 1 220px; }
-  .file { padding: 9px; border: 1px dashed var(--line); border-radius: 10px; background: #FCFBF8; }
-  button { width: 100%; padding: 14px; border: none; border-radius: 12px; background: var(--gold);
-    color: #fff; font-family: inherit; font-weight: 700; font-size: 15.5px; cursor: pointer; }
-  button:disabled { opacity: .6; cursor: default; }
-  .msg { padding: 12px 14px; border-radius: 11px; font-size: 13.5px; line-height: 1.9; margin-bottom: 14px; display: none; }
-  .msg.bad { background: #FEE2E2; color: #B91C1C; display: block; }
-  .msg.good { background: #DCFCE7; color: #14532D; display: block; }
-  .done { text-align: center; padding: 38px 18px; }
-  .done .tick { width: 62px; height: 62px; border-radius: 99px; background: #DCFCE7; color: var(--ok);
-    display: grid; place-items: center; font-size: 30px; margin: 0 auto 14px; }
-  .steps { display: flex; gap: 6px; margin: 14px 0 0; font-size: 11.5px; color: var(--mut); flex-wrap: wrap; }
-  .steps span { background: var(--gold-soft); border-radius: 99px; padding: 4px 10px; }
-  footer { text-align: center; color: var(--mut); font-size: 11.5px; padding: 18px; }
+  input, select { width: 100%; padding: 12px 13px; border: 1px solid var(--line);
+    border-radius: 11px; font-family: inherit; font-size: 15px; background: #FDFCFA;
+    color: var(--ink); transition: border-color .15s, box-shadow .15s, background .15s; }
+  input::placeholder { color: #B5AEA2; }
+  input:focus, select:focus { outline: none; border-color: var(--gold);
+    background: #fff; box-shadow: 0 0 0 4px rgba(201,162,39,.14); }
+  select { appearance: none; background-image:
+    linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
+    background-position: 14px 20px, 19px 20px; background-size: 5px 5px; background-repeat: no-repeat; }
+
+  /* ───── المرفقات ───── */
+  .drop { position: relative; border: 1.5px dashed #D9D2C4; border-radius: 12px;
+    background: #FCFAF6; padding: 14px; display: flex; align-items: center; gap: 11px;
+    cursor: pointer; transition: border-color .15s, background .15s; }
+  .drop:hover { border-color: var(--gold); background: #FFFDF7; }
+  .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; padding: 0; }
+  .drop .ic { width: 36px; height: 36px; border-radius: 10px; background: var(--gold-soft);
+    display: grid; place-items: center; font-size: 17px; flex: 0 0 36px; }
+  .drop .tx { font-size: 13px; font-weight: 700; }
+  .drop .sub { font-size: 11.5px; color: var(--mut); font-weight: 400; }
+  .drop.has { border-style: solid; border-color: var(--ok); background: #F6FDF8; }
+  .drop.has .ic { background: #DCFCE7; }
+
+  /* ───── الإرسال ───── */
+  .send-bar { position: fixed; inset: auto 0 0 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: rgba(247,245,240,.94); backdrop-filter: blur(8px); border-top: 1px solid var(--line); }
+  .send-bar .in { max-width: 720px; margin: 0 auto; }
+  button { width: 100%; padding: 15px; border: none; border-radius: 13px;
+    background: linear-gradient(140deg, var(--gold-2), var(--gold)); color: #fff;
+    font-family: inherit; font-weight: 700; font-size: 15.5px; cursor: pointer;
+    box-shadow: 0 6px 18px rgba(201,162,39,.28); }
+  button:disabled { opacity: .55; box-shadow: none; cursor: default; }
+
+  .msg { padding: 13px 15px; border-radius: 12px; font-size: 13.5px; margin-bottom: 14px; display: none; }
+  .msg.bad { background: #FEE7E7; color: #9B1C1C; border: 1px solid #F7C9C9; display: block; }
+  .msg.good { background: #E9FBEF; color: #14532D; border: 1px solid #C4EFD3; display: block; }
+
+  .done { text-align: center; padding: 44px 22px; }
+  .done .tick { width: 66px; height: 66px; border-radius: 99px; background: #E9FBEF;
+    color: var(--ok); display: grid; place-items: center; font-size: 32px; margin: 0 auto 16px;
+    box-shadow: 0 0 0 8px rgba(21,128,61,.06); }
+  .done h2 { margin: 0 0 8px; font-size: 18px; display: block; }
+  .done p { margin: 0; color: var(--mut); font-size: 13.5px; }
+
+  footer { text-align: center; color: var(--mut); font-size: 11.5px; padding: 6px 16px 26px; }
+  footer .sep { color: var(--line); margin: 0 6px; }
+
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #131210; --card: #1C1A17; --ink: #F2EFE9; --mut: #9A9287;
+            --line: #2C2823; --gold-soft: #2A2416;
+            --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35); }
+    input, select { background: #232019; }
+    input:focus, select:focus { background: #262219; }
+    .drop { background: #201D18; border-color: #35302A; }
+    .intro { background: linear-gradient(140deg, #1C1A17, #241F14); }
+    .send-bar { background: rgba(19,18,16,.94); }
+  }
 </style>
 </head>
 <body>
-<header>
-  <div class="in">
-    <img src="/logo-mark.png?v=2" alt="بيت العباءة الشرقية"/>
-    <div>
-      <div class="t">بيت العباءة الشرقية</div>
-      <div class="s">ملفّ الموظف — تعبئة البيانات</div>
-    </div>
-  </div>
-</header>
+
+<div class="hero">
+  <img src="/logo-mark.png?v=2" alt="بيت العباءة الشرقية"/>
+  <h1>ملفّ الموظف</h1>
+  <p>بيت العباءة الشرقية — المملكة العربية السعودية</p>
+</div>
 
 <div class="wrap">
   <div id="msg" class="msg"></div>
 
   <div id="form-area">
-    <div class="card">
-      <h2>أهلًا بك</h2>
-      <p class="hint">
-        املأ بياناتك مرّةً واحدة، فتصل إدارة الموارد البشرية مباشرةً بلا ورق.
-        ما عليه <span class="req">*</span> مطلوب. وبياناتك لا تُنشر ولا تُستعمل
-        إلا في ملفّك الوظيفي.
+    <div class="steps">
+      <div class="on"><b>١</b>تملأ بياناتك</div>
+      <div><b>٢</b>تراجعها الموارد البشرية</div>
+      <div><b>٣</b>الاعتماد النهائي</div>
+    </div>
+
+    <div class="card intro">
+      <p id="intro-text">
+        <b>أهلًا بك.</b> املأ بياناتك مرّةً واحدة فتصل إدارة الموارد البشرية بلا ورق.
+        ما عليه <span class="req" style="color:var(--bad)">*</span> مطلوب، وبياناتك لا تُنشر
+        ولا تُستعمل إلا في ملفّك الوظيفي.
       </p>
-      <div class="steps">
-        <span>١ · تملأ بياناتك</span>
-        <span>٢ · تراجعها الموارد البشرية</span>
-        <span>٣ · الاعتماد النهائي</span>
-      </div>
     </div>
 
     <form id="f" autocomplete="on">
       <div class="card">
-        <h2>الهوية</h2>
-        <label>الاسم الرباعي بالعربية <span class="req">*</span></label>
-        <input name="full_name_ar" required placeholder="مثال: محمد عبدالله سعد الحربي"/>
-        <label>الاسم بالإنجليزية (كما في الجواز)</label>
-        <input name="full_name_en" dir="ltr" placeholder="MOHAMMED ABDULLAH ALHARBI"/>
-        <div class="row">
+        <h2><span class="n">١</span> الهوية</h2>
+        <div class="grid">
+          <div class="full">
+            <label>الاسم الرباعي بالعربية <span class="req">*</span></label>
+            <input name="full_name_ar" required placeholder="محمد عبدالله سعد الحربي"/>
+          </div>
+          <div class="full">
+            <label>الاسم بالإنجليزية (كما في الجواز)</label>
+            <input name="full_name_en" dir="ltr" placeholder="MOHAMMED ABDULLAH ALHARBI"/>
+          </div>
           <div>
             <label>نوع الهوية <span class="req">*</span></label>
             <select name="id_type">
@@ -94,87 +169,136 @@
             </select>
           </div>
           <div>
-            <label>الرقم (١٠ أرقام) <span class="req">*</span></label>
+            <label>الرقم — عشرة أرقام <span class="req">*</span></label>
             <input name="id_number" inputmode="numeric" maxlength="10" required placeholder="1xxxxxxxxx"/>
           </div>
-        </div>
-        <div class="row">
-          <div><label>تاريخ انتهاء الهوية</label><input type="date" name="id_expiry"/></div>
-          <div><label>رقم جواز السفر</label><input name="passport_no" dir="ltr"/></div>
-        </div>
-        <div class="row">
-          <div><label>تاريخ الميلاد</label><input type="date" name="birthday"/></div>
+          <div>
+            <label>تاريخ انتهاء الهوية</label>
+            <input type="date" name="id_expiry"/>
+          </div>
+          <div>
+            <label>رقم جواز السفر</label>
+            <input name="passport_no" dir="ltr" placeholder="اختياري"/>
+          </div>
+          <div>
+            <label>تاريخ الميلاد</label>
+            <input type="date" name="birthday"/>
+          </div>
           <div>
             <label>الجنس</label>
-            <select name="gender"><option value="">—</option><option value="male">ذكر</option><option value="female">أنثى</option></select>
+            <select name="gender">
+              <option value="">اختر…</option>
+              <option value="male">ذكر</option>
+              <option value="female">أنثى</option>
+            </select>
           </div>
-        </div>
-        <div class="row">
           <div>
             <label>الحالة الاجتماعية</label>
             <select name="marital">
-              <option value="">—</option>
+              <option value="">اختر…</option>
               <option value="single">أعزب / عزباء</option>
               <option value="married">متزوج / متزوجة</option>
               <option value="divorced">مطلّق / مطلّقة</option>
               <option value="widower">أرمل / أرملة</option>
             </select>
           </div>
-          <div><label>عدد الأبناء</label><input type="number" name="children" min="0" max="20" value="0"/></div>
+          <div>
+            <label>عدد الأبناء</label>
+            <input type="number" name="children" min="0" max="20" value="0"/>
+          </div>
         </div>
       </div>
 
       <div class="card">
-        <h2>التواصل</h2>
-        <div class="row">
-          <div><label>رقم الجوال <span class="req">*</span></label><input name="mobile" inputmode="tel" required placeholder="05xxxxxxxx"/></div>
-          <div><label>البريد الإلكتروني</label><input type="email" name="email" dir="ltr"/></div>
-        </div>
-        <label>العنوان (المدينة والحي)</label>
-        <input name="address" placeholder="مثال: الرياض — حي النرجس"/>
-        <div class="row">
-          <div><label>اسم شخص للطوارئ</label><input name="emergency_name"/></div>
-          <div><label>جوال الطوارئ</label><input name="emergency_phone" inputmode="tel"/></div>
+        <h2><span class="n">٢</span> التواصل</h2>
+        <div class="grid">
+          <div>
+            <label>رقم الجوال <span class="req">*</span></label>
+            <input name="mobile" inputmode="tel" maxlength="10" required placeholder="05xxxxxxxx"/>
+          </div>
+          <div>
+            <label>البريد الإلكتروني</label>
+            <input type="email" name="email" dir="ltr" placeholder="name@example.com"/>
+          </div>
+          <div class="full">
+            <label>العنوان — المدينة والحي</label>
+            <input name="address" placeholder="الرياض — حي النرجس"/>
+          </div>
+          <div>
+            <label>اسم شخص للطوارئ</label>
+            <input name="emergency_name" placeholder="قريبٌ يُتّصل به"/>
+          </div>
+          <div>
+            <label>جوال الطوارئ</label>
+            <input name="emergency_phone" inputmode="tel" maxlength="10" placeholder="05xxxxxxxx"/>
+          </div>
         </div>
       </div>
 
       <div class="card">
-        <h2>العمل والبنك</h2>
-        <div class="row">
-          <div><label>المسمى الوظيفي</label><input name="job_title"/></div>
-          <div><label>تاريخ المباشرة</label><input type="date" name="hire_date"/></div>
-        </div>
-        <div class="row">
-          <div><label>اسم البنك</label><input name="bank_name"/></div>
-          <div><label>رقم الآيبان</label><input name="iban" dir="ltr" placeholder="SA.." maxlength="34"/></div>
+        <h2><span class="n">٣</span> العمل والبنك</h2>
+        <div class="grid">
+          <div>
+            <label>المسمى الوظيفي</label>
+            <input name="job_title" placeholder="مثال: فنّي خياطة"/>
+          </div>
+          <div>
+            <label>تاريخ المباشرة</label>
+            <input type="date" name="hire_date"/>
+          </div>
+          <div>
+            <label>اسم البنك</label>
+            <input name="bank_name" placeholder="مثال: الراجحي"/>
+          </div>
+          <div>
+            <label>رقم الآيبان</label>
+            <input name="iban" dir="ltr" maxlength="34" placeholder="SA0000000000000000000000"/>
+          </div>
         </div>
       </div>
 
       <div class="card">
-        <h2>المستندات</h2>
-        <p class="hint">صورةٌ واضحة تكفي — من الجوال مباشرةً.</p>
-        <label>صورتك الشخصية</label>
-        <input class="file" type="file" name="photo" accept="image/*"/>
-        <label>صورة الهوية / الإقامة</label>
-        <input class="file" type="file" name="id_copy" accept="image/*,application/pdf"/>
-        <label>شهادة الآيبان</label>
-        <input class="file" type="file" name="iban_copy" accept="image/*,application/pdf"/>
-        <label>السيرة الذاتية / الشهادات</label>
-        <input class="file" type="file" name="cv_copy" accept="image/*,application/pdf"/>
+        <h2><span class="n">٤</span> المستندات</h2>
+        <div class="grid">
+          <label class="drop full" data-for="photo">
+            <span class="ic">📷</span>
+            <span class="tx">صورتك الشخصية<span class="sub" data-name>من الجوال مباشرةً</span></span>
+            <input type="file" name="photo" accept="image/*"/>
+          </label>
+          <label class="drop full" data-for="id_copy">
+            <span class="ic">🪪</span>
+            <span class="tx">صورة الهوية / الإقامة<span class="sub" data-name>صورة أو PDF</span></span>
+            <input type="file" name="id_copy" accept="image/*,application/pdf"/>
+          </label>
+          <label class="drop full" data-for="iban_copy">
+            <span class="ic">🏦</span>
+            <span class="tx">شهادة الآيبان<span class="sub" data-name>من تطبيق بنكك</span></span>
+            <input type="file" name="iban_copy" accept="image/*,application/pdf"/>
+          </label>
+          <label class="drop full" data-for="cv_copy">
+            <span class="ic">📄</span>
+            <span class="tx">السيرة الذاتية / الشهادات<span class="sub" data-name>اختياري</span></span>
+            <input type="file" name="cv_copy" accept="image/*,application/pdf"/>
+          </label>
+        </div>
       </div>
-
-      <button id="send" type="submit">إرسال الملف</button>
     </form>
   </div>
 
   <div id="done" class="card done" style="display:none;">
     <div class="tick">✓</div>
     <h2 id="done-title">وصل ملفّك</h2>
-    <p class="hint" id="done-text"></p>
+    <p id="done-text"></p>
   </div>
+
+  <footer>
+    بيت العباءة الشرقية <span class="sep">•</span> بياناتك محفوظة ولا تُشارَك
+  </footer>
 </div>
 
-<footer>بيت العباءة الشرقية — المملكة العربية السعودية</footer>
+<div class="send-bar" id="send-bar">
+  <div class="in"><button id="send" type="submit" form="f">إرسال الملف</button></div>
+</div>
 
 <script>
 (function () {
@@ -187,8 +311,36 @@
   // يكتبها من فراغ، وملفُّه يُربط بسجلّه فلا يُنشأ له سجلٌّ ثانٍ.
   var MINE = token === "me";
 
+  function show(kind, text) {
+    msg.className = "msg " + kind;
+    msg.textContent = text;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function finish(title, text) {
+    document.getElementById("form-area").style.display = "none";
+    document.getElementById("send-bar").style.display = "none";
+    document.getElementById("done").style.display = "block";
+    document.getElementById("done-title").textContent = title;
+    document.getElementById("done-text").textContent = text;
+    msg.className = "msg";
+  }
+
+  // اسمُ الملف يظهر مكان الوصف حين يُختار — فيعرف المرسِل ما أرفقه
+  Array.prototype.forEach.call(document.querySelectorAll(".drop"), function (d) {
+    var inp = d.querySelector("input");
+    var sub = d.querySelector("[data-name]");
+    var was = sub.textContent;
+    inp.addEventListener("change", function () {
+      var f = inp.files && inp.files[0];
+      d.classList.toggle("has", !!f);
+      sub.textContent = f ? f.name : was;
+    });
+  });
+
   if (MINE) {
     document.title = "تحديث ملفّي — بيت العباءة الشرقية";
+    document.querySelector(".hero h1").textContent = "تحديث ملفّي الوظيفي";
+    btn.textContent = "إرسال التصحيح";
     fetch("/api/me/intake", { credentials: "include" })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
@@ -198,27 +350,19 @@
           return;
         }
         if (j.pending) {
-          document.getElementById("form-area").style.display = "none";
-          document.getElementById("done").style.display = "block";
-          document.getElementById("done-title").textContent = "لك ملفٌّ قيد المراجعة";
-          document.getElementById("done-text").textContent =
-            "رقمه " + j.pending.ref + " — انتظر البتّ فيه قبل إرسال تصحيحٍ جديد.";
+          finish("لك ملفٌّ قيد المراجعة",
+            "رقمه " + j.pending.ref + " — انتظر البتّ فيه قبل إرسال تصحيحٍ جديد.");
           return;
         }
         Object.keys(j.data || {}).forEach(function (k) {
           var el = form.elements[k];
           if (el && j.data[k] !== "" && j.data[k] != null) el.value = j.data[k];
         });
-        show("good", "بياناتك الحالية معبّأة — صحّح ما تغيّر ثم أرسل. "
-          + "التغييرُ لا يُطبَّق حتى تعتمده الموارد البشرية والاعتماد النهائي.");
+        document.getElementById("intro-text").innerHTML =
+          "<b>بياناتك الحالية معبّأة.</b> صحّح ما تغيّر ثم أرسل — والتغيير لا يُطبَّق "
+          + "حتى تعتمده الموارد البشرية ثم الاعتماد النهائي.";
       })
       .catch(function () { show("bad", "تعذّر جلب بياناتك — أعد فتح الصفحة."); });
-  }
-
-  function show(kind, text) {
-    msg.className = "msg " + kind;
-    msg.textContent = text;
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   // الملفات تُقرأ base64: الخادم يكتبها مرفقاتٍ في أودو، ولا رفعَ منفصل
@@ -253,7 +397,7 @@
         var got = await readFile(form.elements[key]);
         if (got && got.tooBig) {
           show("bad", "الملف «" + got.tooBig + "» أكبر من ٦ ميجابايت — اختر صورةً أصغر.");
-          btn.disabled = false; btn.textContent = "إرسال الملف";
+          btn.disabled = false; btn.textContent = MINE ? "إرسال التصحيح" : "إرسال الملف";
           return;
         }
         if (got) { body[key] = got.data; body[key + "_name"] = got.name; }
@@ -266,19 +410,15 @@
       });
       var out = await res.json().catch(function () { return {}; });
       if (!res.ok) throw new Error(out.error || "تعذّر الإرسال — حاول مرّةً أخرى.");
-      document.getElementById("form-area").style.display = "none";
-      document.getElementById("done").style.display = "block";
-      document.getElementById("done-title").textContent =
-        MINE ? "وصل تصحيحك" : "وصل ملفّك";
-      document.getElementById("done-text").textContent = MINE
-        ? "رقمه " + (out.ref || "—") + ". تراجعه الموارد البشرية ثم يُعتمد نهائيًّا، "
-          + "وعندها تُحدَّث بياناتك في النظام."
-        : "رقم ملفّك: " + (out.ref || "—") + ". تراجعه إدارة الموارد البشرية ثم يُعتمد نهائيًّا، "
-          + "وسنتواصل معك على الجوال الذي أدخلته.";
-      msg.className = "msg";
+      finish(MINE ? "وصل تصحيحك" : "وصل ملفّك",
+        MINE
+          ? "رقمه " + (out.ref || "—") + ". تراجعه الموارد البشرية ثم يُعتمد نهائيًّا، "
+            + "وعندها تُحدَّث بياناتك في النظام."
+          : "رقم ملفّك: " + (out.ref || "—") + ". تراجعه إدارة الموارد البشرية ثم يُعتمد "
+            + "نهائيًّا، وسنتواصل معك على الجوال الذي أدخلته.");
     } catch (err) {
       show("bad", err.message || "تعذّر الإرسال.");
-      btn.disabled = false; btn.textContent = "إرسال الملف";
+      btn.disabled = false; btn.textContent = MINE ? "إرسال التصحيح" : "إرسال الملف";
     }
   });
 })();
