@@ -37,6 +37,7 @@ import pushRoutes from "./routes/push.js";
 import cardRoutes from "./routes/card.js";
 import downloadRoutes from "./routes/download.js";
 import legalRoutes from "./routes/legal.js";
+import certRoutes from "./routes/certs.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -147,6 +148,7 @@ app.use("/api", letterRoutes);
 app.use("/api", learningRoutes);
 app.use("/api", disciplineRoutes);
 app.use("/api", pushRoutes);
+app.use(certRoutes);
 // البطاقة المهنية: يحمل مساري /api/me/card و /c/:token — يُركّب قبل التقاط
 // الواجهة لكل المسارات (app.get("*")) وإلا ابتلعت الصفحةُ العامةَ الرابطَ.
 app.use(cardRoutes);
