@@ -3718,6 +3718,7 @@ const actions = {
             "name", "identification_id", "permit_no", "passport_id", "birthday",
             "marital", "children", "mobile_phone", "work_email", "private_street",
             "emergency_contact", "emergency_phone", "job_title", "department_id",
+            "private_city", "study_field", "study_school",
           ]), { limit: 1 });
         if (!emp) throw new Error("تعذّر قراءة ملفك الوظيفي");
         // ملفٌّ مفتوحٌ لصاحبه: لا يُفتح ثانٍ فوقه — تصحيحان متوازيان على
@@ -3741,6 +3742,10 @@ const actions = {
             emergency_name: emp.emergency_contact || "",
             emergency_phone: emp.emergency_phone || "",
             job_title: emp.job_title || "",
+            department_txt: emp.department_id?.[1] || "",
+            city: emp.private_city || "",
+            specialization: emp.study_field || "",
+            university: emp.study_school || "",
           },
         };
       },

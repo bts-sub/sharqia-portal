@@ -4,424 +4,304 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <meta name="theme-color" content="#14110D"/>
-<title>ملفّ الموظف — بيت العباءة الشرقية</title>
+<title>بوابة بيانات الموظفين — بيت العباءة الشرقية</title>
 <link rel="icon" href="/logo-mark.png?v=2"/>
 <style>
-  /* ⚠️ شعارُ المنشأة ذهبيٌّ وأبيض على شفاف: نصفُه يختفي على خلفيةٍ بيضاء.
-     فله لوحٌ داكن — كما في هوية الشركة نفسها — يظهر عليه كاملًا. */
   @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+  @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-SemiBold.ttf") format("truetype"); font-weight: 600; font-display: swap; }
   @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-SemiBold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
 
+  /* هويةٌ مؤسسية هادئة: محايدٌ دافئ واسع، والذهبيُّ لهجةٌ لا لونُ صفحة.
+     لا تدرّجات صارخة ولا أيقونات كثيرة — الفخامة في المسافات والخطّ. */
   :root {
-    --gold: #C9A227; --gold-2: #E3C05A; --gold-soft: #FBF5E4;
-    --ink: #1C1A16; --mut: #79736A; --line: #ECE7DC;
-    --bg: #F7F5F0; --card: #FFFFFF; --dark: #14110D;
-    --bad: #DC2626; --ok: #15803D;
-    --shadow: 0 1px 2px rgba(20,17,13,.05), 0 8px 24px rgba(20,17,13,.06);
+    --gold: #B8912A; --gold-2: #D4B155; --gold-tint: #F7F2E4;
+    --ink: #17150F; --ink-2: #3D3830; --mut: #7C756A; --faint: #A9A196;
+    --line: #E7E2D8; --line-2: #F1EDE5;
+    --bg: #FAF8F4; --card: #FFFFFF;
+    --ok: #16794A; --ok-bg: #EBF7F0; --bad: #B4232A; --bad-bg: #FBEDED;
+    --sh-1: 0 1px 2px rgba(23,21,15,.04);
+    --sh-2: 0 2px 4px rgba(23,21,15,.04), 0 12px 32px rgba(23,21,15,.06);
+    --r: 14px;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { scroll-behavior: smooth; }
   body { margin: 0; background: var(--bg); color: var(--ink);
-    font-family: "PlexAr", system-ui, "Segoe UI", sans-serif; font-size: 15px; line-height: 1.7; }
+    font-family: "PlexAr", system-ui, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.75; -webkit-font-smoothing: antialiased; }
+  [hidden] { display: none !important; }
+  button { font-family: inherit; cursor: pointer; border: none; }
+  a { color: inherit; }
 
-  /* ───── الترويسة: لوحٌ داكن يحمل الشعار ───── */
-  .hero { position: relative; background: var(--dark); overflow: hidden;
-    padding: 30px 16px 64px; text-align: center; }
-  .hero::before { content: ""; position: absolute; inset: -60% 30% auto -30%; height: 320px;
-    background: radial-gradient(closest-side, rgba(201,162,39,.30), transparent 70%); }
-  .hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 34px;
-    background: var(--bg); border-radius: 34px 34px 0 0; }
-  .hero > * { position: relative; z-index: 1; }
-  .hero img { height: 66px; max-width: 78%; object-fit: contain; }
-  .hero h1 { margin: 16px 0 4px; font-size: 21px; color: #fff; letter-spacing: .2px; }
-  .hero p { margin: 0; color: rgba(255,255,255,.62); font-size: 13px; }
+  /* ───────── شريط علوي ───────── */
+  .bar { position: sticky; top: 0; z-index: 30; background: rgba(250,248,244,.88);
+    backdrop-filter: saturate(180%) blur(12px); border-bottom: 1px solid var(--line-2); }
+  .bar .in { max-width: 940px; margin: 0 auto; padding: 12px 20px;
+    display: flex; align-items: center; gap: 14px; }
+  .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+  .brand .plate { background: #14110D; border-radius: 10px; padding: 7px 10px; display: grid; place-items: center; }
+  .brand .plate img { height: 26px; display: block; }
+  .brand .txt b { display: block; font-size: 13.5px; font-weight: 700; line-height: 1.4; }
+  .brand .txt span { display: block; font-size: 11px; color: var(--mut); line-height: 1.4; }
+  .bar .sp { flex: 1; }
+  .lang { background: transparent; border: 1px solid var(--line); color: var(--ink-2);
+    border-radius: 9px; padding: 6px 12px; font-size: 12.5px; font-weight: 600; }
+  .lang:hover { border-color: var(--gold); color: var(--gold); }
 
-  .wrap { max-width: 720px; margin: -30px auto 0; padding: 0 16px 120px; }
+  /* ───────── الصفحة الافتتاحية ───────── */
+  .land { max-width: 940px; margin: 0 auto; padding: 72px 20px 90px; position: relative; }
+  .land::before { content: ""; position: absolute; inset: -40px 40% auto -10%; height: 360px;
+    background: radial-gradient(closest-side, rgba(184,145,42,.09), transparent 72%); pointer-events: none; }
+  .land > * { position: relative; }
+  .eyebrow { display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: .10em;
+    color: var(--gold); background: var(--gold-tint); border-radius: 99px; padding: 6px 14px; margin-bottom: 20px; }
+  .land h1 { margin: 0 0 14px; font-size: clamp(30px, 5.2vw, 46px); line-height: 1.25; font-weight: 700; letter-spacing: -.01em; }
+  .land .lede { margin: 0 0 8px; font-size: clamp(15.5px, 2.2vw, 18px); color: var(--ink-2); max-width: 44ch; }
+  .land .note { margin: 0 0 32px; font-size: 13.5px; color: var(--mut); }
+  .cta { display: inline-flex; align-items: center; gap: 10px; background: var(--ink); color: #fff;
+    border-radius: 12px; padding: 15px 28px; font-size: 15.5px; font-weight: 700;
+    box-shadow: var(--sh-2); transition: transform .18s, box-shadow .18s, background .18s; }
+  .cta:hover { transform: translateY(-1px); background: #221F17; }
+  .cta:active { transform: translateY(0); }
+  .cta i { font-style: normal; transition: transform .18s; }
+  .cta:hover i { transform: translateX(-4px); }
 
-  /* ───── شريط الخطوات ───── */
-  .steps { display: flex; gap: 8px; margin-bottom: 16px; }
-  .steps div { flex: 1; background: var(--card); border: 1px solid var(--line);
-    border-radius: 12px; padding: 10px 8px; text-align: center; font-size: 11.5px;
-    color: var(--mut); box-shadow: var(--shadow); }
-  .steps div b { display: block; font-size: 13px; color: var(--ink); margin-bottom: 2px; }
-  .steps div.on { border-color: var(--gold); background: var(--gold-soft); }
-  .steps div.on b { color: #8A6D12; }
+  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 56px; }
+  .fact { background: var(--card); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 18px 20px; box-shadow: var(--sh-1); }
+  .fact b { display: block; font-size: 13.5px; margin-bottom: 3px; }
+  .fact span { font-size: 12.5px; color: var(--mut); line-height: 1.7; }
+  @media (max-width: 720px) { .facts { grid-template-columns: 1fr; } .land { padding: 44px 20px 60px; } }
 
-  /* ───── البطاقات ───── */
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px;
-    padding: 20px; margin-bottom: 14px; box-shadow: var(--shadow); position: relative; }
-  .card > h2 { margin: 0 0 16px; font-size: 15.5px; display: flex; align-items: center; gap: 10px; }
-  .card > h2 span.n { width: 26px; height: 26px; border-radius: 9px; flex: 0 0 26px;
-    background: linear-gradient(140deg, var(--gold-2), var(--gold)); color: #fff;
-    display: grid; place-items: center; font-size: 12.5px; font-weight: 700; }
-  .intro { background: linear-gradient(140deg, #fff, var(--gold-soft)); }
-  .intro p { margin: 0; color: var(--mut); font-size: 13px; }
-  .intro b { color: var(--ink); }
+  /* ───────── هيكل المعالج ───────── */
+  .wiz { max-width: 940px; margin: 0 auto; padding: 22px 20px 140px; }
+  .prog { background: var(--card); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 16px 18px; box-shadow: var(--sh-1); margin-bottom: 16px; }
+  .prog .row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+  .prog .row b { font-size: 13.5px; }
+  .prog .row span { font-size: 13px; color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .track { height: 7px; border-radius: 99px; background: var(--line-2); overflow: hidden; }
+  .track i { display: block; height: 100%; width: 0;
+    background: linear-gradient(90deg, var(--gold-2), var(--gold)); transition: width .45s cubic-bezier(.4,0,.2,1); }
 
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+  .tabs { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 10px; margin-bottom: 4px;
+    scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: 0 0 auto; background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 8px 13px; font-size: 12.5px; color: var(--mut);
+    display: flex; align-items: center; gap: 7px; transition: all .18s; }
+  .tab b { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .tab:hover { border-color: var(--gold); }
+  .tab.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .tab.on b { color: rgba(255,255,255,.55); }
+  .tab.done b { color: var(--ok); }
+  .tab .ck { color: var(--ok); font-size: 12px; }
+  .tab.on .ck { color: #7BDCAC; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 26px; box-shadow: var(--sh-2); }
+  .card > header { margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line-2); }
+  .card > header .n { font-size: 11.5px; font-weight: 700; color: var(--gold); letter-spacing: .12em; }
+  .card > header h2 { margin: 4px 0 4px; font-size: 20px; font-weight: 700; letter-spacing: -.01em; }
+  .card > header p { margin: 0; font-size: 13px; color: var(--mut); }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 18px; }
   .grid .full { grid-column: 1 / -1; }
-  @media (max-width: 620px) { .grid { grid-template-columns: 1fr; } }
+  @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } .card { padding: 20px; } }
 
-  label { display: block; font-size: 12.5px; font-weight: 700; color: #4C4740; margin-bottom: 6px; }
-  label .req { color: var(--bad); }
-  input, select { width: 100%; padding: 12px 13px; border: 1px solid var(--line);
-    border-radius: 11px; font-family: inherit; font-size: 15px; background: #FDFCFA;
-    color: var(--ink); transition: border-color .15s, box-shadow .15s, background .15s; }
-  input::placeholder { color: #B5AEA2; }
-  input:focus, select:focus { outline: none; border-color: var(--gold);
-    background: #fff; box-shadow: 0 0 0 4px rgba(201,162,39,.14); }
-  select { appearance: none; background-image:
-    linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
-    background-position: 14px 20px, 19px 20px; background-size: 5px 5px; background-repeat: no-repeat; }
+  .fld label { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-2); margin-bottom: 7px; }
+  .fld label em { font-style: normal; color: var(--bad); margin-inline-start: 2px; }
+  .fld input, .fld select { width: 100%; padding: 12px 14px; border: 1px solid var(--line);
+    border-radius: 11px; font-family: inherit; font-size: 15px; background: #FDFCFA; color: var(--ink);
+    transition: border-color .15s, box-shadow .15s, background .15s; }
+  .fld input::placeholder { color: #BDB5A8; }
+  .fld input:hover, .fld select:hover { border-color: #D8D1C3; }
+  .fld input:focus, .fld select:focus { outline: none; border-color: var(--gold); background: #fff;
+    box-shadow: 0 0 0 4px rgba(184,145,42,.13); }
+  .fld select { appearance: none; padding-inline-end: 34px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
+    background-position: 16px calc(50% + 1px), 21px calc(50% + 1px); background-size: 5px 5px; background-repeat: no-repeat; }
+  .fld.err input, .fld.err select { border-color: var(--bad); background: var(--bad-bg); }
+  .fld .hint { display: none; font-size: 12px; color: var(--bad); margin-top: 6px; }
+  .fld.err .hint { display: block; }
+  .fld .help { font-size: 11.5px; color: var(--faint); margin-top: 6px; }
 
-  /* ───── المرفقات ───── */
-  .drop { position: relative; border: 1.5px dashed #D9D2C4; border-radius: 12px;
-    background: #FCFAF6; padding: 14px; display: flex; align-items: center; gap: 11px;
-    cursor: pointer; transition: border-color .15s, background .15s; }
-  .drop:hover { border-color: var(--gold); background: #FFFDF7; }
-  .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; padding: 0; }
-  .drop .ic { width: 36px; height: 36px; border-radius: 10px; background: var(--gold-soft);
-    display: grid; place-items: center; font-size: 17px; flex: 0 0 36px; }
-  .drop .tx { font-size: 13px; font-weight: 700; }
-  .drop .sub { font-size: 11.5px; color: var(--mut); font-weight: 400; }
-  .drop.has { border-style: solid; border-color: var(--ok); background: #F6FDF8; }
-  .drop.has .ic { background: #DCFCE7; }
+  /* ───────── المرفقات ───────── */
+  .files { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 680px) { .files { grid-template-columns: 1fr; } }
+  .file { border: 1.5px dashed #DCD5C6; border-radius: 12px; background: #FDFCF9;
+    padding: 16px; transition: all .18s; position: relative; }
+  .file.over { border-color: var(--gold); background: var(--gold-tint); }
+  .file.has { border-style: solid; border-color: #CFE7DA; background: var(--ok-bg); }
+  .file .top { display: flex; align-items: center; gap: 10px; }
+  .file .nm { font-size: 13.5px; font-weight: 600; flex: 1; min-width: 0; }
+  .file .nm small { display: block; font-weight: 400; font-size: 11.5px; color: var(--mut); }
+  .file .pick { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .file .meta { display: flex; align-items: center; gap: 9px; margin-top: 12px;
+    padding-top: 12px; border-top: 1px solid rgba(23,21,15,.07); }
+  .file .thumb { width: 42px; height: 42px; border-radius: 9px; object-fit: cover;
+    background: #fff; border: 1px solid var(--line); flex: 0 0 42px; display: grid; place-items: center; font-size: 15px; }
+  .file .fi { flex: 1; min-width: 0; font-size: 12.5px; }
+  .file .fi b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+  .file .fi span { color: var(--mut); font-size: 11.5px; }
+  .file .rm { background: #fff; border: 1px solid var(--line); border-radius: 9px;
+    padding: 6px 11px; font-size: 12px; color: var(--bad); font-weight: 600; position: relative; z-index: 2; }
+  .file .rm:hover { border-color: var(--bad); }
 
-  /* ───── الإرسال ───── */
-  .send-bar { position: fixed; inset: auto 0 0 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-    background: rgba(247,245,240,.94); backdrop-filter: blur(8px); border-top: 1px solid var(--line); }
-  .send-bar .in { max-width: 720px; margin: 0 auto; }
-  button { width: 100%; padding: 15px; border: none; border-radius: 13px;
-    background: linear-gradient(140deg, var(--gold-2), var(--gold)); color: #fff;
-    font-family: inherit; font-weight: 700; font-size: 15.5px; cursor: pointer;
-    box-shadow: 0 6px 18px rgba(201,162,39,.28); }
-  button:disabled { opacity: .55; box-shadow: none; cursor: default; }
+  /* ───────── المراجعة ───────── */
+  .rev { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 12px; }
+  .rev h3 { margin: 0; padding: 13px 16px; background: #FCFAF6; font-size: 13.5px;
+    display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line-2); }
+  .rev h3 button { background: none; color: var(--gold); font-size: 12.5px; font-weight: 700; padding: 2px 4px; }
+  .rev dl { margin: 0; padding: 6px 16px 14px; }
+  .rev .r { display: flex; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--line-2); font-size: 13.5px; }
+  .rev .r:last-child { border-bottom: none; }
+  .rev .r dt { color: var(--mut); flex: 0 0 38%; font-size: 13px; }
+  .rev .r dd { margin: 0; flex: 1; font-weight: 600; word-break: break-word; }
+  .rev .r dd.empty { color: var(--faint); font-weight: 400; }
 
-  .msg { padding: 13px 15px; border-radius: 12px; font-size: 13.5px; margin-bottom: 14px; display: none; }
-  .msg.bad { background: #FEE7E7; color: #9B1C1C; border: 1px solid #F7C9C9; display: block; }
-  .msg.good { background: #E9FBEF; color: #14532D; border: 1px solid #C4EFD3; display: block; }
+  .ack { display: flex; gap: 12px; align-items: flex-start; background: var(--gold-tint);
+    border: 1px solid #EADFC2; border-radius: 12px; padding: 15px 16px; margin: 6px 0 4px; }
+  .ack input { width: 19px; height: 19px; margin-top: 2px; accent-color: var(--gold); flex: 0 0 19px; }
+  .ack span { font-size: 13.5px; line-height: 1.7; }
 
-  .done { text-align: center; padding: 44px 22px; }
-  .done .tick { width: 66px; height: 66px; border-radius: 99px; background: #E9FBEF;
-    color: var(--ok); display: grid; place-items: center; font-size: 32px; margin: 0 auto 16px;
-    box-shadow: 0 0 0 8px rgba(21,128,61,.06); }
-  .done h2 { margin: 0 0 8px; font-size: 18px; display: block; }
-  .done p { margin: 0; color: var(--mut); font-size: 13.5px; }
+  /* ───────── شريط الإجراءات ───────── */
+  .acts { position: fixed; inset: auto 0 0 0; z-index: 25;
+    background: rgba(250,248,244,.93); backdrop-filter: blur(10px); border-top: 1px solid var(--line); }
+  .acts .in { max-width: 940px; margin: 0 auto; padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+    display: flex; gap: 10px; align-items: center; }
+  .acts .save { font-size: 11.5px; color: var(--faint); margin-inline-end: auto; }
+  .btn { border-radius: 11px; padding: 13px 24px; font-size: 14.5px; font-weight: 700; transition: all .18s; }
+  .btn.g { background: var(--ink); color: #fff; box-shadow: var(--sh-1); }
+  .btn.g:hover { background: #221F17; }
+  .btn.o { background: #fff; color: var(--ink-2); border: 1px solid var(--line); }
+  .btn.o:hover { border-color: var(--gold); color: var(--gold); }
+  .btn.gold { background: linear-gradient(140deg, var(--gold-2), var(--gold)); color: #fff;
+    box-shadow: 0 6px 18px rgba(184,145,42,.26); }
+  .btn:disabled { opacity: .5; box-shadow: none; cursor: default; }
 
-  footer { text-align: center; color: var(--mut); font-size: 11.5px; padding: 6px 16px 26px; }
-  footer .sep { color: var(--line); margin: 0 6px; }
+  /* ───────── نافذة التأكيد ───────── */
+  .modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+    background: rgba(23,21,15,.5); backdrop-filter: blur(3px); padding: 20px; }
+  .modal .box { background: var(--card); border-radius: 16px; padding: 26px; max-width: 420px;
+    width: 100%; box-shadow: 0 24px 60px rgba(0,0,0,.28); animation: pop .22s cubic-bezier(.34,1.3,.64,1); }
+  @keyframes pop { from { opacity: 0; transform: scale(.94) translateY(8px); } }
+  .modal h3 { margin: 0 0 8px; font-size: 17px; }
+  .modal p { margin: 0 0 20px; font-size: 13.5px; color: var(--mut); }
+  .modal .row { display: flex; gap: 10px; }
+  .modal .row .btn { flex: 1; }
+
+  /* ───────── النجاح ───────── */
+  .succ { max-width: 560px; margin: 0 auto; padding: 70px 20px; text-align: center; }
+  .tick { width: 88px; height: 88px; border-radius: 99px; background: var(--ok-bg);
+    display: grid; place-items: center; margin: 0 auto 22px; }
+  .tick svg { width: 40px; height: 40px; }
+  .tick path { stroke: var(--ok); stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; fill: none;
+    stroke-dasharray: 42; stroke-dashoffset: 42; animation: draw .55s .18s cubic-bezier(.4,0,.2,1) forwards; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  .succ h1 { margin: 0 0 8px; font-size: 25px; }
+  .succ .p { margin: 0 0 26px; color: var(--ink-2); font-size: 15px; }
+  .succ .meta { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; text-align: start; box-shadow: var(--sh-1); margin-bottom: 24px; }
+  .succ .meta .r { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13.5px; }
+  .succ .meta .r + .r { border-top: 1px dashed var(--line-2); }
+  .succ .meta .r span { color: var(--mut); }
+  .succ .meta .r b { font-variant-numeric: tabular-nums; }
+  .succ .hr { font-size: 12.5px; color: var(--mut); margin-top: 16px; }
+
+  .msg { padding: 13px 16px; border-radius: 12px; font-size: 13.5px; margin-bottom: 16px; display: none; }
+  .msg.bad { background: var(--bad-bg); color: #8A1A20; border: 1px solid #F0CFD1; display: block; }
+  .msg.good { background: var(--ok-bg); color: #0F5434; border: 1px solid #CDE9DA; display: block; }
+
+  footer { text-align: center; color: var(--faint); font-size: 11.5px; padding: 0 20px 30px; }
+
+  .sk { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.35);
+    border-top-color: #fff; border-radius: 99px; animation: spin .7s linear infinite; vertical-align: -2px; margin-inline-end: 7px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #131210; --card: #1C1A17; --ink: #F2EFE9; --mut: #9A9287;
-            --line: #2C2823; --gold-soft: #2A2416;
-            --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35); }
-    input, select { background: #232019; }
-    input:focus, select:focus { background: #262219; }
-    .drop { background: #201D18; border-color: #35302A; }
-    .intro { background: linear-gradient(140deg, #1C1A17, #241F14); }
-    .send-bar { background: rgba(19,18,16,.94); }
+    :root { --bg: #121110; --card: #1A1917; --ink: #F3F0EA; --ink-2: #D5CFC5; --mut: #948C81;
+      --faint: #6E675E; --line: #2B2926; --line-2: #232120; --gold-tint: #262014;
+      --ok-bg: #16241D; --bad-bg: #2A1718;
+      --sh-1: 0 1px 2px rgba(0,0,0,.4); --sh-2: 0 2px 4px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.4); }
+    .bar { background: rgba(18,17,16,.9); }
+    .fld input, .fld select { background: #221F1C; }
+    .fld input:focus, .fld select:focus { background: #262320; }
+    .file { background: #1E1C19; border-color: #332F2A; }
+    .rev h3 { background: #201E1B; }
+    .btn.g { background: var(--gold); }
+    .btn.g:hover { background: var(--gold-2); }
+    .cta { background: var(--gold); }
+    .cta:hover { background: var(--gold-2); }
+    .acts { background: rgba(18,17,16,.93); }
+    .btn.o { background: #201E1B; }
   }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
 
-<div class="hero">
-  <img src="/logo-mark.png?v=2" alt="بيت العباءة الشرقية"/>
-  <h1>ملفّ الموظف</h1>
-  <p>بيت العباءة الشرقية — المملكة العربية السعودية</p>
+<div class="bar">
+  <div class="in">
+    <div class="brand">
+      <span class="plate"><img src="/logo-mark.png?v=2" alt="بيت العباءة الشرقية"/></span>
+      <span class="txt"><b data-t="brand">بيت العباءة الشرقية</b><span data-t="brandSub">بوابة بيانات الموظفين</span></span>
+    </div>
+    <span class="sp"></span>
+    <button class="lang" id="lang" type="button">English</button>
+  </div>
 </div>
 
-<div class="wrap">
+<!-- ═══ الصفحة الافتتاحية ═══ -->
+<section class="land" id="land">
+  <span class="eyebrow" data-t="eyebrow">بيت العباءة الشرقية</span>
+  <h1 data-t="h1">بوابة بيانات الموظفين</h1>
+  <p class="lede" data-t="lede">مرحبًا بك، يرجى تحديث بياناتك لضمان دقة معلوماتك الوظيفية.</p>
+  <p class="note" data-t="note">يستغرق إكمال البيانات حوالي ٥ دقائق.</p>
+  <button class="cta" id="start" type="button"><span data-t="startBtn">ابدأ الآن</span> <i>←</i></button>
+
+  <div class="facts">
+    <div class="fact"><b data-t="f1t">سبع خطوات مرتّبة</b><span data-t="f1s">تنتقل بينها وتعود لأيّها متى شئت.</span></div>
+    <div class="fact"><b data-t="f2t">يُحفظ تلقائيًّا</b><span data-t="f2s">تُكمل لاحقًا من الجهاز نفسه بلا فقد.</span></div>
+    <div class="fact"><b data-t="f3t">بياناتك محفوظة</b><span data-t="f3s">لا تُنشر ولا تُستعمل إلا في ملفّك الوظيفي.</span></div>
+  </div>
+</section>
+
+<!-- ═══ المعالج ═══ -->
+<section class="wiz" id="wiz" hidden>
   <div id="msg" class="msg"></div>
 
-  <div id="form-area">
-    <div class="steps">
-      <div class="on"><b>١</b>تملأ بياناتك</div>
-      <div><b>٢</b>تراجعها الموارد البشرية</div>
-      <div><b>٣</b>الاعتماد النهائي</div>
-    </div>
-
-    <div class="card intro">
-      <p id="intro-text">
-        <b>أهلًا بك.</b> املأ بياناتك مرّةً واحدة فتصل إدارة الموارد البشرية بلا ورق.
-        ما عليه <span class="req" style="color:var(--bad)">*</span> مطلوب، وبياناتك لا تُنشر
-        ولا تُستعمل إلا في ملفّك الوظيفي.
-      </p>
-    </div>
-
-    <form id="f" autocomplete="on">
-      <div class="card">
-        <h2><span class="n">١</span> الهوية</h2>
-        <div class="grid">
-          <div class="full">
-            <label>الاسم الرباعي بالعربية <span class="req">*</span></label>
-            <input name="full_name_ar" required placeholder="محمد عبدالله سعد الحربي"/>
-          </div>
-          <div class="full">
-            <label>الاسم بالإنجليزية (كما في الجواز)</label>
-            <input name="full_name_en" dir="ltr" placeholder="MOHAMMED ABDULLAH ALHARBI"/>
-          </div>
-          <div>
-            <label>نوع الهوية <span class="req">*</span></label>
-            <select name="id_type">
-              <option value="national">هوية وطنية</option>
-              <option value="iqama">إقامة</option>
-            </select>
-          </div>
-          <div>
-            <label>الرقم — عشرة أرقام <span class="req">*</span></label>
-            <input name="id_number" inputmode="numeric" maxlength="10" required placeholder="1xxxxxxxxx"/>
-          </div>
-          <div>
-            <label>تاريخ انتهاء الهوية</label>
-            <input type="date" name="id_expiry"/>
-          </div>
-          <div>
-            <label>رقم جواز السفر</label>
-            <input name="passport_no" dir="ltr" placeholder="اختياري"/>
-          </div>
-          <div>
-            <label>تاريخ الميلاد</label>
-            <input type="date" name="birthday"/>
-          </div>
-          <div>
-            <label>الجنس</label>
-            <select name="gender">
-              <option value="">اختر…</option>
-              <option value="male">ذكر</option>
-              <option value="female">أنثى</option>
-            </select>
-          </div>
-          <div>
-            <label>الحالة الاجتماعية</label>
-            <select name="marital">
-              <option value="">اختر…</option>
-              <option value="single">أعزب / عزباء</option>
-              <option value="married">متزوج / متزوجة</option>
-              <option value="divorced">مطلّق / مطلّقة</option>
-              <option value="widower">أرمل / أرملة</option>
-            </select>
-          </div>
-          <div>
-            <label>عدد الأبناء</label>
-            <input type="number" name="children" min="0" max="20" value="0"/>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2><span class="n">٢</span> التواصل</h2>
-        <div class="grid">
-          <div>
-            <label>رقم الجوال <span class="req">*</span></label>
-            <input name="mobile" inputmode="tel" maxlength="10" required placeholder="05xxxxxxxx"/>
-          </div>
-          <div>
-            <label>البريد الإلكتروني</label>
-            <input type="email" name="email" dir="ltr" placeholder="name@example.com"/>
-          </div>
-          <div class="full">
-            <label>العنوان — المدينة والحي</label>
-            <input name="address" placeholder="الرياض — حي النرجس"/>
-          </div>
-          <div>
-            <label>اسم شخص للطوارئ</label>
-            <input name="emergency_name" placeholder="قريبٌ يُتّصل به"/>
-          </div>
-          <div>
-            <label>جوال الطوارئ</label>
-            <input name="emergency_phone" inputmode="tel" maxlength="10" placeholder="05xxxxxxxx"/>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2><span class="n">٣</span> العمل والبنك</h2>
-        <div class="grid">
-          <div>
-            <label>المسمى الوظيفي</label>
-            <input name="job_title" placeholder="مثال: فنّي خياطة"/>
-          </div>
-          <div>
-            <label>تاريخ المباشرة</label>
-            <input type="date" name="hire_date"/>
-          </div>
-          <div>
-            <label>اسم البنك</label>
-            <input name="bank_name" placeholder="مثال: الراجحي"/>
-          </div>
-          <div>
-            <label>رقم الآيبان</label>
-            <input name="iban" dir="ltr" maxlength="34" placeholder="SA0000000000000000000000"/>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2><span class="n">٤</span> المستندات</h2>
-        <div class="grid">
-          <label class="drop full" data-for="photo">
-            <span class="ic">📷</span>
-            <span class="tx">صورتك الشخصية<span class="sub" data-name>من الجوال مباشرةً</span></span>
-            <input type="file" name="photo" accept="image/*"/>
-          </label>
-          <label class="drop full" data-for="id_copy">
-            <span class="ic">🪪</span>
-            <span class="tx">صورة الهوية / الإقامة<span class="sub" data-name>صورة أو PDF</span></span>
-            <input type="file" name="id_copy" accept="image/*,application/pdf"/>
-          </label>
-          <label class="drop full" data-for="iban_copy">
-            <span class="ic">🏦</span>
-            <span class="tx">شهادة الآيبان<span class="sub" data-name>من تطبيق بنكك</span></span>
-            <input type="file" name="iban_copy" accept="image/*,application/pdf"/>
-          </label>
-          <label class="drop full" data-for="cv_copy">
-            <span class="ic">📄</span>
-            <span class="tx">السيرة الذاتية / الشهادات<span class="sub" data-name>اختياري</span></span>
-            <input type="file" name="cv_copy" accept="image/*,application/pdf"/>
-          </label>
-        </div>
-      </div>
-    </form>
+  <div class="prog">
+    <div class="row"><b data-t="progT">اكتمال الملف</b><span id="pct">0%</span></div>
+    <div class="track"><i id="bar"></i></div>
   </div>
 
-  <div id="done" class="card done" style="display:none;">
-    <div class="tick">✓</div>
-    <h2 id="done-title">وصل ملفّك</h2>
-    <p id="done-text"></p>
+  <div class="tabs" id="tabs"></div>
+  <div class="card" id="pane"></div>
+</section>
+
+<div class="acts" id="acts" hidden>
+  <div class="in">
+    <span class="save" id="saveNote"></span>
+    <button class="btn o" id="prev" type="button" data-t="prevBtn">السابق</button>
+    <button class="btn g" id="next" type="button" data-t="nextBtn">التالي</button>
   </div>
-
-  <footer>
-    بيت العباءة الشرقية <span class="sep">•</span> بياناتك محفوظة ولا تُشارَك
-  </footer>
 </div>
 
-<div class="send-bar" id="send-bar">
-  <div class="in"><button id="send" type="submit" form="f">إرسال الملف</button></div>
-</div>
+<!-- ═══ النجاح ═══ -->
+<section class="succ" id="succ" hidden>
+  <div class="tick"><svg viewBox="0 0 24 24"><path d="M4.5 12.8l4.8 4.7L19.5 7"/></svg></div>
+  <h1 id="succT">شكرًا لك، تم استلام بياناتك بنجاح</h1>
+  <p class="p" id="succP">تم حفظ بياناتك وتحديث ملفك الوظيفي.</p>
+  <div class="meta">
+    <div class="r"><span data-t="reqNo">رقم الطلب</span><b id="succRef">—</b></div>
+    <div class="r"><span data-t="reqDate">تاريخ التحديث</span><b id="succDate">—</b></div>
+  </div>
+  <button class="btn o" id="home" type="button" data-t="homeBtn">العودة للرئيسية</button>
+  <p class="hr" data-t="hrNote">في حال وجود أي استفسار، يرجى التواصل مع قسم الموارد البشرية.</p>
+</section>
 
-<script>
-(function () {
-  var token = new URLSearchParams(location.search).get("t")
-    || location.pathname.split("/").filter(Boolean).pop();
-  var msg = document.getElementById("msg");
-  var form = document.getElementById("f");
-  var btn = document.getElementById("send");
-  // «me» يعني موظفًا قائمًا فتحها من التطبيق بجلسته: يُصحّح بياناته لا
-  // يكتبها من فراغ، وملفُّه يُربط بسجلّه فلا يُنشأ له سجلٌّ ثانٍ.
-  var MINE = token === "me";
+<footer data-t="foot">بيت العباءة الشرقية — المملكة العربية السعودية</footer>
 
-  function show(kind, text) {
-    msg.className = "msg " + kind;
-    msg.textContent = text;
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-  function finish(title, text) {
-    document.getElementById("form-area").style.display = "none";
-    document.getElementById("send-bar").style.display = "none";
-    document.getElementById("done").style.display = "block";
-    document.getElementById("done-title").textContent = title;
-    document.getElementById("done-text").textContent = text;
-    msg.className = "msg";
-  }
-
-  // اسمُ الملف يظهر مكان الوصف حين يُختار — فيعرف المرسِل ما أرفقه
-  Array.prototype.forEach.call(document.querySelectorAll(".drop"), function (d) {
-    var inp = d.querySelector("input");
-    var sub = d.querySelector("[data-name]");
-    var was = sub.textContent;
-    inp.addEventListener("change", function () {
-      var f = inp.files && inp.files[0];
-      d.classList.toggle("has", !!f);
-      sub.textContent = f ? f.name : was;
-    });
-  });
-
-  if (MINE) {
-    document.title = "تحديث ملفّي — بيت العباءة الشرقية";
-    document.querySelector(".hero h1").textContent = "تحديث ملفّي الوظيفي";
-    btn.textContent = "إرسال التصحيح";
-    fetch("/api/me/intake", { credentials: "include" })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) {
-        if (!j) {
-          show("bad", "افتح الصفحة من داخل التطبيق بعد تسجيل الدخول.");
-          btn.disabled = true;
-          return;
-        }
-        if (j.pending) {
-          finish("لك ملفٌّ قيد المراجعة",
-            "رقمه " + j.pending.ref + " — انتظر البتّ فيه قبل إرسال تصحيحٍ جديد.");
-          return;
-        }
-        Object.keys(j.data || {}).forEach(function (k) {
-          var el = form.elements[k];
-          if (el && j.data[k] !== "" && j.data[k] != null) el.value = j.data[k];
-        });
-        document.getElementById("intro-text").innerHTML =
-          "<b>بياناتك الحالية معبّأة.</b> صحّح ما تغيّر ثم أرسل — والتغيير لا يُطبَّق "
-          + "حتى تعتمده الموارد البشرية ثم الاعتماد النهائي.";
-      })
-      .catch(function () { show("bad", "تعذّر جلب بياناتك — أعد فتح الصفحة."); });
-  }
-
-  // الملفات تُقرأ base64: الخادم يكتبها مرفقاتٍ في أودو، ولا رفعَ منفصل
-  function readFile(input) {
-    return new Promise(function (ok) {
-      var f = input && input.files && input.files[0];
-      if (!f) return ok(null);
-      if (f.size > 6 * 1024 * 1024) return ok({ tooBig: f.name });
-      var r = new FileReader();
-      r.onload = function () { ok({ name: f.name, data: String(r.result).split(",")[1] }); };
-      r.onerror = function () { ok(null); };
-      r.readAsDataURL(f);
-    });
-  }
-
-  form.addEventListener("submit", async function (e) {
-    e.preventDefault();
-    var fd = new FormData(form);
-    var body = {};
-    fd.forEach(function (v, k) { if (typeof v === "string" && v.trim()) body[k] = v.trim(); });
-
-    var num = (body.id_number || "").replace(/\D/g, "");
-    if (num.length !== 10) return show("bad", "رقم الهوية أو الإقامة عشرة أرقام.");
-    body.id_number = num;
-    if (!/^05\d{8}$/.test((body.mobile || "").replace(/\D/g, "")))
-      return show("bad", "رقم الجوال يبدأ بـ05 ويتكوّن من عشرة أرقام.");
-    body.mobile = body.mobile.replace(/\D/g, "");
-
-    btn.disabled = true; btn.textContent = "جارٍ الإرسال…";
-    try {
-      for (var key of ["photo", "id_copy", "iban_copy", "cv_copy"]) {
-        var got = await readFile(form.elements[key]);
-        if (got && got.tooBig) {
-          show("bad", "الملف «" + got.tooBig + "» أكبر من ٦ ميجابايت — اختر صورةً أصغر.");
-          btn.disabled = false; btn.textContent = MINE ? "إرسال التصحيح" : "إرسال الملف";
-          return;
-        }
-        if (got) { body[key] = got.data; body[key + "_name"] = got.name; }
-      }
-      var res = await fetch(MINE ? "/api/me/intake"
-        : "/api/join/" + encodeURIComponent(token || "open"), {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      var out = await res.json().catch(function () { return {}; });
-      if (!res.ok) throw new Error(out.error || "تعذّر الإرسال — حاول مرّةً أخرى.");
-      finish(MINE ? "وصل تصحيحك" : "وصل ملفّك",
-        MINE
-          ? "رقمه " + (out.ref || "—") + ". تراجعه الموارد البشرية ثم يُعتمد نهائيًّا، "
-            + "وعندها تُحدَّث بياناتك في النظام."
-          : "رقم ملفّك: " + (out.ref || "—") + ". تراجعه إدارة الموارد البشرية ثم يُعتمد "
-            + "نهائيًّا، وسنتواصل معك على الجوال الذي أدخلته.");
-    } catch (err) {
-      show("bad", err.message || "تعذّر الإرسال.");
-      btn.disabled = false; btn.textContent = MINE ? "إرسال التصحيح" : "إرسال الملف";
-    }
-  });
-})();
-</script>
+<script src="/join.js"></script>
 </body>
 </html>

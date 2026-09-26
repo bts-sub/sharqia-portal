@@ -61,8 +61,23 @@ function buildIntakeVals(b) {
   if (!/^05\d{8}$/.test(mobile)) throw badRequest("رقم الجوال يبدأ بـ05 ويتكوّن من عشرة أرقام");
 
   const vals = {
+    name_first: clean(b.name_first, 40),
+    name_father: clean(b.name_father, 40),
+    name_grand: clean(b.name_grand, 40),
+    name_family: clean(b.name_family, 40),
     full_name_ar: clean(b.full_name_ar),
     full_name_en: clean(b.full_name_en),
+    nationality_txt: clean(b.nationality_txt, 60),
+    city: clean(b.city, 60),
+    branch: clean(b.branch, 60),
+    department_txt: clean(b.department_txt, 60),
+    contract_type: ["full", "part", "temp", "train"].includes(b.contract_type) ? b.contract_type : "",
+    qualification: clean(b.qualification, 80),
+    specialization: clean(b.specialization, 80),
+    university: clean(b.university, 120),
+    experience_years: Math.max(0, Math.min(60, Number(b.experience_years) || 0)),
+    bank_holder: clean(b.bank_holder, 120),
+    ack: b.ack === true || b.ack === "true",
     id_type: b.id_type === "iqama" ? "iqama" : "national",
     id_number: idNumber,
     id_expiry: clean(b.id_expiry, 10),
@@ -84,7 +99,7 @@ function buildIntakeVals(b) {
 
   // المرفقات: base64 بلا ترويسة، بسقفٍ لكلٍّ منها وللمجموع
   let total = 0;
-  for (const key of ["photo", "id_copy", "iban_copy", "cv_copy"]) {
+  for (const key of ["photo", "id_copy", "iban_copy", "cv_copy", "qual_copy", "certs_copy", "other_copy"]) {
     const raw = typeof b[key] === "string" ? b[key] : "";
     if (!raw) continue;
     const data = raw.includes(",") ? raw.slice(raw.indexOf(",") + 1) : raw;
