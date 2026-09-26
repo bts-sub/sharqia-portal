@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>ملفّ الموظف — بيت العباءة الشرقية</title>
+<link rel="icon" href="/logo-mark.png?v=2"/>
+<style>
+  /* هويةُ الشركة نفسها التي في التطبيق: الذهبيّ على أبيضَ دافئ، وخطُّ
+     IBM Plex Arabic — فمن يفتح الرابط يعرف أنه في بيت العباءة الشرقية. */
+  @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+  @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-SemiBold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
+  :root {
+    --gold: #C9A227; --gold-soft: #FBF6E6; --ink: #202020; --mut: #7A7A7A;
+    --line: #E8E4DC; --bg: #FAF8F4; --card: #FFFFFF; --bad: #EF4444; --ok: #15803D;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font-family: "PlexAr", system-ui, "Segoe UI", sans-serif; font-size: 15px; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 16px 56px; }
+  header { background: #fff; border-bottom: 1px solid var(--line); padding: 18px 0; margin-bottom: 18px; }
+  header .in { max-width: 760px; margin: 0 auto; padding: 0 16px; display: flex; align-items: center; gap: 12px; }
+  header img { height: 46px; }
+  header .t { font-weight: 700; font-size: 17px; }
+  header .s { color: var(--mut); font-size: 12.5px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+          padding: 18px; margin-bottom: 14px; }
+  .card h2 { margin: 0 0 4px; font-size: 15.5px; }
+  .card p.hint { margin: 0 0 14px; color: var(--mut); font-size: 12.5px; line-height: 1.8; }
+  label { display: block; font-size: 13px; font-weight: 700; margin: 12px 0 5px; }
+  label .req { color: var(--bad); }
+  input, select, textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--line);
+    border-radius: 10px; font-family: inherit; font-size: 14.5px; background: #fff; color: var(--ink); }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); border-color: var(--gold); }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > div { flex: 1 1 220px; }
+  .file { padding: 9px; border: 1px dashed var(--line); border-radius: 10px; background: #FCFBF8; }
+  button { width: 100%; padding: 14px; border: none; border-radius: 12px; background: var(--gold);
+    color: #fff; font-family: inherit; font-weight: 700; font-size: 15.5px; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: default; }
+  .msg { padding: 12px 14px; border-radius: 11px; font-size: 13.5px; line-height: 1.9; margin-bottom: 14px; display: none; }
+  .msg.bad { background: #FEE2E2; color: #B91C1C; display: block; }
+  .msg.good { background: #DCFCE7; color: #14532D; display: block; }
+  .done { text-align: center; padding: 38px 18px; }
+  .done .tick { width: 62px; height: 62px; border-radius: 99px; background: #DCFCE7; color: var(--ok);
+    display: grid; place-items: center; font-size: 30px; margin: 0 auto 14px; }
+  .steps { display: flex; gap: 6px; margin: 14px 0 0; font-size: 11.5px; color: var(--mut); flex-wrap: wrap; }
+  .steps span { background: var(--gold-soft); border-radius: 99px; padding: 4px 10px; }
+  footer { text-align: center; color: var(--mut); font-size: 11.5px; padding: 18px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="in">
+    <img src="/logo-mark.png?v=2" alt="بيت العباءة الشرقية"/>
+    <div>
+      <div class="t">بيت العباءة الشرقية</div>
+      <div class="s">ملفّ الموظف — تعبئة البيانات</div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="msg" class="msg"></div>
+
+  <div id="form-area">
+    <div class="card">
+      <h2>أهلًا بك</h2>
+      <p class="hint">
+        املأ بياناتك مرّةً واحدة، فتصل إدارة الموارد البشرية مباشرةً بلا ورق.
+        ما عليه <span class="req">*</span> مطلوب. وبياناتك لا تُنشر ولا تُستعمل
+        إلا في ملفّك الوظيفي.
+      </p>
+      <div class="steps">
+        <span>١ · تملأ بياناتك</span>
+        <span>٢ · تراجعها الموارد البشرية</span>
+        <span>٣ · الاعتماد النهائي</span>
+      </div>
+    </div>
+
+    <form id="f" autocomplete="on">
+      <div class="card">
+        <h2>الهوية</h2>
+        <label>الاسم الرباعي بالعربية <span class="req">*</span></label>
+        <input name="full_name_ar" required placeholder="مثال: محمد عبدالله سعد الحربي"/>
+        <label>الاسم بالإنجليزية (كما في الجواز)</label>
+        <input name="full_name_en" dir="ltr" placeholder="MOHAMMED ABDULLAH ALHARBI"/>
+        <div class="row">
+          <div>
+            <label>نوع الهوية <span class="req">*</span></label>
+            <select name="id_type">
+              <option value="national">هوية وطنية</option>
+              <option value="iqama">إقامة</option>
+            </select>
+          </div>
+          <div>
+            <label>الرقم (١٠ أرقام) <span class="req">*</span></label>
+            <input name="id_number" inputmode="numeric" maxlength="10" required placeholder="1xxxxxxxxx"/>
+          </div>
+        </div>
+        <div class="row">
+          <div><label>تاريخ انتهاء الهوية</label><input type="date" name="id_expiry"/></div>
+          <div><label>رقم جواز السفر</label><input name="passport_no" dir="ltr"/></div>
+        </div>
+        <div class="row">
+          <div><label>تاريخ الميلاد</label><input type="date" name="birthday"/></div>
+          <div>
+            <label>الجنس</label>
+            <select name="gender"><option value="">—</option><option value="male">ذكر</option><option value="female">أنثى</option></select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>الحالة الاجتماعية</label>
+            <select name="marital">
+              <option value="">—</option>
+              <option value="single">أعزب / عزباء</option>
+              <option value="married">متزوج / متزوجة</option>
+              <option value="divorced">مطلّق / مطلّقة</option>
+              <option value="widower">أرمل / أرملة</option>
+            </select>
+          </div>
+          <div><label>عدد الأبناء</label><input type="number" name="children" min="0" max="20" value="0"/></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>التواصل</h2>
+        <div class="row">
+          <div><label>رقم الجوال <span class="req">*</span></label><input name="mobile" inputmode="tel" required placeholder="05xxxxxxxx"/></div>
+          <div><label>البريد الإلكتروني</label><input type="email" name="email" dir="ltr"/></div>
+        </div>
+        <label>العنوان (المدينة والحي)</label>
+        <input name="address" placeholder="مثال: الرياض — حي النرجس"/>
+        <div class="row">
+          <div><label>اسم شخص للطوارئ</label><input name="emergency_name"/></div>
+          <div><label>جوال الطوارئ</label><input name="emergency_phone" inputmode="tel"/></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>العمل والبنك</h2>
+        <div class="row">
+          <div><label>المسمى الوظيفي</label><input name="job_title"/></div>
+          <div><label>تاريخ المباشرة</label><input type="date" name="hire_date"/></div>
+        </div>
+        <div class="row">
+          <div><label>اسم البنك</label><input name="bank_name"/></div>
+          <div><label>رقم الآيبان</label><input name="iban" dir="ltr" placeholder="SA.." maxlength="34"/></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>المستندات</h2>
+        <p class="hint">صورةٌ واضحة تكفي — من الجوال مباشرةً.</p>
+        <label>صورتك الشخصية</label>
+        <input class="file" type="file" name="photo" accept="image/*"/>
+        <label>صورة الهوية / الإقامة</label>
+        <input class="file" type="file" name="id_copy" accept="image/*,application/pdf"/>
+        <label>شهادة الآيبان</label>
+        <input class="file" type="file" name="iban_copy" accept="image/*,application/pdf"/>
+        <label>السيرة الذاتية / الشهادات</label>
+        <input class="file" type="file" name="cv_copy" accept="image/*,application/pdf"/>
+      </div>
+
+      <button id="send" type="submit">إرسال الملف</button>
+    </form>
+  </div>
+
+  <div id="done" class="card done" style="display:none;">
+    <div class="tick">✓</div>
+    <h2 id="done-title">وصل ملفّك</h2>
+    <p class="hint" id="done-text"></p>
+  </div>
+</div>
+
+<footer>بيت العباءة الشرقية — المملكة العربية السعودية</footer>
+
+<script>
+(function () {
+  var token = new URLSearchParams(location.search).get("t")
+    || location.pathname.split("/").filter(Boolean).pop();
+  var msg = document.getElementById("msg");
+  var form = document.getElementById("f");
+  var btn = document.getElementById("send");
+
+  function show(kind, text) {
+    msg.className = "msg " + kind;
+    msg.textContent = text;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // الملفات تُقرأ base64: الخادم يكتبها مرفقاتٍ في أودو، ولا رفعَ منفصل
+  function readFile(input) {
+    return new Promise(function (ok) {
+      var f = input && input.files && input.files[0];
+      if (!f) return ok(null);
+      if (f.size > 6 * 1024 * 1024) return ok({ tooBig: f.name });
+      var r = new FileReader();
+      r.onload = function () { ok({ name: f.name, data: String(r.result).split(",")[1] }); };
+      r.onerror = function () { ok(null); };
+      r.readAsDataURL(f);
+    });
+  }
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var fd = new FormData(form);
+    var body = {};
+    fd.forEach(function (v, k) { if (typeof v === "string" && v.trim()) body[k] = v.trim(); });
+
+    var num = (body.id_number || "").replace(/\D/g, "");
+    if (num.length !== 10) return show("bad", "رقم الهوية أو الإقامة عشرة أرقام.");
+    body.id_number = num;
+    if (!/^05\d{8}$/.test((body.mobile || "").replace(/\D/g, "")))
+      return show("bad", "رقم الجوال يبدأ بـ05 ويتكوّن من عشرة أرقام.");
+    body.mobile = body.mobile.replace(/\D/g, "");
+
+    btn.disabled = true; btn.textContent = "جارٍ الإرسال…";
+    try {
+      for (var key of ["photo", "id_copy", "iban_copy", "cv_copy"]) {
+        var got = await readFile(form.elements[key]);
+        if (got && got.tooBig) {
+          show("bad", "الملف «" + got.tooBig + "» أكبر من ٦ ميجابايت — اختر صورةً أصغر.");
+          btn.disabled = false; btn.textContent = "إرسال الملف";
+          return;
+        }
+        if (got) { body[key] = got.data; body[key + "_name"] = got.name; }
+      }
+      var res = await fetch("/api/join/" + encodeURIComponent(token || "open"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      var out = await res.json().catch(function () { return {}; });
+      if (!res.ok) throw new Error(out.error || "تعذّر الإرسال — حاول مرّةً أخرى.");
+      document.getElementById("form-area").style.display = "none";
+      document.getElementById("done").style.display = "block";
+      document.getElementById("done-text").textContent =
+        "رقم ملفّك: " + (out.ref || "—") + ". تراجعه إدارة الموارد البشرية ثم يُعتمد نهائيًّا، "
+        + "وسنتواصل معك على الجوال الذي أدخلته.";
+      msg.className = "msg";
+    } catch (err) {
+      show("bad", err.message || "تعذّر الإرسال.");
+      btn.disabled = false; btn.textContent = "إرسال الملف";
+    }
+  });
+})();
+</script>
+</body>
+</html>

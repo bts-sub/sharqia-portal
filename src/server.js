@@ -39,6 +39,7 @@ import downloadRoutes from "./routes/download.js";
 import legalRoutes from "./routes/legal.js";
 import certRoutes from "./routes/certs.js";
 import iclockRoutes from "./routes/iclock.js";
+import joinRoutes from "./routes/join.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -159,6 +160,9 @@ app.use(downloadRoutes);
 app.use(legalRoutes);
 // مستقبِل ADMS/Push لأجهزة البصمة ZKTeco (/iclock/*) — قبل التقاط الواجهة.
 app.use(iclockRoutes);
+// ملفّ الموظف الذاتي: البابُ الوحيد المفتوح بلا حساب — يكتب ولا يقرأ،
+// ومحدودٌ بالمعدّل والحجم داخل مساره.
+app.use("/api", joinRoutes);
 
 // تقديم الواجهة (ملف HTML الواحد) — إن وُجد
 const frontendPath = path.resolve(__dirname, "..", config.frontendFile);
@@ -203,6 +207,19 @@ if (fs.existsSync(frontendPath)) {
     res.set("Cache-Control", "no-cache");
     res.type("html").send(indexHtml);
   };
+  // ⚠️ موقع ملفّ الموظف قبل التقاط التطبيق لكل المسارات: صفحةٌ مستقلّة
+  // بهوية الشركة يفتحها من لا حساب له — ولو تُركت لالتقطها app.get("*")
+  // فعرض التطبيق مكانها وطلب تسجيل دخول.
+  const joinHtml = path.join(publicDir, "join.html");
+  if (fs.existsSync(joinHtml)) {
+    const sendJoin = (req, res) => {
+      res.set("Cache-Control", "no-cache");
+      res.sendFile(joinHtml);
+    };
+    app.get("/join", sendJoin);
+    app.get("/join/:token", sendJoin);
+  }
+
   app.get("/", sendApp);
   app.get("/index.html", sendApp);
   app.use(express.static(publicDir, { index: false }));

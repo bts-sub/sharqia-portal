@@ -3670,6 +3670,64 @@ const actions = {
     );
   },
 
+  /** ملفّ موظفٍ يملؤه صاحبه من الموقع العامّ — بلا حساب ولا جلسة.
+   *
+   *  ⚠️ يكتب ولا يقرأ: لا يردّ إلا رقم الملف. فلا يُستخرج منه اسمُ موظفٍ
+   *  ولا يُعرف منه أنّ رقم هويةٍ مسجَّلٌ عندنا أو لا — وهو بابٌ مفتوح.
+   *  والمكرّر يُردّ برسالةٍ عامّة لا تُفشي شيئًا.
+   */
+  async "intake.submit"(params) {
+    return withOdoo(
+      async () => {
+        const files = params?.files || {};
+        const vals = {
+          full_name_ar: params.full_name_ar,
+          full_name_en: params.full_name_en || false,
+          id_type: params.id_type || "national",
+          id_number: params.id_number,
+          id_expiry: params.id_expiry || false,
+          passport_no: params.passport_no || false,
+          birthday: params.birthday || false,
+          gender: params.gender || false,
+          marital: params.marital || false,
+          children: params.children || 0,
+          mobile: params.mobile,
+          email: params.email || false,
+          address: params.address || false,
+          emergency_name: params.emergency_name || false,
+          emergency_phone: params.emergency_phone || false,
+          job_title: params.job_title || false,
+          hire_date: params.hire_date || false,
+          bank_name: params.bank_name || false,
+          iban: params.iban || false,
+        };
+        for (const [key, f] of Object.entries(files)) {
+          if (!f?.data) continue;
+          vals[key] = f.data;
+          if (key !== "photo") vals[`${key}_name`] = f.name || `${key}.bin`;
+        }
+        let id = 0;
+        try {
+          [id] = [].concat(await odoo.execKw("sharqia.employee.intake", "create", [[vals]]));
+          await odoo.execKw("sharqia.employee.intake", "action_submit", [[id]]);
+        } catch (e) {
+          const msg = String(e?.message || "");
+          if (/مسجَّل للموظف|لا يُفتح ملفّان/.test(msg)) {
+            // الرسالة تُعمَّم عمدًا: إقرارُ الخادم بأن الرقم مسجَّلٌ عندنا
+            // يجعل هذا البابَ أداةَ تحقّقٍ من أرقام الهويات.
+            throw new Error("تعذّر قبول الملف — راجع إدارة الموارد البشرية.");
+          }
+          throw e;
+        }
+        const [rec] = await odoo.searchRead("sharqia.employee.intake",
+          [["id", "=", id]], ["name"], { limit: 1 });
+        return { ok: true, ref: rec?.name || "" };
+      },
+      async () => { throw new Error("غير متاح في وضع الاختبار"); },
+      { forceLiveErrors: true }
+    );
+  },
+
   /** ردّ المرافق على ترشيحه في مهمّة عمل، أو ردّ مديره على انتدابه.
    *
    *  الطرف يُستنتج من العلاقة لا من وسيطٍ يرسله العميل: صاحب السطر يردّ

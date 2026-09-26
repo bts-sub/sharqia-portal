@@ -11,3 +11,5 @@ export const unauthorized = (m = "الجلسة غير صالحة") => new AppErr
 export const forbidden = (m = "لا تملك الصلاحية") => new AppError(m, 403, "FORBIDDEN");
 export const notFound = (m = "غير موجود") => new AppError(m, 404, "NOT_FOUND");
 export const upstream = (m = "تعذّر الاتصال بالخادم الخلفي") => new AppError(m, 502, "UPSTREAM");
+// بابٌ مفتوحٌ بلا حساب يُحدّ بالمعدّل، وإلا أُغرق أودو بملفّاتٍ وهمية
+export const tooMany = (m = "محاولاتٌ كثيرة — انتظر قليلًا") => new AppError(m, 429, "TOO_MANY");
