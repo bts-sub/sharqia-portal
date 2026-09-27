@@ -138,6 +138,33 @@ app.get("/api/health/odoo", async (req, res) => {
 // تبدأ بـ router.use(requireAuth)، وهي تحرس كل نداءٍ يمرّ بها لا ما
 // تُطابقه وحده. فبابٌ مفتوحٌ بعدها لا يُفتح أبدًا — يُردّ بـ«الجلسة غير
 // صالحة» قبل أن يبلغه النداء.
+  // ⚠️ نطاقٌ مستقلٌّ لبوابة البيانات: التطبيقُ مثبَّتٌ على hr، وعاملُ خدمته
+  // يلتقط تنقّلات نطاقه، وأندرويد يفتح المثبَّتَ لروابطه. فما دامت البوابةُ
+  // على نطاقه بقيت تُخطَف إليه. وعلى data لا تطبيقَ أصلًا: لا عامل خدمة،
+  // ولا مانيفست، ولا صفحةَ دخول — صفحةُ بياناتٍ وحدها.
+  const DATA_HOST = (process.env.DATA_HOST || "data.sharqiaa-tech.net").toLowerCase();
+  const onDataHost = (req) =>
+    String(req.hostname || "").toLowerCase() === DATA_HOST;
+
+  app.use((req, res, next) => {
+    if (!onDataHost(req)) return next();
+    const p = req.path;
+    // ما يلزم الصفحةَ وحده: هي وسكربتها وشعارُها ونداءاتُها
+    const allowed =
+      p === "/" || p === "/join" || p.startsWith("/join/") ||
+      p === "/join.js" || p === "/join.html" ||
+      p === "/api/join/options" || p.startsWith("/api/join/") ||
+      p === "/logo-mark.png" || p === "/favicon.ico" || p === "/robots.txt";
+    if (!allowed) {
+      // لا تطبيقَ هنا: من طلب مسارًا آخر يُردّ إلى الصفحة لا إلى التطبيق
+      if (p.startsWith("/api/")) return res.status(404).json({ error: "غير متاح على هذا النطاق" });
+      return res.redirect(302, "/");
+    }
+    // عاملُ الخدمة لا يُخدَم هنا بحال: وجودُه يُنشئ تطبيقًا على هذا النطاق
+    if (p === "/sw.js" || p === "/manifest.webmanifest") return res.status(404).end();
+    return next();
+  });
+
 app.use("/api", joinRoutes);
 app.use("/api", integrationRoutes);
 app.use("/api", authRoutes);
@@ -220,6 +247,10 @@ if (fs.existsSync(frontendPath)) {
     };
     app.get("/join", sendJoin);
     app.get("/join/:token", sendJoin);
+    // على نطاق البيانات الصفحةُ هي الجذر: من يفتح data.sharqiaa-tech.net
+    // يجد النموذج مباشرةً بلا /join ولا رمزٍ في الرابط.
+    app.get("/", (req, res, next) =>
+      (String(req.hostname || "").toLowerCase() === DATA_HOST ? sendJoin(req, res) : next()));
   }
 
   app.get("/", sendApp);
