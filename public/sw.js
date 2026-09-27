@@ -158,6 +158,12 @@ self.addEventListener("fetch", (e) => {
   if (url.pathname === "/download" || url.pathname === "/app") return;
   if (url.pathname === "/privacy" || url.pathname === "/privacy-policy") return;
 
+  // ⚠️ بوابةُ بيانات الموظفين تمرّ للشبكة بلا اعتراض: معالجُ التنقّل يخدم
+  // صفحةَ التطبيق («/») لأيّ تنقّل، فمن فتح التطبيق مرّةً ثمّ ضغط رابط
+  // /join رأى التطبيقَ مكان الصفحة — ولا يدري لماذا.
+  if (url.pathname === "/join" || url.pathname.startsWith("/join/")
+      || url.pathname === "/join.js" || url.pathname === "/join.html") return;
+
   // ─── /api: مهلةٌ فلا تتعلّق، وكاشُ قراءاتٍ للعمل بلا اتصال ───
   if (url.pathname.startsWith("/api/")) {
     // الدخول/الخروج: يمرّ ثم يُمسح كاش القراءات — بيانات جلسةٍ لا تُقرأ لمن بعده.
