@@ -256,7 +256,11 @@ router.post("/requests/:id/approve", async (req, res, next) => {
         await runAction("me.signature", { image: req.body.signature }, { user: req.user });
       await assertSignedIfLetter(req.user, rec);
       await assertSignedIfSettlement(req.user, rec);
-      const { data } = await runAction("request.approve", { id: Number(req.params.id) }, { user: req.user });
+      // الموقعُ يمرّ كما أرسله الجهاز: الفحصُ في odooActions على الخادم
+      const { data } = await runAction("request.approve", {
+        id: Number(req.params.id),
+        lat: req.body?.lat, lng: req.body?.lng, accuracy: req.body?.accuracy,
+      }, { user: req.user });
       return res.json(data);
     }
     const r = await wf.approveRequest({

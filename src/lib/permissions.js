@@ -76,3 +76,39 @@ export const canApprove = (role, category, unit) => effRank(role, category, unit
 export const isHidden = (role, category, unit) => effRank(role, category, unit) === 0;
 
 export { ROLE_AR };
+
+// ---------------------------------------------------------------------------
+// استثناءاتُ المستخدم الواحد — تُكتب في أودو (تبويب «الصلاحيات» على بطاقته)
+// وتسبق حكمَ الدور. والقراءةُ مُخزَّنةٌ دقيقةً: الشاشة تسأل عن عشرات الخدمات
+// في الضغطة الواحدة، فنداءٌ لأودو مع كلّ خدمةٍ يشلّها.
+const USER_PERM = new Map();   // login → { at, map }
+const USER_TTL = 60 * 1000;
+
+export async function userPerms(login, odooCall) {
+  const key = String(login || "").toLowerCase();
+  if (!key || typeof odooCall !== "function") return {};
+  const hit = USER_PERM.get(key);
+  if (hit && Date.now() - hit.at < USER_TTL) return hit.map;
+  let map = {};
+  try {
+    map = (await odooCall("sharqia.portal.permission", "sharqia_for_login", [key])) || {};
+  } catch (e) {
+    // الموديول لم يُحدَّث بعد، أو تعذّر أودو: يبقى حكمُ الدور ولا يتعطّل أحد
+    map = hit?.map || {};
+  }
+  USER_PERM.set(key, { at: Date.now(), map });
+  return map;
+}
+
+export function forgetUserPerms(login) {
+  if (login) USER_PERM.delete(String(login).toLowerCase());
+  else USER_PERM.clear();
+}
+
+// الرتبة الفعلية مع استثناء المستخدم: الاستثناء يسبق الدور صعودًا ونزولًا —
+// يُرفع به شخصٌ على دوره، أو يُحجب عنه ما لدوره. وما لم يُذكر يبقى بحكمه.
+export function effRankFor(role, category, unit, uperms) {
+  const own = uperms && uperms[unit];
+  if (own) return Math.min(rankOf(catPerm(role, category)), rankOf(own));
+  return effRank(role, category, unit);
+}

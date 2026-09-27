@@ -1201,6 +1201,97 @@ async function assertNoLeaveOverlap(params, empId) {
 
 // إجازةُ الحج مرّةً واحدةً في مدّة الخدمة — نظامُ العمل يمنحها مرّة، وكان
 // الشرط تنبيهًا مكتوبًا في الشاشة لا قيدًا يُفحص، فيُقبل طلبها كلَّ عام.
+// فتراتُ إيقاف طلبات الإجازة تُعرَّف في أودو (sharqia.leave.blackout)، وتُقرأ
+// هنا قبل إنشاء الطلب. والمنعُ من أصله خيرٌ من رفضٍ بعد الرفع: الرفضُ يبقى
+// أثرًا في سجلّ الموظف وكأنّه أخطأ، وإنّما أُغلق البابُ في وجهه.
+async function assertLeaveWindowOpen(params, empId) {
+  if (String(params?.category || "") !== "leave" || !empId) return;
+  const ex = params?.extra || {};
+  const from = String(params?.from || ex.from || "").slice(0, 10);
+  const to = String(params?.to || ex.to || from).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return;
+  let msg = "";
+  try {
+    msg = await odoo.execKw("sharqia.leave.blackout", "sharqia_check",
+      [empId, from, to || from, ex.leaveTypeId || params?.leaveTypeId || false]);
+  } catch (e) {
+    // الموديول لم يُحدَّث بعد — لا يُمنع الموظف بسبب نقصٍ عندنا
+    console.warn("⚠️ تعذّرت قراءة فترات الإيقاف:", e.message);
+    return;
+  }
+  if (msg) throw new Error(msg);
+}
+
+// ⚠️ الاعتماد من داخل موقع العمل وحده — بقرار الإدارة، وبلا استثناء لأحد.
+//
+// توقيعُ الاعتماد يُلزم المنشأة: إجازةٌ تُصرف، ومبلغٌ يُدفع، وخطابٌ يخرج
+// باسمها. وكان يُضغط من أيّ مكان في أيّ وقت. فصار يُفحص على الخادم — لا في
+// الشاشة: الواجهةُ تُتجاوز بأداةِ مطوّرٍ أو بنداءٍ مباشر، والقيدُ الذي
+// يُتجاوَز ليس قيدًا.
+//
+// ومن رفض خدمةَ الموقع لا يعتمد: لا نُفرّق بين رافضٍ ومعطِّل، فكلاهما لا
+// يُثبت أنّه في مكانه.
+async function assertApprovalPlace(params, ctx) {
+  const on = await geofenceApprovalsOn();
+  if (!on) return;
+
+  const lat = Number(params?.lat ?? params?.latitude);
+  const lng = Number(params?.lng ?? params?.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    const e = new Error(
+      "الاعتماد لا يتمّ إلا من داخل موقع العمل. فعّل خدمة الموقع واسمح " +
+      "للتطبيق بها ثمّ أعد المحاولة.");
+    e.code = "GEO_REQUIRED";
+    throw e;
+  }
+  const { data } = await runAction("location.list", {}, ctx);
+  const locs = (data && data.records) || [];
+  if (!locs.length) {
+    // لا نطاقات مضبوطة: المنعُ هنا يوقف العمل كلَّه بلا ذنب، والتنبيه يكفي
+    console.warn("⚠️ الاعتماد المكاني مفعَّل ولا نطاقات مضبوطة في أودو — مُرّ الاعتماد.");
+    return;
+  }
+  const near = nearestLocation(lat, lng, locs);
+  if (!near) throw new Error("تعذّر مطابقة موقعك بأيّ نطاق عمل.");
+
+  const acc = Number(params?.accuracy);
+  const maxAcc = near.location.max_accuracy_m || 150;
+  if (Number.isFinite(acc) && acc > maxAcc) {
+    const e = new Error(
+      `دقة تحديد موقعك ${Math.round(acc)}م والحدّ المسموح ${maxAcc}م. ` +
+      "اقترب من نافذة أو مكانٍ مكشوف ثمّ أعد المحاولة.");
+    e.code = "GEO_ACCURACY";
+    throw e;
+  }
+  const SLACK_MAX = 50;
+  const slack = Number.isFinite(acc) ? Math.min(Math.round(acc), SLACK_MAX) : 0;
+  const inside = near.within || near.distance - slack <= (near.location.radius_m || 0);
+  if (!inside) {
+    const e = new Error(
+      `الاعتماد من داخل موقع العمل فقط — أنت على بُعد ${near.distance} متر من ` +
+      `«${near.location.name}» (النطاق ${near.location.radius_m || 0}م).`);
+    e.code = "GEO_OUTSIDE";
+    throw e;
+  }
+}
+
+// مفتاحُ التشغيل في أودو (الإعدادات) — يُقرأ مرّةً كلَّ دقيقةٍ لا مع كلّ ضغطة
+let GEO_ON = { at: 0, val: null };
+async function geofenceApprovalsOn() {
+  if (Date.now() - GEO_ON.at < 60000 && GEO_ON.val !== null) return GEO_ON.val;
+  let val = false;
+  try {
+    const raw = await odoo.execKw("ir.config_parameter", "get_param",
+      ["sharqia_portal.approve_inside_location_only"]);
+    val = ["1", "true", "True", "yes"].includes(String(raw));
+  } catch (e) {
+    console.warn("⚠️ تعذّرت قراءة مفتاح الاعتماد المكاني:", e.message);
+    val = false;
+  }
+  GEO_ON = { at: Date.now(), val };
+  return val;
+}
+
 async function assertHajjOnce(params, empId) {
   if (String(params?.category || "") !== "leave" || !empId) return;
   const kind = String(params?.service || "") + " " + String(params?.extra?.leaveType || "");
@@ -2238,6 +2329,7 @@ const actions = {
         const owner = await resolveBeneficiary(params, ctx);
         await assertNoLeaveOverlap(params, owner);
         await assertHajjOnce(params, owner);
+        await assertLeaveWindowOpen(params, owner);
 
         const vals = {
           employee_id: owner,
@@ -2586,6 +2678,7 @@ const actions = {
   async "request.approve"(params, ctx) {
     return withOdoo(
       async () => {
+        await assertApprovalPlace(params, ctx);
         // اسم المعتمِد للسجل، وحسابه ليُطبع توقيعه المحفوظ على الخطاب الصادر
         await odoo.execKw("sharqia.portal.request", "action_approve", [[params.id]],
           { context: {
