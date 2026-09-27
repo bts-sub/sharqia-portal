@@ -151,9 +151,12 @@
       fields: [
         { k: "bank_name", ar: "اسم البنك", en: "Bank name", ph: "الراجحي" },
         { k: "bank_holder", ar: "اسم صاحب الحساب", en: "Account holder name" },
-        { k: "iban", ar: "رقم الآيبان", en: "IBAN", dir: "ltr", full: true, max: 24,
-          ph: "SA0000000000000000000000", rule: "iban",
-          help: { ar: "٢٤ خانة تبدأ بـSA.", en: "24 characters starting with SA." } },
+        { k: "iban", ar: "رقم الآيبان", en: "IBAN", dir: "ltr", full: true,
+          // رمزُ الدولة ثابتٌ في الصفحة لا يكتبه الموظف: كان يُكتب بيده
+          // فيُنسى أو يُكتب sa صغيرةً أو يُسبق بمسافة، فيُردّ الملف كلُّه.
+          prefix: "SA", digits: 22, mode: "numeric", rule: "iban",
+          ph: { ar: "٢٢ رقمًا", en: "22 digits" },
+          help: { ar: "أدخل الـ٢٢ رقمًا فقط — SA مكتوبةٌ لك.", en: "Enter the 22 digits only — SA is fixed." } },
       ],
     },
     {
@@ -319,20 +322,38 @@
     } else {
       input = el("input", {
         id: "fld-" + f.k, name: f.k, type: f.type || "text",
-        placeholder: f.ph || "", dir: f.dir || null, maxlength: f.max || null,
+        placeholder: (f.ph && typeof f.ph === "object" ? (f.ph[L] || f.ph.ar) : f.ph) || "",
+        dir: f.dir || null, maxlength: f.prefix ? f.digits : (f.max || null),
         min: f.min != null ? f.min : null, max: f.type === "number" ? f.max : null,
         inputmode: f.mode || null, autocomplete: "on",
       });
     }
-    input.value = state.data[f.k] != null ? state.data[f.k] : "";
+    var stored = state.data[f.k] != null ? String(state.data[f.k]) : "";
+    input.value = f.prefix
+      ? stored.replace(new RegExp("^" + f.prefix, "i"), "")
+      : stored;
     input.addEventListener("input", function () {
-      state.data[f.k] = input.value;
+      if (f.prefix) {
+        // الأرقامُ وحدها تُقبل، والبادئة تُلصق في الحفظ لا في الشاشة
+        var d = input.value.replace(/[^0-9]/g, "").slice(0, f.digits);
+        if (input.value !== d) input.value = d;
+        state.data[f.k] = d ? f.prefix + d : "";
+      } else {
+        state.data[f.k] = input.value;
+      }
       dirty = true;
       if (wrap.classList.contains("err")) checkOne(f, wrap);
       save(); paintProgress(); paintTabs();
     });
     input.addEventListener("blur", function () { checkOne(f, wrap); });
-    wrap.appendChild(input);
+    if (f.prefix) {
+      var row = el("div", { class: "pfxrow" });
+      row.appendChild(el("span", { class: "pfx", text: f.prefix }));
+      row.appendChild(input);
+      wrap.appendChild(row);
+    } else {
+      wrap.appendChild(input);
+    }
     if (f.help) wrap.appendChild(el("div", { class: "help", text: f.help[L] || f.help.ar }));
     wrap.appendChild(el("div", { class: "hint" }));
     return wrap;
@@ -349,6 +370,22 @@
     if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
     return (bytes / 1048576).toFixed(1) + " MB";
   }
+  /** فتحُ ملفٍّ محفوظٍ في الحالة (base64) في تبويبٍ جديد — بلا رفعٍ ولا شبكة. */
+  function openStored(got) {
+    try {
+      var bin = atob(got.data || "");
+      var buf = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([buf], { type: got.type || "application/octet-stream" }));
+      var w = window.open(url, "_blank");
+      if (!w) msg("bad", L === "ar" ? "المتصفّح منع فتح النافذة — اسمح بالنوافذ المنبثقة."
+        : "Your browser blocked the pop-up.");
+      setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+    } catch (e) {
+      msg("bad", L === "ar" ? "تعذّر عرض الملف." : "Could not open the file.");
+    }
+  }
+
   function fileNode(f) {
     var box = el("div", { class: "file" + (state.files[f.k] ? " has" : "") });
     var pick = el("input", { type: "file", class: "pick",
@@ -369,6 +406,13 @@
         thumb,
         el("span", { class: "fi", html: "<b>" + got.name.replace(/[<>&]/g, "") + "</b><span>"
           + human(got.size) + " · " + (got.type || "ملف") + "</span>" }),
+        el("button", { class: "rm see", type: "button", text: L === "ar" ? "عرض" : "View",
+          onclick: function (ev) {
+            // ما أُرفق يُرى قبل الإرسال: كانت البطاقة تعرض الاسم والحجم فقط،
+            // فلا يدري المرسِل أصوّر الوجه الصحيح أم ورقةً أخرى.
+            ev.preventDefault(); ev.stopPropagation();
+            openStored(got);
+          } }),
         el("button", { class: "rm", type: "button", text: L === "ar" ? "حذف" : "Remove",
           onclick: function (ev) {
             ev.preventDefault(); ev.stopPropagation();

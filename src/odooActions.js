@@ -1199,6 +1199,36 @@ async function assertNoLeaveOverlap(params, empId) {
   }
 }
 
+// إجازةُ الحج مرّةً واحدةً في مدّة الخدمة — نظامُ العمل يمنحها مرّة، وكان
+// الشرط تنبيهًا مكتوبًا في الشاشة لا قيدًا يُفحص، فيُقبل طلبها كلَّ عام.
+async function assertHajjOnce(params, empId) {
+  if (String(params?.category || "") !== "leave" || !empId) return;
+  const kind = String(params?.service || "") + " " + String(params?.extra?.leaveType || "");
+  if (!kind.includes("حج")) return;
+
+  const had = await odoo.searchRead("hr.leave",
+    [["employee_id", "=", empId], ["state", "in", LEAVE_BLOCKING],
+      ["holiday_status_id.name", "like", "حج"]],
+    ["request_date_from", "request_date_to", "state"], { limit: 1 });
+  if (had.length) {
+    const h = had[0];
+    const how = h.state === "validate" ? "معتمدة" : "قيد الاعتماد";
+    throw new Error(
+      `إجازة الحج تُمنح مرّةً واحدة، ولك إجازةُ حجٍّ ${how} من ${h.request_date_from} ` +
+      `إلى ${h.request_date_to}. راجع الموارد البشرية إن كان لديك استثناء.`);
+  }
+  const open = await odoo.searchRead("sharqia.portal.request",
+    [["employee_id", "=", empId], ["category", "=", "leave"],
+      ["state", "not in", CLOSED_STATES], ["service", "like", "حج"]],
+    ["name", "date_from", "date_to"], { limit: 1 });
+  if (open.length) {
+    const o = open[0];
+    throw new Error(
+      `لك طلبُ إجازة حجٍّ (${o.name}) قيد الاعتماد من ${o.date_from} إلى ${o.date_to}. ` +
+      "انتظر البتّ فيه أو ألغِه.");
+  }
+}
+
 // صاحب الطلب الفعلي: الموظف المستفيد لا مَن ضغط الزر.
 //   المدير يقدّم نيابةً عن مرؤوسيه المباشرين فقط، والموارد البشرية/الأدمن عن
 //   أي موظف. الصلاحية تُفحص هنا على الخادم لأن الواجهة قابلة للتزوير.
@@ -2207,6 +2237,7 @@ const actions = {
         // والخطاب يصدر باسمه، والموظف المستفيد لا أثر له إطلاقًا.
         const owner = await resolveBeneficiary(params, ctx);
         await assertNoLeaveOverlap(params, owner);
+        await assertHajjOnce(params, owner);
 
         const vals = {
           employee_id: owner,
