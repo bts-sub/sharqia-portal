@@ -92,19 +92,22 @@ function buildIntakeVals(b) {
     marital: ["single", "married", "divorced", "widower"].includes(b.marital) ? b.marital : "",
     children: Math.max(0, Math.min(20, Number(b.children) || 0)),
     mobile,
-    email: clean(b.email, 120),
-    address: clean(b.address, 200),
+    email,
+    address: shortAddr,
+    home_phone: clean(b.home_phone, 20),
     emergency_name: clean(b.emergency_name),
     emergency_phone: clean(b.emergency_phone, 15),
     job_title: clean(b.job_title),
     hire_date: clean(b.hire_date, 10),
     bank_name: clean(b.bank_name),
-    iban: clean(b.iban, 34).replace(/\s/g, ""),
+    iban,
   };
 
   // المرفقات: base64 بلا ترويسة، بسقفٍ لكلٍّ منها وللمجموع
   let total = 0;
-  for (const key of ["photo", "id_copy", "iban_copy", "cv_copy", "qual_copy", "certs_copy", "other_copy"]) {
+  // والتوقيعُ منها: صورةٌ تُحفظ في الملفّ ويُطبع بها نموذجُ الموظف
+  for (const key of ["photo", "id_copy", "iban_copy", "cv_copy", "qual_copy",
+                     "certs_copy", "other_copy", "signature"]) {
     const raw = typeof b[key] === "string" ? b[key] : "";
     if (!raw) continue;
     const data = raw.includes(",") ? raw.slice(raw.indexOf(",") + 1) : raw;

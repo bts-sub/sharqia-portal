@@ -3849,13 +3849,19 @@ const actions = {
         const set = new Set();
         jobs.forEach((j) => j.name && set.add(String(j.name).trim()));
         used.forEach((e) => e.job_title && set.add(String(e.job_title).trim()));
+        // الجنسياتُ من قائمة الدول في أودو بأسمائها العربية: كتابتُها
+        // بخطّ اليد تُخرج «سعودي» و«السعودية» و«سعوديه» ثلاثَ جنسيات.
+        const countries = await odoo.searchRead("res.country", [], ["name"],
+          { limit: 300, order: "name" });
+        const names = countries.map((c) => String(c.name || "").trim()).filter(Boolean);
         return {
           departments: deps.map((d) => d.name).filter(Boolean),
           jobs: [...set].filter(Boolean).sort((a, b) => a.localeCompare(b, "ar")),
+          nationalities: [...new Set(names)].sort((a, b) => a.localeCompare(b, "ar")),
         };
       },
-      async () => ({ departments: [], jobs: [] }),
-      { emptyOnError: () => ({ departments: [], jobs: [] }) }
+      async () => ({ departments: [], jobs: [], nationalities: [] }),
+      { emptyOnError: () => ({ departments: [], jobs: [], nationalities: [] }) }
     );
   },
 

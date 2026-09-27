@@ -230,7 +230,10 @@
     border-top-color: #fff; border-radius: 99px; animation: spin .7s linear infinite; vertical-align: -2px; margin-inline-end: 7px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  @media (prefers-color-scheme: dark) {
+  /* ⚠️ الصفحةُ فاتحةٌ دائمًا: الإدخالُ الطويل على خلفيةٍ سوداء يُتعب
+     العين ويُخفي ما كُتب، وأكثرُ من يعبّئ يعبّئ من جواله في مكانٍ
+     مضيء. وما بقي من وضعٍ داكنٍ في النظام لا يُطبَّق على هذه الصفحة. */
+  @media (prefers-color-scheme: dark) and (min-width: 99999px) {
     :root { --bg: #121110; --card: #1A1917; --ink: #F3F0EA; --ink-2: #D5CFC5; --mut: #948C81;
       --faint: #6E675E; --line: #2B2926; --line-2: #232120; --gold-tint: #262014;
       --ok-bg: #16241D; --bad-bg: #2A1718;
@@ -251,6 +254,12 @@
     .tab { color: var(--ink-2); }
     .tab b { color: var(--mut); }
   }
+  /* لوحةُ التوقيع */
+  .signwrap { display: grid; gap: 12px; }
+  .signpad { width: 100%; height: auto; aspect-ratio: 900 / 320; border: 1.5px dashed var(--line);
+    border-radius: 14px; background: #fff; touch-action: none; cursor: crosshair; }
+  .signrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .signrow .help { font-size: 12px; color: var(--mut); margin: 0; }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>

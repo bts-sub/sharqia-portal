@@ -80,28 +80,37 @@
       title: { ar: "البيانات الشخصية", en: "Personal details" },
       sub: { ar: "كما هي في الهوية أو الإقامة.", en: "Exactly as on your ID or Iqama." },
       fields: [
-        { k: "name_first", ar: "الاسم الأول", en: "First name", req: true },
-        { k: "name_father", ar: "اسم الأب", en: "Father's name", req: true },
-        { k: "name_grand", ar: "اسم الجد", en: "Grandfather's name" },
-        { k: "name_family", ar: "اسم العائلة", en: "Family name", req: true },
-        { k: "full_name_en", ar: "الاسم بالإنجليزية (كما في الجواز)", en: "Name in English (as in passport)", dir: "ltr", ph: "MOHAMMED ABDULLAH ALHARBI", full: true },
+        // ⚠️ الأسماءُ حروفٌ لا أرقام: رقمٌ في خانة الاسم يخرج في خطابٍ رسميّ
+        { k: "name_first", ar: "الاسم الأول", en: "First name", req: true, rule: "letters" },
+        { k: "name_father", ar: "اسم الأب", en: "Father's name", req: true, rule: "letters" },
+        // اسمُ الجد إجباريّ: الاسمُ الرباعيّ هو ما تعرفه الجهاتُ الرسمية
+        { k: "name_grand", ar: "اسم الجد", en: "Grandfather's name", req: true, rule: "letters" },
+        { k: "name_family", ar: "اسم العائلة", en: "Family name", req: true, rule: "letters" },
+        { k: "full_name_en", ar: "الاسم بالإنجليزية (كما في الجواز)", en: "Name in English (as in passport)",
+          dir: "ltr", full: true, rule: "lettersEn",
+          help: { ar: "حروفٌ لاتينية فقط.", en: "Latin letters only." } },
         { k: "id_type", ar: "نوع الهوية", en: "ID type", req: true, opts: [
           { v: "national", ar: "هوية وطنية", en: "National ID" },
           { v: "iqama", ar: "إقامة", en: "Iqama" }] },
         { k: "id_number", ar: "رقم الهوية / الإقامة", en: "ID / Iqama number", req: true,
-          ph: "1xxxxxxxxx", mode: "numeric", max: 10, rule: "id" },
+          dir: "ltr", mode: "numeric", max: 10, digitsOnly: true, rule: "id" },
         { k: "id_expiry", ar: "تاريخ انتهاء الهوية", en: "ID expiry date", type: "date" },
         { k: "passport_no", ar: "رقم جواز السفر", en: "Passport number", dir: "ltr" },
-        { k: "nationality_txt", ar: "الجنسية", en: "Nationality", ph: "سعودي" },
+        // الجنسيةُ قائمةٌ من أودو، وتُملأ «السعودية» وحدها متى كانت الهوية وطنية
+        { k: "nationality_txt", ar: "الجنسية", en: "Nationality", src: "nationalities", req: true },
         { k: "gender", ar: "الجنس", en: "Gender", opts: [
           { v: "male", ar: "ذكر", en: "Male" }, { v: "female", ar: "أنثى", en: "Female" }] },
         { k: "birthday", ar: "تاريخ الميلاد", en: "Date of birth", type: "date", rule: "past" },
-        { k: "marital", ar: "الحالة الاجتماعية", en: "Marital status", opts: [
+        { k: "marital", ar: "الحالة الاجتماعية", en: "Marital status", req: true, opts: [
           { v: "single", ar: "أعزب / عزباء", en: "Single" },
           { v: "married", ar: "متزوج / متزوجة", en: "Married" },
           { v: "divorced", ar: "مطلّق / مطلّقة", en: "Divorced" },
           { v: "widower", ar: "أرمل / أرملة", en: "Widowed" }] },
-        { k: "children", ar: "عدد الأبناء", en: "Children", type: "number", min: 0, max: 20 },
+        // ⚠️ لا تُسأل الأعزبُ عن أبنائه: سؤالٌ لا محلّ له يُربك ويُملأ بصفرٍ
+        // لا معنى له. يظهر متى كانت الحالةُ تحتمله.
+        { k: "children", ar: "عدد الأبناء", en: "Children", type: "number", min: 0, max: 20,
+          mode: "numeric", digitsOnly: true,
+          when: function (d) { return ["married", "divorced", "widower"].indexOf(d.marital) >= 0; } },
       ],
     },
     {
@@ -109,58 +118,65 @@
       title: { ar: "بيانات التواصل", en: "Contact details" },
       sub: { ar: "نتواصل معك عبرها — تأكّد من صحّتها.", en: "We will reach you here — please verify." },
       fields: [
-        { k: "mobile", ar: "رقم الجوال", en: "Mobile number", req: true, ph: "05xxxxxxxx", mode: "tel", max: 10, rule: "mobile" },
-        { k: "email", ar: "البريد الإلكتروني", en: "Email", type: "email", dir: "ltr", ph: "name@example.com", rule: "email" },
-        { k: "city", ar: "المدينة", en: "City", ph: "الرياض" },
-        { k: "address", ar: "العنوان (الحي والشارع)", en: "Address (district & street)", full: true, ph: "حي النرجس — طريق الملك عبدالله" },
-        { k: "emergency_name", ar: "اسم شخص للطوارئ", en: "Emergency contact name" },
-        { k: "emergency_phone", ar: "جوال الطوارئ", en: "Emergency contact mobile", mode: "tel", max: 10, rule: "mobileOpt" },
+        { k: "mobile", ar: "رقم الجوال", en: "Mobile number", req: true, mode: "tel", max: 10,
+          dir: "ltr", digitsOnly: true, rule: "mobile",
+          help: { ar: "يبدأ بـ05 وعشرة أرقام.", en: "Starts with 05, ten digits." } },
+        // البريدُ أساسيٌّ: بيانات الدخول والخطاباتُ تصل عليه
+        { k: "email", ar: "البريد الإلكتروني", en: "Email", req: true, type: "email", dir: "ltr", rule: "email" },
+        { k: "city", ar: "المدينة", en: "City", rule: "letters" },
+        // العنوانُ الوطنيّ المختصر بدل الحيّ والشارع: ثمانِ خاناتٍ تُعرّف
+        // الموقعَ تعريفًا قاطعًا في العنوان الوطني، ولا تحتمل اجتهادًا.
+        { k: "address", ar: "العنوان الوطني المختصر", en: "Short national address",
+          dir: "ltr", full: true, max: 8, rule: "shortAddr", upper: true,
+          help: { ar: "أربعةُ حروفٍ ثمّ أربعةُ أرقام — كما في تطبيق العنوان الوطني (مثال الصيغة: ABCD1234).",
+                  en: "Four letters then four digits, as in the National Address app." } },
+        { k: "emergency_name", ar: "اسم شخص للطوارئ", en: "Emergency contact name", rule: "letters" },
+        { k: "emergency_phone", ar: "جوال الطوارئ", en: "Emergency contact mobile",
+          mode: "tel", max: 10, dir: "ltr", digitsOnly: true, rule: "mobileOpt" },
+        // ⚠️ لغير السعوديّ رقمٌ في بلده: يُرجَع إليه إن انقطع خبرُه أو وقعت
+        // حادثة، ولا يُسأل عنه السعوديّ فلا محلّ له.
+        { k: "home_phone", ar: "رقم تواصل في البلد الأم", en: "Home-country contact number",
+          dir: "ltr", mode: "tel", max: 20, rule: "intlOpt",
+          help: { ar: "مع رمز الدولة.", en: "Include the country code." },
+          when: function (d) { return d.id_type === "iqama"; } },
       ],
     },
     {
-      id: "job", n: "٠٣", nEn: "03",
-      title: { ar: "البيانات الوظيفية", en: "Employment details" },
-      sub: { ar: "ما تعرفه عن وظيفتك — وتصحّحه الموارد البشرية عند الحاجة.", en: "What you know; HR will refine it if needed." },
-      fields: [
-        { k: "job_title", ar: "المسمى الوظيفي", en: "Job title", src: "jobs", ph: "اكتب مسمّاك" },
-        { k: "department_txt", ar: "القسم", en: "Department", src: "departments", ph: "اكتب اسم قسمك" },
-        { k: "branch", ar: "الفرع", en: "Branch", ph: "المصنع الجديد" },
-        { k: "hire_date", ar: "تاريخ المباشرة", en: "Start date", type: "date" },
-        { k: "contract_type", ar: "نوع العقد", en: "Contract type", opts: [
-          { v: "full", ar: "دوام كامل", en: "Full time" },
-          { v: "part", ar: "دوام جزئي", en: "Part time" },
-          { v: "temp", ar: "مؤقّت", en: "Temporary" },
-          { v: "train", ar: "تدريب", en: "Training" }] },
-      ],
-    },
-    {
-      id: "edu", n: "٠٤", nEn: "04",
+      id: "edu", n: "٠٣", nEn: "03",
       title: { ar: "المؤهلات والخبرات", en: "Qualifications & experience" },
       sub: { ar: "اترك ما لا ينطبق عليك فارغًا.", en: "Leave anything that does not apply blank." },
       fields: [
-        { k: "qualification", ar: "المؤهل", en: "Qualification", ph: "بكالوريوس" },
-        { k: "specialization", ar: "التخصص", en: "Field of study", ph: "هندسة صناعية" },
+        { k: "qualification", ar: "المؤهل", en: "Qualification", opts: [
+          { v: "دون الثانوية", ar: "دون الثانوية", en: "Below secondary" },
+          { v: "ثانوية عامة", ar: "ثانوية عامة", en: "Secondary" },
+          { v: "دبلوم", ar: "دبلوم", en: "Diploma" },
+          { v: "بكالوريوس", ar: "بكالوريوس", en: "Bachelor's" },
+          { v: "ماجستير", ar: "ماجستير", en: "Master's" },
+          { v: "دكتوراه", ar: "دكتوراه", en: "Doctorate" },
+          { v: "أخرى", ar: "أخرى", en: "Other" }] },
+        { k: "specialization", ar: "التخصص", en: "Field of study" },
         { k: "university", ar: "الجامعة / الجهة التعليمية", en: "University / institution", full: true },
-        { k: "experience_years", ar: "سنوات الخبرة", en: "Years of experience", type: "number", min: 0, max: 60 },
+        { k: "experience_years", ar: "سنوات الخبرة", en: "Years of experience",
+          type: "number", min: 0, max: 60, mode: "numeric", digitsOnly: true },
       ],
     },
     {
-      id: "bank", n: "٠٥", nEn: "05",
+      id: "bank", n: "٠٤", nEn: "04",
       title: { ar: "البيانات البنكية", en: "Bank details" },
       sub: { ar: "يُحوَّل راتبك إليها — راجع الآيبان حرفًا حرفًا.", en: "Your salary goes here — check the IBAN carefully." },
       fields: [
-        { k: "bank_name", ar: "اسم البنك", en: "Bank name", ph: "الراجحي" },
-        { k: "bank_holder", ar: "اسم صاحب الحساب", en: "Account holder name" },
-        { k: "iban", ar: "رقم الآيبان", en: "IBAN", dir: "ltr", full: true,
-          // رمزُ الدولة ثابتٌ في الصفحة لا يكتبه الموظف: كان يُكتب بيده
-          // فيُنسى أو يُكتب sa صغيرةً أو يُسبق بمسافة، فيُردّ الملف كلُّه.
+        // ⚠️ البياناتُ البنكية أساسيةٌ كلُّها: ملفٌّ بلا آيبانٍ لا يُصرف عليه
+        // راتب، فيُستكمل بعد المباشرة برسائلَ ومكالمات.
+        { k: "bank_name", ar: "اسم البنك", en: "Bank name", req: true, rule: "letters" },
+        { k: "bank_holder", ar: "اسم صاحب الحساب", en: "Account holder name", req: true, rule: "letters" },
+        { k: "iban", ar: "رقم الآيبان", en: "IBAN", dir: "ltr", full: true, req: true,
           prefix: "SA", digits: 22, mode: "numeric", rule: "iban",
           ph: { ar: "٢٢ رقمًا", en: "22 digits" },
           help: { ar: "أدخل الـ٢٢ رقمًا فقط — SA مكتوبةٌ لك.", en: "Enter the 22 digits only — SA is fixed." } },
       ],
     },
     {
-      id: "files", n: "٠٦", nEn: "06",
+      id: "files", n: "٠٥", nEn: "05",
       title: { ar: "المرفقات", en: "Attachments" },
       sub: { ar: "صورةٌ واضحة من الجوال تكفي — حتى ٦ ميجابايت للملف.", en: "A clear phone photo is enough — up to 6 MB each." },
       files: [
@@ -176,6 +192,13 @@
       ],
     },
     {
+      id: "sign", n: "٠٦", nEn: "06",
+      title: { ar: "التوقيع", en: "Signature" },
+      sub: { ar: "وقّع بإصبعك أو بالفأرة — توقيعُك إقرارٌ بما كتبت.",
+             en: "Sign with your finger or mouse — your signature confirms what you entered." },
+      sign: true,
+    },
+    {
       id: "review", n: "٠٧", nEn: "07",
       title: { ar: "المراجعة والتأكيد", en: "Review & confirm" },
       sub: { ar: "راجع ما كتبت قبل الإرسال — بعده يُراجَع في الموارد البشرية.", en: "Check everything before sending — HR reviews it next." },
@@ -184,10 +207,10 @@
   ];
 
   var FILE_MAX = 6 * 1024 * 1024;
-  var state = { data: {}, files: {}, step: 0, ack: false };
+  var state = { data: {}, files: {}, step: 0, ack: false, sign: "" };
   var dirty = false;
   // أقسامُ المنشأة ومسمّياتها — تُجلب مرّةً وتُملأ بها القوائم
-  var OPTS = { departments: [], jobs: [] };
+  var OPTS = { departments: [], jobs: [], nationalities: [] };
 
   // ─────────────────────── الحفظ التلقائي ───────────────────────
   // المرفقات لا تُحفظ محليًّا: صورتان تتجاوزان سعة التخزين فيسقط الحفظ كله
@@ -212,6 +235,33 @@
 
   // ─────────────────────── التحقق ───────────────────────
   var RULES = {
+    // ⚠️ الحقلُ يطلب جنسه: حروفٌ في خانة الاسم وأرقامٌ في خانة الرقم. وكان
+    // يُقبل كلُّ شيءٍ في كلّ خانة، فيصل الاسمُ مكتوبًا بالأرقام أو الجوالُ
+    // بحروفٍ عربية، فتُردّ البيانات بعد أسبوع.
+    letters: function (v) {
+      if (!v) return "";
+      return /\d/.test(v)
+        ? (L === "ar" ? "هذا الحقل حروفٌ لا أرقام." : "Letters only — no digits.") : "";
+    },
+    lettersEn: function (v) {
+      if (!v) return "";
+      return /^[A-Za-z\s.'-]+$/.test(v) ? ""
+        : (L === "ar" ? "حروفٌ لاتينية فقط، كما في الجواز." : "Latin letters only, as in the passport.");
+    },
+    // العنوانُ الوطنيّ المختصر: أربعةُ حروفٍ ثمّ أربعةُ أرقام
+    shortAddr: function (v) {
+      if (!v) return "";
+      return /^[A-Za-z]{4}\d{4}$/.test(String(v).replace(/\s/g, "")) ? ""
+        : (L === "ar" ? "الصيغة: أربعةُ حروفٍ ثمّ أربعةُ أرقام."
+                      : "Format: four letters then four digits.");
+    },
+    intlOpt: function (v) {
+      if (!v) return "";
+      var d = String(v).replace(/[\s()-]/g, "");
+      return /^\+?\d{7,15}$/.test(d) ? ""
+        : (L === "ar" ? "رقمٌ غير صحيح — اكتبه بأرقامه ورمز دولته."
+                      : "Invalid number — digits and country code only.");
+    },
     id: function (v) {
       var d = (v || "").replace(/\D/g, "");
       return d.length === 10 ? "" : (L === "ar" ? "رقم الهوية أو الإقامة عشرة أرقام."
@@ -242,7 +292,26 @@
     },
   };
 
+  // حقلٌ لا يُسأل عنه صاحبُه لا يُحسب عليه: الشرطُ واحدٌ في العرض والتحقّق
+  // والنسبة والمراجعة، فلا يُخفى في الشاشة ويُطالَب به عند الإرسال.
+  // ⚠️ حاملُ الهوية الوطنية سعوديٌّ بالضرورة، فلا يُسأل عن جنسيّته ولا
+  // تُترك لاجتهاده: تُملأ له وتبقى قابلةً للتعديل إن غيّر نوع هويّته.
+  function onPivot(k) {
+    if (k === "id_type") {
+      if (state.data.id_type === "national") state.data.nationality_txt = "السعودية";
+      else if (state.data.nationality_txt === "السعودية") state.data.nationality_txt = "";
+    }
+    save(); render(); paintProgress(); paintTabs();
+  }
+
+  function shown(f) {
+    return typeof f.when !== "function" || !!f.when(state.data);
+  }
+  function fieldsOf(s) {
+    return (s.fields || []).filter(shown);
+  }
   function fieldError(f) {
+    if (!shown(f)) return "";
     var v = (state.data[f.k] || "").toString().trim();
     if (f.req && !v) return L === "ar" ? "هذا الحقل مطلوب." : "This field is required.";
     if (f.rule && RULES[f.rule]) return RULES[f.rule](v);
@@ -250,20 +319,20 @@
   }
   function secDone(s) {
     if (s.review) return state.ack;
+    if (s.sign) return !!state.sign;
     if (s.files) return (s.files || []).every(function (f) { return !f.req || state.files[f.k]; });
-    return (s.fields || []).every(function (f) { return !fieldError(f); });
+    return fieldsOf(s).every(function (f) { return !fieldError(f); });
   }
   function percent() {
     var all = [], done = 0;
     SEC.forEach(function (s) {
-      (s.fields || []).forEach(function (f) { all.push(!!(state.data[f.k] || "").toString().trim()); });
+      fieldsOf(s).forEach(function (f) { all.push(!!(state.data[f.k] || "").toString().trim()); });
       (s.files || []).forEach(function (f) { all.push(!!state.files[f.k]); });
+      if (s.sign) all.push(!!state.sign);
     });
     all.forEach(function (x) { if (x) done++; });
     return all.length ? Math.round((done / all.length) * 100) : 0;
   }
-
-  // ─────────────────────── مكوّنات ───────────────────────
   function label(f) {
     var lb = el("label", { for: "fld-" + f.k, text: f[L] || f.ar });
     if (f.req) lb.appendChild(el("em", { text: " *" }));
@@ -339,10 +408,20 @@
         if (input.value !== d) input.value = d;
         state.data[f.k] = d ? f.prefix + d : "";
       } else {
-        state.data[f.k] = input.value;
+        // ⚠️ الخانةُ تمنع ما ليس من جنسها وقتَ الكتابة لا بعد الإرسال:
+        // خانةُ رقمٍ لا تقبل حرفًا، والعنوانُ المختصر يُرفع إلى الكبير.
+        var v = input.value;
+        if (f.digitsOnly) v = v.replace(/[^0-9]/g, "");
+        if (f.upper) v = v.toUpperCase();
+        if (f.max) v = v.slice(0, f.max);
+        if (v !== input.value) { var p = input.selectionStart; input.value = v; try { input.setSelectionRange(p, p); } catch (e) {} }
+        state.data[f.k] = v;
       }
       dirty = true;
       if (wrap.classList.contains("err")) checkOne(f, wrap);
+      // حقولٌ يتغيّر بتغيّرها ما يُعرض: الحالةُ الاجتماعية تُظهر عدد
+      // الأبناء، ونوعُ الهوية يُظهر رقمَ البلد الأم ويملأ الجنسية.
+      if (f.k === "marital" || f.k === "id_type") { onPivot(f.k); return; }
       save(); paintProgress(); paintTabs();
     });
     input.addEventListener("blur", function () { checkOne(f, wrap); });
@@ -452,12 +531,80 @@
     return box;
   }
 
+  // ─────────────────────── التوقيع ───────────────────────
+  // توقيعُ صاحب البيانات يُرسل معها: الإقرارُ بصحّتها لا يكفيه مربّعٌ يُعلَّم،
+  // والموارد البشرية تعتمد ملفًّا موقَّعًا لا مجرَّد إدخالٍ من متصفّح.
+  function signNode() {
+    var wrap = el("div", { class: "signwrap" });
+    var cv = el("canvas", { class: "signpad", width: 900, height: 320 });
+    var ctx = cv.getContext("2d");
+    var drawn = false, drawing = false;
+
+    function paintBg() {
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.strokeStyle = "#1C1917";
+      ctx.lineWidth = 3.2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+    }
+    paintBg();
+    if (state.sign) {
+      var img = new Image();
+      img.onload = function () { ctx.drawImage(img, 0, 0, cv.width, cv.height); drawn = true; };
+      img.src = state.sign;
+    }
+    function pos(e) {
+      var r = cv.getBoundingClientRect();
+      var p = e.touches && e.touches[0] ? e.touches[0] : e;
+      return { x: (p.clientX - r.left) * (cv.width / r.width),
+               y: (p.clientY - r.top) * (cv.height / r.height) };
+    }
+    function start(e) { e.preventDefault(); drawing = true; var q = pos(e); ctx.beginPath(); ctx.moveTo(q.x, q.y); }
+    function move(e) {
+      if (!drawing) return;
+      e.preventDefault();
+      var q = pos(e); ctx.lineTo(q.x, q.y); ctx.stroke(); drawn = true;
+    }
+    function end() {
+      if (!drawing) return;
+      drawing = false;
+      if (!drawn) return;
+      state.sign = cv.toDataURL("image/png");
+      dirty = true; paintTabs(); paintActions(); paintProgress(); msg("");
+    }
+    ["mousedown", "touchstart"].forEach(function (n) { cv.addEventListener(n, start, { passive: false }); });
+    ["mousemove", "touchmove"].forEach(function (n) { cv.addEventListener(n, move, { passive: false }); });
+    ["mouseup", "mouseleave", "touchend", "touchcancel"].forEach(function (n) { cv.addEventListener(n, end); });
+
+    wrap.appendChild(cv);
+    wrap.appendChild(el("div", { class: "signrow" }, [
+      el("button", { class: "btn o", type: "button", text: L === "ar" ? "مسح والإعادة" : "Clear",
+        onclick: function () {
+          paintBg(); drawn = false; state.sign = "";
+          paintTabs(); paintActions(); paintProgress();
+        } }),
+      el("span", { class: "help", text: L === "ar"
+        ? "وقّع داخل المربّع — التوقيع يُرسل مع بياناتك ويظهر في ملفّك."
+        : "Sign inside the box — it is sent with your data and appears on your file." }),
+    ]));
+    return wrap;
+  }
+
   function reviewNode() {
     var frag = document.createDocumentFragment();
     SEC.forEach(function (s, i) {
       if (s.review) return;
       var rows = el("dl", {});
-      (s.fields || []).forEach(function (f) {
+      if (s.sign) {
+        rows.appendChild(el("div", { class: "r" }, [
+          el("dt", { text: L === "ar" ? "التوقيع" : "Signature" }),
+          el("dd", { class: state.sign ? "" : "empty",
+            text: state.sign ? (L === "ar" ? "موقَّع" : "Signed")
+                             : (L === "ar" ? "— لم يُوقَّع" : "— not signed") }),
+        ]));
+      }
+      fieldsOf(s).forEach(function (f) {
         var v = (state.data[f.k] || "").toString().trim();
         if (f.opts && v) {
           var o = f.opts.filter(function (x) { return x.v === v; })[0];
@@ -547,9 +694,10 @@
       var g = el("div", { class: "files" });
       s.files.forEach(function (f) { g.appendChild(fileNode(f)); });
       pane.appendChild(g);
-    } else {
+    } else if (s.sign) pane.appendChild(signNode());
+    else {
       var grid = el("div", { class: "grid" });
-      s.fields.forEach(function (f) { grid.appendChild(fieldNode(f)); });
+      fieldsOf(s).forEach(function (f) { grid.appendChild(fieldNode(f)); });
       pane.appendChild(grid);
     }
     paintTabs(); paintActions(); paintProgress();
@@ -563,10 +711,14 @@
   function validateStep() {
     var s = SEC[state.step], bad = null;
     if (s.fields) {
-      s.fields.forEach(function (f) {
+      fieldsOf(s).forEach(function (f) {
         var w = $('.fld[data-k="' + f.k + '"]');
         if (w && !checkOne(f, w) && !bad) bad = w;
       });
+    }
+    if (s.sign && !state.sign) {
+      msg("bad", L === "ar" ? "وقّع في المربّع قبل المتابعة." : "Please sign before continuing.");
+      return false;
     }
     if (s.files) {
       var missing = (s.files || []).filter(function (f) { return f.req && !state.files[f.k]; });
@@ -612,9 +764,9 @@
     for (var i = 0; i < SEC.length; i++) {
       var s = SEC[i];
       if (s.review) continue;
-      var bad = (s.fields || []).filter(function (f) { return fieldError(f); });
+      var bad = fieldsOf(s).filter(function (f) { return fieldError(f); });
       var noFile = (s.files || []).filter(function (f) { return f.req && !state.files[f.k]; });
-      if (bad.length || noFile.length) {
+      if (bad.length || noFile.length || (s.sign && !state.sign)) {
         go(i);
         msg("bad", L === "ar" ? "أكمل هذا القسم قبل الإرسال." : "Complete this section first.");
         return;
@@ -638,6 +790,8 @@
     body.full_name_ar = [body.name_first, body.name_father, body.name_grand, body.name_family]
       .filter(Boolean).join(" ");
     body.ack = true;
+    // التوقيعُ يُرسل صورةً كالمرفقات، فيُحفظ في ملفّ الموظف ويظهر في نموذجه
+    if (state.sign) body.signature = String(state.sign).split(",")[1] || "";
     Object.keys(state.files).forEach(function (k) {
       body[k] = state.files[k].data;
       body[k + "_name"] = state.files[k].name;
@@ -708,7 +862,8 @@
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (j) {
       if (!j) return;
-      OPTS = { departments: j.departments || [], jobs: j.jobs || [] };
+      OPTS = { departments: j.departments || [], jobs: j.jobs || [],
+               nationalities: j.nationalities || [] };
       if (!$("#wiz").hidden && SEC[state.step] && SEC[state.step].id === "job") render();
     })
     .catch(function () { /* تبقى الحقول كتابةً حرّة */ });
