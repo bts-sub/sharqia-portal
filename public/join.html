@@ -28,9 +28,23 @@
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { scroll-behavior: smooth; }
-  body { margin: 0; background: var(--bg); color: var(--ink);
+  body { margin: 0; background: var(--bg); color: var(--ink); position: relative;
     font-family: "PlexAr", system-ui, "Segoe UI", sans-serif;
     font-size: 15px; line-height: 1.75; -webkit-font-smoothing: antialiased; }
+  /* ⚠️ خلفيةُ المكتب تُغطّى بطبقةٍ لبنيّةٍ كثيفة: صورةٌ خلف حقولِ إدخالٍ
+     تُتعب العين وتُخفي ما يُكتب. فهي في الصفحة الافتتاحية ظاهرةٌ وفي
+     شاشات التعبئة مكتومةٌ تحت بياضٍ يكاد يحجبها — أثرٌ لا مزاحمة. */
+  body::before { content: ""; position: fixed; inset: 0; z-index: -2;
+    background: url("/office-bg.jpg") center 20% / cover no-repeat; }
+  body::after { content: ""; position: fixed; inset: 0; z-index: -1;
+    background: linear-gradient(180deg, rgba(250,249,246,.90) 0%, rgba(250,249,246,.94) 55%, rgba(250,249,246,.97) 100%); }
+  /* الافتتاحيةُ ترى الصورة أوضح: حجابُها أرقّ وتدرّجٌ يحفظ قراءة العنوان */
+  body.landing::after {
+    background: linear-gradient(105deg, rgba(250,249,246,.94) 0%, rgba(250,249,246,.86) 42%, rgba(250,249,246,.55) 72%, rgba(250,249,246,.42) 100%); }
+  @media (max-width: 720px) {
+    body.landing::after {
+      background: linear-gradient(180deg, rgba(250,249,246,.93) 0%, rgba(250,249,246,.88) 60%, rgba(250,249,246,.72) 100%); }
+  }
   [hidden] { display: none !important; }
   button { font-family: inherit; cursor: pointer; border: none; }
   a { color: inherit; }
@@ -263,7 +277,7 @@
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>
-<body>
+<body class="landing">
 
 <div class="bar">
   <div class="in">

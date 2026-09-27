@@ -876,6 +876,8 @@
 
   // ─────────────────────── التشغيل ───────────────────────
   function startWizard() {
+    // الصورةُ تُكتم عند بدء التعبئة: أثرٌ خلف الورق لا مزاحمةٌ للحقول
+    document.body.classList.remove("landing");
     $("#land").hidden = true;
     $("#wiz").hidden = false;
     $("#acts").hidden = false;
@@ -891,6 +893,7 @@
   });
   $("#home").addEventListener("click", function () {
     $("#succ").hidden = true; $("#land").hidden = false;
+    document.body.classList.add("landing");
     state = { data: {}, files: {}, step: 0, ack: false };
   });
   $("#lang").addEventListener("click", function () {
@@ -926,6 +929,7 @@
         if (!j) { msg("bad", "افتح الصفحة من داخل التطبيق بعد تسجيل الدخول."); return; }
         if (j.pending) {
           $("#land").hidden = true; $("#succ").hidden = false;
+          document.body.classList.remove("landing");
           $("#succT").textContent = "لك ملفٌّ قيد المراجعة";
           $("#succP").textContent = "انتظر البتّ فيه قبل إرسال تصحيحٍ جديد.";
           $("#succRef").textContent = j.pending.ref;
