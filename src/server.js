@@ -157,7 +157,9 @@ app.get("/api/health/odoo", async (req, res) => {
       p === "/" || p === "/join" || p.startsWith("/join/") ||
       p === "/join.js" || p === "/join.html" ||
       p === "/api/join/options" || p.startsWith("/api/join/") ||
-      p === "/logo-mark.png" || p === "/favicon.ico" || p === "/robots.txt";
+      p === "/logo-mark.png" || p === "/office-bg.jpg" ||
+      p.startsWith("/fonts/") ||
+      p === "/favicon.ico" || p === "/robots.txt";
     if (!allowed) {
       // لا تطبيقَ هنا: من طلب مسارًا آخر يُردّ إلى الصفحة لا إلى التطبيق
       if (p.startsWith("/api/")) return res.status(404).json({ error: "غير متاح على هذا النطاق" });
