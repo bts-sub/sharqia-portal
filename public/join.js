@@ -142,7 +142,24 @@
       ],
     },
     {
-      id: "edu", n: "٠٣", nEn: "03",
+      id: "job", n: "٠٣", nEn: "03",
+      title: { ar: "البيانات الوظيفية", en: "Employment details" },
+      sub: { ar: "ما تعرفه عن وظيفتك — وتصحّحه الموارد البشرية عند الحاجة.",
+             en: "What you know; HR will refine it if needed." },
+      fields: [
+        { k: "job_title", ar: "المسمى الوظيفي", en: "Job title", src: "jobs" },
+        { k: "department_txt", ar: "القسم", en: "Department", src: "departments" },
+        { k: "branch", ar: "الفرع", en: "Branch" },
+        { k: "hire_date", ar: "تاريخ المباشرة", en: "Start date", type: "date" },
+        { k: "contract_type", ar: "نوع العقد", en: "Contract type", opts: [
+          { v: "full", ar: "دوام كامل", en: "Full time" },
+          { v: "part", ar: "دوام جزئي", en: "Part time" },
+          { v: "temp", ar: "مؤقّت", en: "Temporary" },
+          { v: "train", ar: "تدريب", en: "Training" }] },
+      ],
+    },
+    {
+      id: "edu", n: "٠٤", nEn: "04",
       title: { ar: "المؤهلات والخبرات", en: "Qualifications & experience" },
       sub: { ar: "اترك ما لا ينطبق عليك فارغًا.", en: "Leave anything that does not apply blank." },
       fields: [
@@ -161,7 +178,7 @@
       ],
     },
     {
-      id: "bank", n: "٠٤", nEn: "04",
+      id: "bank", n: "٠٥", nEn: "05",
       title: { ar: "البيانات البنكية", en: "Bank details" },
       sub: { ar: "يُحوَّل راتبك إليها — راجع الآيبان حرفًا حرفًا.", en: "Your salary goes here — check the IBAN carefully." },
       fields: [
@@ -176,7 +193,7 @@
       ],
     },
     {
-      id: "files", n: "٠٥", nEn: "05",
+      id: "files", n: "٠٦", nEn: "06",
       title: { ar: "المرفقات", en: "Attachments" },
       sub: { ar: "صورةٌ واضحة من الجوال تكفي — حتى ٦ ميجابايت للملف.", en: "A clear phone photo is enough — up to 6 MB each." },
       files: [
@@ -192,14 +209,14 @@
       ],
     },
     {
-      id: "sign", n: "٠٦", nEn: "06",
+      id: "sign", n: "٠٧", nEn: "07",
       title: { ar: "التوقيع", en: "Signature" },
       sub: { ar: "وقّع بإصبعك أو بالفأرة — توقيعُك إقرارٌ بما كتبت.",
              en: "Sign with your finger or mouse — your signature confirms what you entered." },
       sign: true,
     },
     {
-      id: "review", n: "٠٧", nEn: "07",
+      id: "review", n: "٠٨", nEn: "08",
       title: { ar: "المراجعة والتأكيد", en: "Review & confirm" },
       sub: { ar: "راجع ما كتبت قبل الإرسال — بعده يُراجَع في الموارد البشرية.", en: "Check everything before sending — HR reviews it next." },
       review: true,
@@ -819,7 +836,16 @@
       }
       window.scrollTo({ top: 0 });
     } catch (err) {
-      msg("bad", err.message);
+      // ⚠️ «Failed to fetch» رسالةُ متصفّحٍ لا تقول شيئًا لمن يقرؤها: تقع
+      // حين ينقطع الاتصال أو يُعاد تشغيل الخادم أثناء الإرسال. وبياناتُ
+      // صاحبها محفوظةٌ في جهازه، فيُطمأَن ويُعاد المحاولة لا أن يبدأ من أول.
+      var raw = String((err && err.message) || "");
+      var net = /failed to fetch|networkerror|load failed|network request failed/i.test(raw);
+      msg("bad", net
+        ? (L === "ar"
+            ? "انقطع الاتصال قبل أن يصل الملف. بياناتك محفوظةٌ في هذا الجهاز — تحقّق من الشبكة واضغط «إرسال» مرّةً أخرى."
+            : "The connection dropped before your file was sent. Your data is saved on this device — check your network and press Send again.")
+        : raw);
       btn.disabled = false; btn.textContent = t("submit");
     }
   }

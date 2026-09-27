@@ -74,7 +74,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 app.use(compression());
-app.use(express.json({ limit: "12mb" }));   // يسمح بالمرفقات base64
+app.use(express.json({ limit: "30mb" }));   // يسمح بالمرفقات base64 — أوسع من سقف المرفقات نفسه (٢٤م) فلا يُردّ ملفٌّ كامل بخطأٍ غامض
 app.use(cookieParser());
 
 // سجل وصول مختصر: سطر واحد لكل طلب. بدونه لا يوجد أي أثر حين يقول موظف
