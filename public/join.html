@@ -55,8 +55,12 @@
   .bar .in { max-width: 940px; margin: 0 auto; padding: 12px 20px;
     display: flex; align-items: center; gap: 14px; }
   .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
-  .brand .plate { background: #14110D; border-radius: 10px; padding: 7px 10px; display: grid; place-items: center; }
-  .brand .plate img { height: 30px; display: block; }
+  /* ⚠️ الشعارُ في الشريط يُقرأ اسمًا لا يُرى نقطةً: كان ٢٦ بكسل فلا
+     تُقرأ فيه «العباءة الشرقية» ولا «Abaya Sharqiaa». واللوحُ الداكن
+     لازمٌ له لأنّ حروفه بيضاء. */
+  .brand .plate { background: #14110D; border-radius: 12px; padding: 9px 14px; display: grid; place-items: center; }
+  .brand .plate img { height: 42px; display: block; }
+  @media (max-width: 560px) { .brand .plate img { height: 34px; } .brand .plate { padding: 7px 11px; } }
   .brand .txt b { display: block; font-size: 13.5px; font-weight: 700; line-height: 1.4; }
   .brand .txt span { display: block; font-size: 11px; color: var(--mut); line-height: 1.4; }
   .bar .sp { flex: 1; }
@@ -69,18 +73,6 @@
   .land::before { content: ""; position: absolute; inset: -40px 40% auto -10%; height: 360px;
     background: radial-gradient(closest-side, rgba(184,145,42,.09), transparent 72%); pointer-events: none; }
   .land > * { position: relative; }
-  /* الشعارُ الحقيقيّ علامةً مائيةً في الافتتاحية — بملفّه لا مطبوعًا في
-     الصورة: حوافُّه نظيفةٌ على كلّ شاشة، ويُكبَّر بلا خشونة. */
-  body.landing .land::after { content: ""; position: absolute; z-index: -1;
-    inset-inline-start: 4%; top: 46%; transform: translateY(-50%);
-    width: min(400px, 42vw); aspect-ratio: 415 / 179;
-    /* النسخةُ الداكنة: الشعارُ الأبيضُ يختفي على ورقٍ فاتح */
-    background: url("/logo-mark-dark.png?v=2") center / contain no-repeat;
-    opacity: .26; pointer-events: none; }
-  @media (max-width: 720px) {
-    body.landing .land::after { inset-inline-start: 50%; transform: translate(-50%, -50%);
-      width: 62vw; opacity: .18; top: 58%; }
-  }
   .eyebrow { display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: .10em;
     color: var(--gold); background: var(--gold-tint); border-radius: 99px; padding: 6px 14px; margin-bottom: 20px; }
   /* ⚠️ الكتابةُ فوق صورةٍ تحتاج سوادًا لا رماديًّا: الرماديُّ الذي يُقرأ على
