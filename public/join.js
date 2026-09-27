@@ -100,7 +100,8 @@
         { k: "nationality_txt", ar: "الجنسية", en: "Nationality", src: "nationalities", req: true },
         { k: "gender", ar: "الجنس", en: "Gender", opts: [
           { v: "male", ar: "ذكر", en: "Male" }, { v: "female", ar: "أنثى", en: "Female" }] },
-        { k: "birthday", ar: "تاريخ الميلاد", en: "Date of birth", type: "date", rule: "past" },
+        { k: "birthday", ar: "تاريخ الميلاد", en: "Date of birth", type: "date", rule: "birth18",
+          help: { ar: "ثمانيةَ عشرَ عامًا فأكثر.", en: "18 years or older." } },
         { k: "marital", ar: "الحالة الاجتماعية", en: "Marital status", req: true, opts: [
           { v: "single", ar: "أعزب / عزباء", en: "Single" },
           { v: "married", ar: "متزوج / متزوجة", en: "Married" },
@@ -127,8 +128,8 @@
         // العنوانُ الوطنيّ المختصر بدل الحيّ والشارع: ثمانِ خاناتٍ تُعرّف
         // الموقعَ تعريفًا قاطعًا في العنوان الوطني، ولا تحتمل اجتهادًا.
         { k: "address", ar: "العنوان الوطني المختصر", en: "Short national address",
-          dir: "ltr", full: true, max: 8, rule: "shortAddr", upper: true,
-          help: { ar: "أربعةُ حروفٍ ثمّ أربعةُ أرقام — كما في تطبيق العنوان الوطني (مثال الصيغة: ABCD1234).",
+          dir: "ltr", full: true, max: 8, rule: "shortAddr", upper: true, mask: "addr4x4",
+          help: { ar: "أربعةُ حروفٍ ثمّ أربعةُ أرقام — كما في تطبيق العنوان الوطني.",
                   en: "Four letters then four digits, as in the National Address app." } },
         { k: "emergency_name", ar: "اسم شخص للطوارئ", en: "Emergency contact name", rule: "letters" },
         { k: "emergency_phone", ar: "جوال الطوارئ", en: "Emergency contact mobile",
@@ -307,6 +308,17 @@
       return v < new Date().toISOString().slice(0, 10) ? ""
         : (L === "ar" ? "التاريخ يجب أن يكون في الماضي." : "Date must be in the past.");
     },
+    // ⚠️ لا يُوظَّف من دون الثامنة عشرة نظامًا، ومن جاوز الثمانين فالتاريخُ
+    // خطأُ كتابةٍ غالبًا — يُسأل عنه قبل أن يمضي الملفّ.
+    birth18: function (v) {
+      if (!v) return "";
+      var p = RULES.past(v); if (p) return p;
+      var age = (Date.now() - new Date(v + "T00:00:00").getTime()) / 31557600000;
+      if (age < 18) return L === "ar" ? "العمرُ دون الثامنة عشرة — راجع التاريخ."
+                                      : "Age is under 18 — check the date.";
+      if (age > 80) return L === "ar" ? "راجع تاريخ الميلاد." : "Please check the date of birth.";
+      return "";
+    },
   };
 
   // حقلٌ لا يُسأل عنه صاحبُه لا يُحسب عليه: الشرطُ واحدٌ في العرض والتحقّق
@@ -361,12 +373,16 @@
     var wrap = el("div", { class: "fld" + (f.full ? " full" : ""), "data-k": f.k });
     wrap.appendChild(label(f));
     var list = (OPTS[f.src] || []);
+    // ⚠️ حاملُ الهوية الوطنية سعوديٌّ بالضرورة: قائمتُه قائمةٌ بواحدة، ولا
+    // بابَ للكتابة. ومن يحمل إقامةً تُفتح له القائمة كاملةً.
+    var lock = f.k === "nationality_txt" && state.data.id_type === "national";
+    if (lock) list = ["السعودية"];
     var cur = (state.data[f.k] || "").toString();
     var known = cur && list.indexOf(cur) >= 0;
     var sel = el("select", { id: "fld-" + f.k });
     sel.appendChild(el("option", { value: "", text: L === "ar" ? "اختر…" : "Select…" }));
     list.forEach(function (v) { sel.appendChild(el("option", { value: v, text: v })); });
-    sel.appendChild(el("option", { value: "__other", text: L === "ar" ? "غير موجود — أكتبه" : "Not listed — type it" }));
+    if (!lock) sel.appendChild(el("option", { value: "__other", text: L === "ar" ? "غير موجود — أكتبه" : "Not listed — type it" }));
     sel.value = known ? cur : (cur ? "__other" : "");
     var free = el("input", {
       type: "text", placeholder: f.ph || "", style: "margin-top:8px",
@@ -390,6 +406,7 @@
       // القائمة لم تصل بعد (أو تعذّرت): الحقل يبقى صالحًا للكتابة
       free.hidden = false; sel.hidden = true;
     }
+    if (lock) { free.hidden = true; free.value = ""; }
     wrap.appendChild(el("div", { class: "hint" }));
     return wrap;
   }
@@ -429,6 +446,13 @@
         // خانةُ رقمٍ لا تقبل حرفًا، والعنوانُ المختصر يُرفع إلى الكبير.
         var v = input.value;
         if (f.digitsOnly) v = v.replace(/[^0-9]/g, "");
+        // العنوانُ الوطنيّ المختصر: أربعةُ حروفٍ ثمّ أربعةُ أرقام — تُفرض
+        // خانةً خانة، فلا يُكتب رقمٌ في موضع حرفٍ ولا العكس.
+        if (f.mask === "addr4x4") {
+          v = v.toUpperCase().replace(/[^A-Z0-9]/g, "").split("").filter(function (c, i) {
+            return i < 4 ? /[A-Z]/.test(c) : /[0-9]/.test(c);
+          }).join("").slice(0, 8);
+        }
         if (f.upper) v = v.toUpperCase();
         if (f.max) v = v.slice(0, f.max);
         if (v !== input.value) { var p = input.selectionStart; input.value = v; try { input.setSelectionRange(p, p); } catch (e) {} }

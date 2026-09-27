@@ -65,6 +65,24 @@ function buildIntakeVals(b) {
   if (idNumber.length !== 10) throw badRequest("رقم الهوية أو الإقامة عشرة أرقام");
   if (!/^05\d{8}$/.test(mobile)) throw badRequest("رقم الجوال يبدأ بـ05 ويتكوّن من عشرة أرقام");
 
+  // ⚠️ ما اشترطناه في الشاشة يُشترط هنا أيضًا: من نادى الخادم مباشرةً لا
+  // يمرّ بتحقّق الصفحة، فيصل ملفٌّ بلا بريدٍ ولا آيبان.
+  const email = clean(b.email, 120);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email))
+    throw badRequest("البريد الإلكتروني مطلوب وصحيح");
+  const iban = clean(b.iban, 34).replace(/\s/g, "").toUpperCase();
+  if (!/^SA\d{22}$/.test(iban)) throw badRequest("رقم الآيبان مطلوب — SA ثمّ ٢٢ رقمًا");
+  const shortAddr = clean(b.address, 20).replace(/\s/g, "").toUpperCase();
+  if (shortAddr && !/^[A-Z]{4}\d{4}$/.test(shortAddr))
+    throw badRequest("العنوان الوطني المختصر: أربعةُ حروفٍ ثمّ أربعةُ أرقام");
+  // العمر: لا يُوظَّف من دون الثامنة عشرة نظامًا
+  const bday = clean(b.birthday, 10);
+  if (bday && /^\d{4}-\d{2}-\d{2}$/.test(bday)) {
+    const age = (Date.now() - new Date(bday + "T00:00:00").getTime()) / 31557600000;
+    if (age < 18) throw badRequest("تاريخ الميلاد يدلّ على عمرٍ دون الثامنة عشرة");
+    if (age > 80) throw badRequest("راجع تاريخ الميلاد");
+  }
+
   const vals = {
     name_first: clean(b.name_first, 40),
     name_father: clean(b.name_father, 40),
@@ -87,7 +105,7 @@ function buildIntakeVals(b) {
     id_number: idNumber,
     id_expiry: clean(b.id_expiry, 10),
     passport_no: clean(b.passport_no, 30),
-    birthday: clean(b.birthday, 10),
+    birthday: bday,
     gender: ["male", "female"].includes(b.gender) ? b.gender : "",
     marital: ["single", "married", "divorced", "widower"].includes(b.marital) ? b.marital : "",
     children: Math.max(0, Math.min(20, Number(b.children) || 0)),
