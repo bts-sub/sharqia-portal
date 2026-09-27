@@ -149,6 +149,9 @@ app.get("/api/health/odoo", async (req, res) => {
   app.use((req, res, next) => {
     if (!onDataHost(req)) return next();
     const p = req.path;
+    // عاملُ الخدمة والمانيفست يُردّان بلا وجود: تحويلُهما إلى الصفحة يُوهم
+    // المتصفّح بوجودهما، والغرضُ ألّا يقوم على هذا النطاق تطبيقٌ أصلًا.
+    if (p === "/sw.js" || p === "/manifest.webmanifest") return res.status(404).end();
     // ما يلزم الصفحةَ وحده: هي وسكربتها وشعارُها ونداءاتُها
     const allowed =
       p === "/" || p === "/join" || p.startsWith("/join/") ||
@@ -160,8 +163,6 @@ app.get("/api/health/odoo", async (req, res) => {
       if (p.startsWith("/api/")) return res.status(404).json({ error: "غير متاح على هذا النطاق" });
       return res.redirect(302, "/");
     }
-    // عاملُ الخدمة لا يُخدَم هنا بحال: وجودُه يُنشئ تطبيقًا على هذا النطاق
-    if (p === "/sw.js" || p === "/manifest.webmanifest") return res.status(404).end();
     return next();
   });
 
