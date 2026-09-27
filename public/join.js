@@ -838,12 +838,19 @@
       body[k + "_name"] = state.files[k].name;
     });
 
+    // ⚠️ مهلةٌ للإرسال: بلا مهلةٍ يبقى الزرُّ «جارٍ الإرسال» إلى الأبد إن
+    // تعثّر أودو (بناءٌ جارٍ أو بطء)، فيظنّ صاحبُه التطبيقَ معلَّقًا ويُغلق
+    // الصفحة — وقد وصل ملفُّه أو لم يصل ولا يدري. والمهلةُ تقطع الشكّ.
+    var ctrl = null, timer = null;
+    try { ctrl = new AbortController(); timer = setTimeout(function () { ctrl.abort(); }, 75000); } catch (e) {}
     try {
       var res = await fetch(MINE ? "/api/me/intake" : "/api/join/" + encodeURIComponent(token), {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: ctrl ? ctrl.signal : undefined,
       });
+      if (timer) clearTimeout(timer);
       var out = await res.json().catch(function () { return {}; });
       if (!res.ok) throw new Error(out.error || (L === "ar" ? "تعذّر الإرسال — حاول مرّةً أخرى." : "Could not send."));
       dirty = false;
@@ -860,6 +867,16 @@
       }
       window.scrollTo({ top: 0 });
     } catch (err) {
+      if (timer) clearTimeout(timer);
+      // الانقطاعُ بالمهلة: قد يكون الملفُّ وصل والردُّ تأخّر، فلا يُقال له
+      // «أعد الإرسال» بإطلاق — يُسأل الموارد البشرية قبل أن يُرسل ثانيًا.
+      if (err && err.name === "AbortError") {
+        msg("bad", L === "ar"
+          ? "طال انتظارُ الردّ فقُطع. بياناتك محفوظةٌ هنا — انتظر دقيقةً ثمّ أعد «إرسال»، وإن تكرّر فاتصل بالموارد البشرية قبل الإرسال مرّةً أخرى."
+          : "The response took too long and was cancelled. Your data is saved here — wait a minute and press Send again.");
+        btn.disabled = false; btn.textContent = t("submit");
+        return;
+      }
       // ⚠️ «Failed to fetch» رسالةُ متصفّحٍ لا تقول شيئًا لمن يقرؤها: تقع
       // حين ينقطع الاتصال أو يُعاد تشغيل الخادم أثناء الإرسال. وبياناتُ
       // صاحبها محفوظةٌ في جهازه، فيُطمأَن ويُعاد المحاولة لا أن يبدأ من أول.
