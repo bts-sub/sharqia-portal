@@ -591,8 +591,12 @@
       var code = sel.value === "other" ? free.value : sel.value;
       // ⚠️ الطولُ بحسب الدولة: لا يُكتب أكثرُ ممّا تحمله أرقامُها، فيُقطع
       // الزائدُ وقتَ الكتابة لا بعد الإرسال.
-      var lim = sel.value === "966" ? 10 : ((DIAL_LEN[sel.value] || 14) + 1);
-      inp.value = inp.value.replace(/[^0-9]/g, "").slice(0, lim);
+      var lim = sel.value === "966" ? 10 : (DIAL_LEN[sel.value] || 14);
+      var raw = inp.value.replace(/[^0-9]/g, "");
+      // ⚠️ الصفرُ الأوّل مع كود الدولة لا يُكتب أصلًا: «+964 0771…» رقمٌ لا
+      // يُطلب. يُمنع وقتَ الكتابة لا عند الحفظ، فيرى صاحبُه رقمَه كما يُتّصل به.
+      if (sel.value !== "966") raw = raw.replace(/^0+/, "");
+      inp.value = raw.slice(0, lim);
       inp.maxLength = lim;
       // الشرحُ يتبع الكود: من اختار دولةً أخرى لا يُطالَب بـ05
       inp.placeholder = sel.value === "966" ? "05xxxxxxxx"
