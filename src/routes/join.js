@@ -265,7 +265,12 @@ router.post("/join/:token", async (req, res, next) => {
         + "إن كنت تُصحّح ملفًّا أرسلته فاتصل بالموارد البشرية.");
     }
     const vals = buildIntakeVals(req.body || {});
-    vals.token = clean(req.params.token, 64);
+    // ⚠️ رمزُ الرابط العامّ لا يُحفظ: الصفحةُ تأخذ آخرَ جزءٍ من العنوان،
+    // فمن فتح /join وصل رمزُه «join» — كلمةٌ واحدةٌ لكلّ الملفّات. ورمزُ
+    // الاستعادة يولّده أودو عند الإعادة للتصحيح وحده.
+    const tk = clean(req.params.token, 64);
+    if (tk.length >= 16 && !["join", "open", "me", "new"].includes(tk.toLowerCase()))
+      vals.token = tk;
     const { data } = await runAction("intake.submit", { vals }, { user: null });
     res.json(data);
   } catch (e) {
