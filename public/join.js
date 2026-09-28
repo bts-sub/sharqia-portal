@@ -196,8 +196,8 @@
     {
       id: "files", n: "٠٦", nEn: "06",
       title: { ar: "المرفقات", en: "Attachments" },
-      sub: { ar: "صوّر بجوالك ولا تهتمّ بالحجم — نُصغّر الصور تلقائيًّا. والحدّ ٥ ميجابايت للملف الواحد و٢٥ للمجموع، ونقول لك فورًا إن تجاوزه ملفّ.",
-             en: "Shoot with your phone — images are shrunk automatically. Limit: 5 MB per file, 25 MB in total; we tell you at once if a file exceeds it." },
+      sub: { ar: "صوّر بجوالك ولا تهتمّ بالحجم — نُصغّر الصور تلقائيًّا. والحدّ ١٠ ميجابايت للملف و٤٠ للمجموع — ويُرفع كلُّ ملفٍّ فورَ اختياره.",
+             en: "Shoot with your phone — images are shrunk automatically. Limit: 10 MB per file, 40 MB in total; each file uploads as soon as you pick it." },
       files: [
         // شهادةُ الآيبان وحدها إجبارية: عليها يُبنى تحويل الراتب، وخطأُ رقمٍ
         // فيها يُرجع الحوالة. وصورةُ الهوية تُطلب ولا تُشترط.
@@ -228,8 +228,8 @@
   // ⚠️ الحدُّ يُقاس بعد التصغير: صورةُ الكاميرا تُصغَّر فتمرّ، وملفٌّ لا
   // يُصغَّر (PDF غالبًا) أكبرُ من خمسة ميجابايت يُردّ فورًا برسالةٍ تقول
   // حجمَه — لا يُترك ليُرفع فينقطع في منتصفه فيظنّ صاحبُه العطبَ عندنا.
-  var FILE_MAX = 5 * 1024 * 1024;
-  var TOTAL_MAX = 25 * 1024 * 1024;   // المجموع: واسعٌ لأنّ الصور تُصغَّر
+  var FILE_MAX = 10 * 1024 * 1024;
+  var TOTAL_MAX = 40 * 1024 * 1024;   // واسعٌ: كلُّ ملفٍّ يُرفع وحده فلا ينقطع
   var state = { data: {}, files: {}, step: 0, ack: false, sign: "" };
   var dirty = false;
   // أقسامُ المنشأة ومسمّياتها — تُجلب مرّةً وتُملأ بها القوائم
@@ -561,8 +561,9 @@
       accept: f.k === "photo" ? "image/*" : "image/*,application/pdf" });
     var top = el("div", { class: "top" }, [
       el("span", { class: "nm", html: "<span>" + (f[L] || f.ar) + (f.req ? " <em style='color:var(--bad)'>*</em>" : "")
-        + "</span><small>" + (state.files[f.k] ? (L === "ar" ? "اضغط للاستبدال" : "Tap to replace")
-          : (L === "ar" ? "اضغط للاختيار أو أفلِت الملف هنا" : "Tap to choose or drop a file")) + "</small>" }),
+        + "</span><small>" + (state.files[f.k]
+            ? (L === "ar" ? "اضغط للاستبدال" : "Tap to replace")
+            : (L === "ar" ? "اضغط للاختيار — حتى ١٠ ميجابايت" : "Tap to choose — up to 10 MB")) + "</small>" }),
     ]);
     box.appendChild(pick); box.appendChild(top);
 
@@ -574,7 +575,13 @@
       box.appendChild(el("div", { class: "meta" }, [
         thumb,
         el("span", { class: "fi", html: "<b>" + got.name.replace(/[<>&]/g, "") + "</b><span>"
-          + human(got.size) + " · " + (got.type || "ملف") + "</span>" }),
+          + human(got.size) + " · "
+          // حالةُ الرفع تُقرأ في البطاقة: «رُفع» يعني وصل الخادمَ فعلًا،
+          // فلا يُفاجأ صاحبُه عند الإرسال بملفٍّ لم يصل.
+          + (got.fid ? (L === "ar" ? "رُفع ✓" : "uploaded ✓")
+             : got.up === "fail" ? (L === "ar" ? "لم يُرفع — أعد اختياره" : "not uploaded")
+             : (L === "ar" ? "جارٍ الرفع…" : "uploading…"))
+          + "</span>" }),
         el("button", { class: "rm see", type: "button", text: L === "ar" ? "عرض" : "View",
           onclick: function (ev) {
             // ما أُرفق يُرى قبل الإرسال: كانت البطاقة تعرض الاسم والحجم فقط،
@@ -604,7 +611,7 @@
       if (file.size > FILE_MAX) {
         var why = L === "ar"
           ? "الملف كبير: «" + file.name + "» حجمه " + human(file.size)
-            + " والحدّ ٥ ميجابايت للملف الواحد — صغّره أو اختر نسخةً أخفّ."
+            + " والحدّ ١٠ ميجابايت للملف الواحد — صغّره أو اختر نسخةً أخفّ."
           : "File too large: “" + file.name + "” is " + human(file.size) + "; the limit is 6 MB.";
         msg("bad", why);
         box.classList.add("bad");
@@ -622,20 +629,43 @@
       });
       if (sum > TOTAL_MAX) {
         msg("bad", L === "ar"
-          ? "مجموع المرفقات يتجاوز ٢٥ ميجابايت (" + (sum / 1048576).toFixed(1)
+          ? "مجموع المرفقات يتجاوز ٤٠ ميجابايت (" + (sum / 1048576).toFixed(1)
             + ") — احذف مرفقًا أو صغّره قبل إضافة هذا."
           : "Attachments would exceed 20 MB (" + (sum / 1048576).toFixed(1) + ").");
         return;
       }
       var r = new FileReader();
-      r.onload = function () {
+      r.onload = async function () {
         var url = String(r.result);
+        var b64 = url.split(",")[1] || "";
         state.files[f.k] = {
           name: file.name, size: file.size, type: file.type || "",
-          data: url.split(",")[1],
+          data: b64, fid: "", up: "jar",
           preview: /^image\//.test(file.type) ? url : "",
         };
         dirty = true; msg(""); render(); paintProgress(); paintTabs();
+        // ⚠️ يُرفع فورَ اختياره لا مع الإرسال: طلبٌ واحدٌ يحمل المرفقات كلَّها
+        // ينقطع في منتصفه على شبكةٍ متوسّطة فيسقط كلُّ شيء. وهنا يُرفع كلُّ
+        // ملفٍّ وحده، فما وصل بقي وما انقطع يُعاد وحده.
+        try {
+          var res = await fetch("/api/join/" + encodeURIComponent(token) + "/file", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ base64: b64, name: file.name }),
+          });
+          var out = await res.json().catch(function () { return {}; });
+          if (!res.ok || !out.fid) throw new Error(out.error || "تعذّر الرفع");
+          var cur = state.files[f.k];
+          if (cur && cur.name === file.name) {
+            cur.fid = out.fid; cur.up = "ok"; cur.data = "";   // البايتات لم تعد لازمة
+            render(); paintProgress();
+          }
+        } catch (e) {
+          var c2 = state.files[f.k];
+          if (c2 && c2.name === file.name) { c2.up = "fail"; render(); }
+          msg("bad", L === "ar"
+            ? "تعذّر رفع «" + file.name + "» — اضغط البطاقة لإعادة اختياره، أو تحقّق من الشبكة."
+            : "Could not upload “" + file.name + "”. Tap the card to pick it again.");
+        }
       };
       r.readAsDataURL(file);
     }
@@ -918,8 +948,8 @@
     if (state.sign) tot += Math.round(String(state.sign).length * 0.75);
     if (tot > TOTAL_MAX) {
       msg("bad", L === "ar"
-        ? "مجموعُ المرفقات " + (tot / 1048576).toFixed(1) + " ميجابايت، والحدّ ٢٥ — احذف أو صغّر بعضها ثمّ أعد الإرسال."
-        : "Attachments total " + (tot / 1048576).toFixed(1) + " MB; the limit is 25 MB.");
+        ? "مجموعُ المرفقات " + (tot / 1048576).toFixed(1) + " ميجابايت، والحدّ ٤٠ — احذف أو صغّر بعضها ثمّ أعد الإرسال."
+        : "Attachments total " + (tot / 1048576).toFixed(1) + " MB; the limit is 40 MB.");
       btn.disabled = false; btn.textContent = t("submit");
       go(SEC.findIndex(function (s) { return s.files; }));
       return;
@@ -928,8 +958,10 @@
     // التوقيعُ يُرسل صورةً كالمرفقات، فيُحفظ في ملفّ الموظف ويظهر في نموذجه
     if (state.sign) body.signature = String(state.sign).split(",")[1] || "";
     Object.keys(state.files).forEach(function (k) {
-      body[k] = state.files[k].data;
-      body[k + "_name"] = state.files[k].name;
+      var g = state.files[k];
+      // المرفوعُ سلفًا يُرسَل بمعرّفه لا ببايتاته: الطلبُ يبقى صغيرًا فلا ينقطع
+      if (g.fid) body[k + "_fid"] = g.fid; else body[k] = g.data;
+      body[k + "_name"] = g.name;
     });
 
     // ⚠️ مهلةٌ للإرسال: بلا مهلةٍ يبقى الزرُّ «جارٍ الإرسال» إلى الأبد إن

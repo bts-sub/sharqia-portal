@@ -10,6 +10,7 @@ import { Router } from "express";
 import { runAction } from "../odooActions.js";
 import { badRequest, tooMany } from "../lib/errors.js";
 import { requireAuth } from "../middleware/auth.js";
+import { putFile, takeFile } from "../lib/joinUploads.js";
 
 const router = Router();
 
@@ -30,6 +31,37 @@ router.post("/me/intake", requireAuth, async (req, res, next) => {
     const { data } = await runAction("intake.submitMine", { vals }, { user: req.user });
     res.json(data);
   } catch (e) { next(e?.status ? e : badRequest(e?.message || "تعذّر إرسال الملف")); }
+});
+
+
+// ---------------------------------------------------------------------------
+// رفعُ مرفقٍ واحد — قبل إرسال الملف وبعد اختياره مباشرةً.
+//   ⚠️ الرفعُ ملفًّا ملفًّا يُنجّي البقيّة: طلبٌ واحدٌ يحمل عشرين ميجابايت
+//   على شبكة جوّالٍ متوسّطة ينقطع في منتصفه فيسقط كلُّ شيء، ولا يدري صاحبُه
+//   أيُّ ملفٍّ أعجزه. وهنا ما وصل بقي، وما انقطع يُعاد وحده.
+// ---------------------------------------------------------------------------
+const UP_RATE = new Map();
+function upOk(ip) {
+  const now = Date.now();
+  const hits = (UP_RATE.get(ip) || []).filter((t) => now - t < 60 * 60 * 1000);
+  if (hits.length >= 60) return false;            // ستّون مرفقًا في الساعة
+  hits.push(now); UP_RATE.set(ip, hits);
+  if (UP_RATE.size > 3000) {
+    for (const [k, v] of UP_RATE) if (!v.some((t) => now - t < 36e5)) UP_RATE.delete(k);
+  }
+  return true;
+}
+
+router.post("/join/:token/file", async (req, res, next) => {
+  try {
+    const ip = req.ip || req.headers["x-forwarded-for"] || "—";
+    if (!upOk(ip)) throw tooMany("مرفقاتٌ كثيرة من هذا الجهاز خلال ساعة.");
+    const { base64, name } = req.body || {};
+    const saved = putFile({ base64, name });
+    res.json({ ok: true, fid: saved.fid, bytes: saved.bytes });
+  } catch (e) {
+    next(e?.status ? e : badRequest(e?.message || "تعذّر رفع المرفق"));
+  }
 });
 
 // ذاكرةُ المعدّل: عنوان → أوقات الإرسال. تُنظَّف من القديم في كل نداء،
@@ -126,14 +158,21 @@ function buildIntakeVals(b) {
   // والتوقيعُ منها: صورةٌ تُحفظ في الملفّ ويُطبع بها نموذجُ الموظف
   for (const key of ["photo", "id_copy", "iban_copy", "cv_copy", "qual_copy",
                      "certs_copy", "other_copy", "signature"]) {
-    const raw = typeof b[key] === "string" ? b[key] : "";
-    if (!raw) continue;
-    const data = raw.includes(",") ? raw.slice(raw.indexOf(",") + 1) : raw;
-    if (!/^[A-Za-z0-9+/=\s]+$/.test(data.slice(0, 120))) continue;
+    // المرفقُ يصل بإحدى صورتين: معرّفًا لملفٍّ رُفع قبلُ (الطريقُ المعتاد)،
+    // أو base64 في الطلب نفسه (توافقٌ مع نسخةٍ قديمة من الصفحة).
+    let data = "";
+    const fid = typeof b[`${key}_fid`] === "string" ? b[`${key}_fid`] : "";
+    if (fid) data = takeFile(fid);
+    if (!data) {
+      const raw = typeof b[key] === "string" ? b[key] : "";
+      if (!raw) continue;
+      data = raw.includes(",") ? raw.slice(raw.indexOf(",") + 1) : raw;
+    }
+    if (!data || !/^[A-Za-z0-9+/=\s]+$/.test(data.slice(0, 200))) continue;
     const bytes = Math.round(data.length * 0.75);
-    if (bytes > 6 * 1024 * 1024) throw badRequest(`الملف «${key}» أكبر من ٦ ميجابايت`);
+    if (bytes > 10 * 1024 * 1024) throw badRequest(`الملف «${key}» أكبر من ١٠ ميجابايت`);
     total += bytes;
-    if (total > 24 * 1024 * 1024) throw badRequest("مجموع المرفقات أكبر من ٢٤ ميجابايت");
+    if (total > 40 * 1024 * 1024) throw badRequest("مجموع المرفقات أكبر من ٤٠ ميجابايت");
     vals[key] = data;
     if (key !== "photo") vals[`${key}_name`] = clean(b[`${key}_name`], 80) || `${key}.bin`;
   }
