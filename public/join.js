@@ -1248,15 +1248,38 @@
 
   function recoverBox() {
     var wrap = el("div", { class: "recover" });
-    var ref = el("input", { type: "text", placeholder: "رقم الملف (HR-JOIN-…)", dir: "ltr" });
+    // ⚠️ أيسرُ ما يحفظه الموظف رقمُ هويته: رقمُ الملف ورقةٌ تضيع. فيكفي
+    // أحدهما، ومن أراد التدقيق جمعهما. ولا يُفتح ملفٌّ إلا إن أعادته
+    // الموارد البشرية للتصحيح — نافذةٌ ضيّقةٌ تُغلق بأوّل إرسالٍ مصحَّح.
+    var mode = "id";     // id | ref
+    var ref = el("input", { type: "text", placeholder: "رقم الطلب (HR-JOIN-…)", dir: "ltr", hidden: true });
     var idn = el("input", { type: "tel", inputmode: "numeric", maxlength: 10,
       placeholder: "رقم الهوية / الإقامة", dir: "ltr" });
-    var out = el("div", { class: "help" });
+    var out = el("div", { class: "help", text: "يكفي رقمُ هويتك — ومن شاء أضاف رقم الطلب." });
+
+    var gear = el("button", { class: "pick", type: "button", title: "بماذا تبحث؟",
+      html: "<span>⚙</span>" });
+    var menu = el("div", { class: "pickmenu", hidden: true });
+    function setMode(m) {
+      mode = m;
+      ref.hidden = (m === "id");
+      out.textContent = m === "id"
+        ? "يكفي رقمُ هويتك — ومن شاء أضاف رقم الطلب."
+        : "اكتب رقم الطلب ورقم الهوية معًا.";
+      menu.hidden = true;
+    }
+    [["id", "برقم الهوية / الإقامة"], ["ref", "برقم الطلب مع الهوية"]].forEach(function (o) {
+      menu.appendChild(el("button", { class: "mi", type: "button", text: o[1],
+        onclick: function () { setMode(o[0]); } }));
+    });
+    gear.addEventListener("click", function () { menu.hidden = !menu.hidden; });
+
     var btn = el("button", { class: "btn o", type: "button", text: "استعادة بياناتي",
       onclick: async function () {
-        var r = String(ref.value || "").trim().toUpperCase();
+        var r = mode === "ref" ? String(ref.value || "").trim().toUpperCase() : "";
         var i = String(idn.value || "").replace(/[^0-9]/g, "");
-        if (!r || i.length !== 10) { out.textContent = "اكتب رقم الملف ورقم الهوية كاملين."; return; }
+        if (i.length !== 10) { out.textContent = "اكتب رقم الهوية أو الإقامة كاملًا (عشرة أرقام)."; return; }
+        if (mode === "ref" && !r) { out.textContent = "اكتب رقم الطلب."; return; }
         btn.disabled = true; out.textContent = "جارٍ البحث…";
         try {
           var res = await fetch("/api/join/resume", {
@@ -1268,13 +1291,15 @@
         } catch (e) { out.textContent = "تعذّر الاتصال — حاول مرّةً أخرى."; }
         btn.disabled = false;
       } });
-    wrap.appendChild(el("div", { class: "rt", text: "أُعيد ملفُّك للتصحيح وتفتحه من جهازٍ آخر؟" }));
-    wrap.appendChild(el("div", { class: "rr" }, [ref, idn, btn]));
+
+    wrap.appendChild(el("div", { class: "rt" }, [
+      el("span", { text: "أُعيد ملفُّك للتصحيح وتفتحه من جهازٍ آخر؟" }),
+      el("span", { class: "pickwrap" }, [gear, menu]),
+    ]));
+    wrap.appendChild(el("div", { class: "rr" }, [idn, ref, btn]));
     wrap.appendChild(out);
     return wrap;
   }
-
-  // ─────────────────────── التشغيل ───────────────────────
   function startWizard() {
     // الصورةُ تُكتم عند بدء التعبئة: أثرٌ خلف الورق لا مزاحمةٌ للحقول
     document.body.classList.remove("landing");

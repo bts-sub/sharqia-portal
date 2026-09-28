@@ -3847,11 +3847,14 @@ const actions = {
     );
   },
 
-  /** أو برقم الملف مع رقم الهوية — لمن ضاع رابطُه. */
+  /** أو برقم الهوية وحده، أو برقم الملف معه — لمن ضاع رابطُه. */
   async "intake.resumeByRef"(params) {
+    const ref = String(params?.ref || "").trim();
+    const idn = String(params?.idNumber || "").trim();
     return withOdoo(
-      async () => odoo.execKw("sharqia.employee.intake", "sharqia_resume_by_ref",
-        [String(params?.ref || ""), String(params?.idNumber || "")]),
+      async () => (ref
+        ? odoo.execKw("sharqia.employee.intake", "sharqia_resume_by_ref", [ref, idn])
+        : odoo.execKw("sharqia.employee.intake", "sharqia_resume_by_id", [idn])),
       async () => ({ ok: false, error: "غير متاح" }),
       { emptyOnError: () => ({ ok: false, error: "تعذّر الوصول إلى النظام" }) }
     );

@@ -311,6 +311,19 @@
     border-radius: 10px; font-family: inherit; font-size: 14px; background: #FDFCFA; }
   .recover .btn { flex: 0 0 auto; padding: 10px 16px; font-size: 13px; }
   .recover .help { margin-top: 8px; font-size: 12px; color: var(--mut); }
+  /* مفتاحُ اختيار طريقة الاستعادة: أيقونةٌ بيضاء بجانب العنوان */
+  .recover .rt { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .pickwrap { position: relative; }
+  .recover .pick { width: 32px; height: 32px; border-radius: 99px; background: #fff;
+    border: 1px solid var(--line); color: var(--ink-2); font-size: 15px; line-height: 1;
+    display: grid; place-items: center; box-shadow: var(--sh-1); }
+  .recover .pick:hover { border-color: var(--gold); color: var(--gold); }
+  .pickmenu { position: absolute; inset-inline-end: 0; top: 38px; z-index: 5;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: var(--sh-2); padding: 6px; min-width: 210px; }
+  .pickmenu .mi { display: block; width: 100%; text-align: start; background: transparent;
+    border: none; padding: 9px 12px; border-radius: 9px; font-size: 13px; color: var(--ink); }
+  .pickmenu .mi:hover { background: var(--gold-tint); color: var(--gold); }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>
