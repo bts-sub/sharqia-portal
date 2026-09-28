@@ -188,6 +188,10 @@
   /* بادئةُ الآيبان: صندوقٌ ثابتٌ بجانب الحقل لا يُكتب فيه */
   .fld .pfxrow { display: flex; gap: 8px; direction: ltr; }
   .fld .pfxrow input { flex: 1; text-align: left; letter-spacing: .5px; }
+  /* صفُّ الهاتف: كودُ الدولة ثمّ الرقم */
+  .fld .pfxrow .dial { flex: 0 0 auto; width: 44%; max-width: 190px; }
+  .fld .pfxrow .dialfree { flex: 0 0 auto; width: 74px; text-align: center; }
+  .fld .pfxrow input[type="tel"]:not(.dialfree) { flex: 1; min-width: 0; }
   .fld .pfx { flex: 0 0 auto; min-width: 54px; display: grid; place-items: center;
     border: 1px solid var(--line); border-radius: 11px; background: #F3EFE7;
     font-weight: 800; letter-spacing: 1px; color: var(--ink-2); font-size: 15px; }

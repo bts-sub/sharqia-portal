@@ -3842,26 +3842,42 @@ const actions = {
       async () => {
         const deps = await odoo.searchRead("hr.department", [],
           ["name"], { limit: 120, order: "name" });
-        const jobs = await odoo.searchRead("hr.job", [], ["name"], { limit: 200, order: "name" });
+        // ⚠️ المسمّياتُ مرتّبةٌ تحت أقسامها: من يختار «التقني» لا يُعرض عليه
+        // «مشغل ماكينة تطريز». والقائمةُ الطويلة تُخفي ما يبحث عنه.
+        const jobs = await odoo.searchRead("hr.job", [], ["name", "department_id"],
+          { limit: 300, order: "name" });
         // ومسمّياتٌ يستعملها موظفون ولا وظيفةَ معرَّفة لها: تُجمع كما هي
         const used = await odoo.searchRead("hr.employee", [["job_title", "!=", false]],
-          ["job_title"], { limit: 400 });
-        const set = new Set();
-        jobs.forEach((j) => j.name && set.add(String(j.name).trim()));
-        used.forEach((e) => e.job_title && set.add(String(e.job_title).trim()));
-        // الجنسياتُ من قائمة الدول في أودو بأسمائها العربية: كتابتُها
-        // بخطّ اليد تُخرج «سعودي» و«السعودية» و«سعوديه» ثلاثَ جنسيات.
+          ["job_title", "department_id"], { limit: 400 });
+
+        const byDept = {};
+        const all = new Set();
+        const add = (dept, name) => {
+          const n = String(name || "").trim();
+          if (!n) return;
+          all.add(n);
+          const d = String(dept || "").trim();
+          if (!d) return;
+          (byDept[d] = byDept[d] || new Set()).add(n);
+        };
+        jobs.forEach((j) => add(j.department_id && j.department_id[1], j.name));
+        used.forEach((e) => add(e.department_id && e.department_id[1], e.job_title));
+
         const countries = await odoo.searchRead("res.country", [], ["name"],
           { limit: 300, order: "name" });
         const names = countries.map((c) => String(c.name || "").trim()).filter(Boolean);
+        const ar = (a, b) => a.localeCompare(b, "ar");
+
         return {
           departments: deps.map((d) => d.name).filter(Boolean),
-          jobs: [...set].filter(Boolean).sort((a, b) => a.localeCompare(b, "ar")),
-          nationalities: [...new Set(names)].sort((a, b) => a.localeCompare(b, "ar")),
+          jobs: [...all].sort(ar),
+          jobsByDept: Object.fromEntries(
+            Object.entries(byDept).map(([d, s]) => [d, [...s].sort(ar)])),
+          nationalities: [...new Set(names)].sort(ar),
         };
       },
-      async () => ({ departments: [], jobs: [], nationalities: [] }),
-      { emptyOnError: () => ({ departments: [], jobs: [], nationalities: [] }) }
+      async () => ({ departments: [], jobs: [], jobsByDept: {}, nationalities: [] }),
+      { emptyOnError: () => ({ departments: [], jobs: [], jobsByDept: {}, nationalities: [] }) }
     );
   },
 

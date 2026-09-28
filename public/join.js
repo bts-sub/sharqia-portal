@@ -97,7 +97,10 @@
         { k: "id_expiry", ar: "تاريخ انتهاء الهوية", en: "ID expiry date", type: "date" },
         { k: "passport_no", ar: "رقم جواز السفر", en: "Passport number", dir: "ltr" },
         // الجنسيةُ قائمةٌ من أودو، وتُملأ «السعودية» وحدها متى كانت الهوية وطنية
-        { k: "nationality_txt", ar: "الجنسية", en: "Nationality", src: "nationalities", req: true },
+        { k: "nationality_txt", ar: "الجنسية", en: "Nationality", src: "nationalities", req: true,
+          search: true,
+          help: { ar: "اكتب أوّل حرفين ثمّ اختر من القائمة.",
+                  en: "Type the first letters, then pick from the list." } },
         { k: "gender", ar: "الجنس", en: "Gender", opts: [
           { v: "male", ar: "ذكر", en: "Male" }, { v: "female", ar: "أنثى", en: "Female" }] },
         { k: "birthday", ar: "تاريخ الميلاد", en: "Date of birth", type: "date", rule: "birth18",
@@ -119,9 +122,9 @@
       title: { ar: "بيانات التواصل", en: "Contact details" },
       sub: { ar: "نتواصل معك عبرها — تأكّد من صحّتها.", en: "We will reach you here — please verify." },
       fields: [
-        { k: "mobile", ar: "رقم الجوال", en: "Mobile number", req: true, mode: "tel", max: 10,
-          dir: "ltr", digitsOnly: true, rule: "mobile",
-          help: { ar: "يبدأ بـ05 وعشرة أرقام.", en: "Starts with 05, ten digits." } },
+        { k: "mobile", ar: "رقم الجوال", en: "Mobile number", req: true, phone: true, rule: "mobile",
+          help: { ar: "اختر كود الدولة ثمّ اكتب الرقم — والسعوديُّ يبدأ بـ05.",
+                  en: "Pick the country code, then type the number." } },
         // البريدُ أساسيٌّ: بيانات الدخول والخطاباتُ تصل عليه
         { k: "email", ar: "البريد الإلكتروني", en: "Email", req: true, type: "email", dir: "ltr", rule: "email" },
         { k: "city", ar: "المدينة", en: "City", rule: "letters" },
@@ -133,12 +136,11 @@
                   en: "Four letters then four digits, as in the National Address app." } },
         { k: "emergency_name", ar: "اسم شخص للطوارئ", en: "Emergency contact name", rule: "letters" },
         { k: "emergency_phone", ar: "جوال الطوارئ", en: "Emergency contact mobile",
-          mode: "tel", max: 10, dir: "ltr", digitsOnly: true, rule: "mobileOpt" },
+          phone: true, rule: "mobileOpt" },
         // ⚠️ لغير السعوديّ رقمٌ في بلده: يُرجَع إليه إن انقطع خبرُه أو وقعت
         // حادثة، ولا يُسأل عنه السعوديّ فلا محلّ له.
         { k: "home_phone", ar: "رقم تواصل في البلد الأم", en: "Home-country contact number",
-          dir: "ltr", mode: "tel", max: 20, rule: "intlOpt",
-          help: { ar: "مع رمز الدولة.", en: "Include the country code." },
+          phone: true, rule: "intlOpt",
           when: function (d) { return d.id_type === "iqama"; } },
       ],
     },
@@ -148,8 +150,11 @@
       sub: { ar: "ما تعرفه عن وظيفتك — وتصحّحه الموارد البشرية عند الحاجة.",
              en: "What you know; HR will refine it if needed." },
       fields: [
-        { k: "job_title", ar: "المسمى الوظيفي", en: "Job title", src: "jobs" },
+        // القسمُ أوّلًا ثمّ المسمّى: المسمّياتُ تُرشَّح بحسبه
         { k: "department_txt", ar: "القسم", en: "Department", src: "departments" },
+        { k: "job_title", ar: "المسمى الوظيفي", en: "Job title", src: "jobs",
+          help: { ar: "اختر القسم أوّلًا لتظهر مسمّياته.",
+                  en: "Pick the department first to see its titles." } },
         { k: "branch", ar: "الفرع", en: "Branch" },
         { k: "hire_date", ar: "تاريخ المباشرة", en: "Start date", type: "date" },
         { k: "contract_type", ar: "نوع العقد", en: "Contract type", opts: [
@@ -233,7 +238,7 @@
   var state = { data: {}, files: {}, step: 0, ack: false, sign: "" };
   var dirty = false;
   // أقسامُ المنشأة ومسمّياتها — تُجلب مرّةً وتُملأ بها القوائم
-  var OPTS = { departments: [], jobs: [], nationalities: [] };
+  var OPTS = { departments: [], jobs: [], jobsByDept: {}, nationalities: [] };
 
   // ─────────────────────── الحفظ التلقائي ───────────────────────
   // المرفقات لا تُحفظ محليًّا: صورتان تتجاوزان سعة التخزين فيسقط الحفظ كله
@@ -291,11 +296,15 @@
         : "ID number must be exactly 10 digits.");
     },
     mobile: function (v) {
-      var d = (v || "").replace(/\D/g, "");
-      return /^05\d{8}$/.test(d) ? "" : (L === "ar" ? "الجوال يبدأ بـ05 ويتكوّن من عشرة أرقام."
-        : "Mobile must start with 05 and be 10 digits.");
+      var s = String(v || "");
+      // ⚠️ السعوديُّ بصيغته المحلية، وغيرُه دوليٌّ بكوده — ومن لم يُقم في
+      // السعودية بعدُ لا رقمَ سعوديًّا له.
+      if (/^\+\d{8,15}$/.test(s)) return "";
+      var d = s.replace(/\D/g, "");
+      return /^05\d{8}$/.test(d) ? "" : (L === "ar"
+        ? "الرقم السعودي يبدأ بـ05 ويتكوّن من عشرة أرقام — أو اختر كود دولةٍ أخرى."
+        : "Saudi numbers start with 05 (10 digits) — or pick another country code.");
     },
-    mobileOpt: function (v) { return v ? RULES.mobile(v) : ""; },
     email: function (v) {
       if (!v) return "";
       return /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(v) ? ""
@@ -385,11 +394,47 @@
     wrap.appendChild(label(f));
     var list = (OPTS[f.src] || []);
     // ⚠️ حاملُ الهوية الوطنية سعوديٌّ بالضرورة: قائمتُه قائمةٌ بواحدة، ولا
-    // بابَ للكتابة. ومن يحمل إقامةً تُفتح له القائمة كاملةً.
+    // بابَ للكتابة. ومن يحمل إقامةً تُفتح له القائمة كاملةً إلا السعودية —
+    // فحاملُ الإقامة ليس سعوديًّا، واختيارُها يُخرج خطاباتٍ وتأميناتٍ خطأ.
     var lock = f.k === "nationality_txt" && state.data.id_type === "national";
     if (lock) list = ["السعودية"];
+    else if (f.k === "nationality_txt" && state.data.id_type === "iqama") {
+      list = list.filter(function (n) { return !/^(السعودية|سعودي)/.test(n); });
+    }
+    // المسمّياتُ تتبع القسم المختار: من اختار «التقني» لا يُعرض عليه
+    // «مشغل ماكينة تطريز». ومن لم يختر قسمًا بعدُ تُعرض عليه القائمة كلُّها.
+    if (f.src === "jobs") {
+      var dept = (state.data.department_txt || "").toString();
+      var byDept = (OPTS.jobsByDept || {})[dept];
+      if (dept && byDept && byDept.length) list = byDept;
+    }
     var cur = (state.data[f.k] || "").toString();
     var known = cur && list.indexOf(cur) >= 0;
+    // ⚠️ قائمةٌ بمئتين وخمسين جنسية لا تُقلَّب بالإصبع: تُكتب فيها أحرفٌ
+    // فتُرشَّح. وdatalist يفعلها بلا مكتبةٍ ولا شفرةٍ إضافية، ويقبل ما ليس
+    // فيها أيضًا — فمن لم يجد جنسيّته كتبها.
+    if (f.search) {
+      var dlId = "dl-" + f.k;
+      var inp = el("input", {
+        type: "text", id: "fld-" + f.k, list: dlId, autocomplete: "off",
+        placeholder: L === "ar" ? "اكتب أول حرفين للبحث…" : "Type to search…",
+      });
+      inp.value = cur;
+      var dl = el("datalist", { id: dlId });
+      list.forEach(function (v) { dl.appendChild(el("option", { value: v })); });
+      inp.addEventListener("input", function () {
+        state.data[f.k] = inp.value.trim();
+        dirty = true;
+        if (wrap.classList.contains("err")) checkOne(f, wrap);
+        save(); paintProgress(); paintTabs();
+      });
+      inp.addEventListener("blur", function () { checkOne(f, wrap); });
+      wrap.appendChild(inp);
+      wrap.appendChild(dl);
+      if (f.help) wrap.appendChild(el("div", { class: "help", text: f.help[L] || f.help.ar }));
+      wrap.appendChild(el("div", { class: "hint" }));
+      return wrap;
+    }
     var sel = el("select", { id: "fld-" + f.k });
     sel.appendChild(el("option", { value: "", text: L === "ar" ? "اختر…" : "Select…" }));
     list.forEach(function (v) { sel.appendChild(el("option", { value: v, text: v })); });
@@ -406,6 +451,12 @@
     function sync() {
       var v = sel.value === "__other" ? free.value.trim() : sel.value;
       state.data[f.k] = v; dirty = true; save(); paintProgress(); paintTabs();
+      // ⚠️ تبديلُ القسم يُعيد بناء الشاشة: قائمةُ المسمّيات تتبعه، فلو بقيت
+      // كما هي عُرضت على من اختار «التقني» مسمّياتُ المصنع.
+      if (f.k === "department_txt") {
+        if (state.data.job_title && !(OPTS.jobsByDept || {})[v]) { /* يبقى ما كُتب */ }
+        render();
+      }
     }
     sel.addEventListener("change", function () {
       free.hidden = sel.value !== "__other";
@@ -425,7 +476,88 @@
     return wrap;
   }
 
+  // أكواد الدول الأكثر ورودًا في ملفّات المنشأة، والبقيّةُ تُكتب بعد «أخرى».
+  var DIAL = [
+    { c: "966", ar: "السعودية +966" }, { c: "20", ar: "مصر +20" },
+    { c: "91", ar: "الهند +91" }, { c: "92", ar: "باكستان +92" },
+    { c: "880", ar: "بنغلاديش +880" }, { c: "63", ar: "الفلبين +63" },
+    { c: "249", ar: "السودان +249" }, { c: "967", ar: "اليمن +967" },
+    { c: "962", ar: "الأردن +962" }, { c: "963", ar: "سوريا +963" },
+    { c: "964", ar: "العراق +964" }, { c: "212", ar: "المغرب +212" },
+    { c: "216", ar: "تونس +216" }, { c: "213", ar: "الجزائر +213" },
+    { c: "90", ar: "تركيا +90" }, { c: "94", ar: "سريلانكا +94" },
+    { c: "251", ar: "إثيوبيا +251" }, { c: "256", ar: "أوغندا +256" },
+    { c: "254", ar: "كينيا +254" }, { c: "62", ar: "إندونيسيا +62" },
+    { c: "971", ar: "الإمارات +971" }, { c: "965", ar: "الكويت +965" },
+    { c: "973", ar: "البحرين +973" }, { c: "974", ar: "قطر +974" },
+    { c: "968", ar: "عُمان +968" },
+  ];
+
+  // ⚠️ الرقمُ يُخزَّن كما يُقرأ: السعوديُّ بصيغته المحلية (05…) لأنّ أنظمة
+  // المنشأة كلَّها تعرفه بها، وغيرُه بكود دولته (+…) — فيُتّصل به فعلًا.
+  function splitPhone(v) {
+    var s = String(v || "").trim();
+    if (!s) return { code: "966", num: "" };
+    if (s.charAt(0) === "+") {
+      for (var i = 0; i < DIAL.length; i++) {
+        var c = DIAL[i].c;
+        if (s.slice(1, 1 + c.length) === c) return { code: c, num: s.slice(1 + c.length) };
+      }
+      return { code: "other", num: s.slice(1) };
+    }
+    return { code: "966", num: s };
+  }
+  function joinPhone(code, num) {
+    var d = String(num || "").replace(/[^0-9]/g, "");
+    if (!d) return "";
+    if (code === "966") return d;                 // 05xxxxxxxx كما هو
+    return "+" + String(code).replace(/[^0-9]/g, "") + d;
+  }
+
+  function phoneNode(f) {
+    var wrap = el("div", { class: "fld" + (f.full ? " full" : ""), "data-k": f.k });
+    wrap.appendChild(label(f));
+    var cur = splitPhone(state.data[f.k]);
+    var row = el("div", { class: "pfxrow" });
+    var sel = el("select", { class: "dial", id: "fld-" + f.k + "-code" });
+    DIAL.forEach(function (d) {
+      sel.appendChild(el("option", { value: d.c, text: d.ar }));
+    });
+    sel.appendChild(el("option", { value: "other", text: "أخرى +" }));
+    sel.value = cur.code;
+    var free = el("input", { type: "tel", inputmode: "numeric", class: "dialfree",
+      placeholder: "الكود", hidden: cur.code !== "other", maxlength: 4,
+      value: cur.code === "other" ? "" : "" });
+    var inp = el("input", {
+      type: "tel", inputmode: "numeric", id: "fld-" + f.k, name: f.k, dir: "ltr",
+      maxlength: 15, placeholder: cur.code === "966" ? "05xxxxxxxx" : "رقم الجوال",
+    });
+    inp.value = cur.num;
+    function sync() {
+      var code = sel.value === "other" ? free.value : sel.value;
+      inp.value = inp.value.replace(/[^0-9]/g, "");
+      inp.placeholder = sel.value === "966" ? "05xxxxxxxx" : "رقم الجوال";
+      state.data[f.k] = joinPhone(code, inp.value);
+      dirty = true;
+      if (wrap.classList.contains("err")) checkOne(f, wrap);
+      save(); paintProgress(); paintTabs();
+    }
+    sel.addEventListener("change", function () {
+      free.hidden = sel.value !== "other";
+      sync();
+    });
+    free.addEventListener("input", sync);
+    inp.addEventListener("input", sync);
+    inp.addEventListener("blur", function () { checkOne(f, wrap); });
+    row.appendChild(sel); row.appendChild(free); row.appendChild(inp);
+    wrap.appendChild(row);
+    if (f.help) wrap.appendChild(el("div", { class: "help", text: f.help[L] || f.help.ar }));
+    wrap.appendChild(el("div", { class: "hint" }));
+    return wrap;
+  }
+
   function fieldNode(f) {
+    if (f.phone) return phoneNode(f);
     if (f.src) return pickNode(f);
     var wrap = el("div", { class: "fld" + (f.full ? " full" : ""), "data-k": f.k });
     wrap.appendChild(label(f));
@@ -1062,7 +1194,7 @@
     .then(function (j) {
       if (!j) return;
       OPTS = { departments: j.departments || [], jobs: j.jobs || [],
-               nationalities: j.nationalities || [] };
+               jobsByDept: j.jobsByDept || {}, nationalities: j.nationalities || [] };
       if (!$("#wiz").hidden && SEC[state.step] && SEC[state.step].id === "job") render();
     })
     .catch(function () { /* تبقى الحقول كتابةً حرّة */ });

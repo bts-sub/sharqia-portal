@@ -87,7 +87,7 @@ const clean = (v, max = 120) => String(v == null ? "" : v).trim().slice(0, max);
 /** تنظيفُ ما وصل وبناءُ قيم الملف — بابان يستعملانها فلا يفترق تحقّقهما. */
 function buildIntakeVals(b) {
   const idNumber = clean(b.id_number, 10).replace(/\D/g, "");
-  const mobile = clean(b.mobile, 15).replace(/\D/g, "");
+  // (الجوالُ يُنظَّف أدناه — يحتمل + للدوليّ)
   // ⚠️ الاسم الرباعي يُركَّب هنا لا في الواجهة وحدها: النموذج يأخذه أجزاءً،
   // ومن نادى الخادم مباشرةً لا يمرّ بتركيب الصفحة — فيُردّ بلا اسمٍ وهو كتبه.
   const fullAr = clean(b.full_name_ar)
@@ -95,7 +95,19 @@ function buildIntakeVals(b) {
       .map((p) => clean(p, 40)).filter(Boolean).join(" ");
   if (!fullAr) throw badRequest("الاسم بالعربية مطلوب");
   if (idNumber.length !== 10) throw badRequest("رقم الهوية أو الإقامة عشرة أرقام");
-  if (!/^05\d{8}$/.test(mobile)) throw badRequest("رقم الجوال يبدأ بـ05 ويتكوّن من عشرة أرقام");
+  // ⚠️ الجوالُ سعوديٌّ بصيغته المحلية (05…) أو دوليٌّ بكود دولته (+…): من
+  // لم يُقم في السعودية بعدُ لا رقمَ سعوديًّا له، وحبسُه على 05 يمنعه من
+  // إكمال ملفّه أصلًا.
+  // ⚠️ حاملُ الإقامة ليس سعوديًّا: الاختيارُ الخاطئ هنا يُخرج خطاباتٍ
+  // وتأميناتٍ على جنسيةٍ لا تخصّه، ويُعطّل قيدَه في أنظمة العمل.
+  const nationality = clean(b.nationality_txt, 60);
+  const isIqama = b.id_type === "iqama";
+  if (isIqama && /^(السعودية|سعودي|سعودية|saudi)/i.test(nationality))
+    throw badRequest("حاملُ الإقامة ليس سعوديًّا — اختر جنسيّتك من القائمة");
+
+  const mobileOk = /^05\d{8}$/.test(mobile) || /^\+\d{8,15}$/.test(mobile);
+  if (!mobileOk) throw badRequest(
+    "رقم الجوال: 05 وثمانية أرقامٍ بعدها، أو رقمٌ دوليٌّ يبدأ بكود دولته");
 
   // ⚠️ ما اشترطناه في الشاشة يُشترط هنا أيضًا: من نادى الخادم مباشرةً لا
   // يمرّ بتحقّق الصفحة، فيصل ملفٌّ بلا بريدٍ ولا آيبان.
@@ -122,7 +134,7 @@ function buildIntakeVals(b) {
     name_family: clean(b.name_family, 40),
     full_name_ar: fullAr,
     full_name_en: clean(b.full_name_en),
-    nationality_txt: clean(b.nationality_txt, 60),
+    nationality_txt: nationality,
     city: clean(b.city, 60),
     branch: clean(b.branch, 60),
     department_txt: clean(b.department_txt, 60),
@@ -146,7 +158,7 @@ function buildIntakeVals(b) {
     address: shortAddr,
     home_phone: clean(b.home_phone, 20),
     emergency_name: clean(b.emergency_name),
-    emergency_phone: clean(b.emergency_phone, 15),
+    emergency_phone: clean(b.emergency_phone, 20).replace(/[^0-9+]/g, ""),
     job_title: clean(b.job_title),
     hire_date: clean(b.hire_date, 10),
     bank_name: clean(b.bank_name),
