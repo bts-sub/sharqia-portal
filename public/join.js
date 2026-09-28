@@ -510,6 +510,40 @@
     }
   }
 
+  // ⚠️ الصورةُ تُصغَّر في الجهاز قبل الرفع: كاميرا الجوال تُخرج ٣–٨ ميجابايت،
+  // ورفعُها على شبكةٍ متوسّطة يطول حتى ينقطع في منتصفه — وهو ما كان يقع:
+  // طلباتٌ تموت قبل أن تصل الخادم. وشهادةُ الآيبان تُقرأ في صورةٍ عرضُها
+  // ١٨٠٠ بكسل قراءةً تامّة، وحجمُها بعدها نحو ثلث ميجابايت.
+  var SHRINK_OVER = 900 * 1024;      // ما دونها لا يستحقّ إعادة الترميز
+  var MAX_SIDE = 1800;
+
+  function shrinkImage(file) {
+    return new Promise(function (resolve) {
+      if (!/^image\/(jpe?g|png|webp)$/i.test(file.type) || file.size <= SHRINK_OVER)
+        return resolve(null);
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth, h = img.naturalHeight;
+          var scale = Math.min(1, MAX_SIDE / Math.max(w, h));
+          var cw = Math.round(w * scale), ch = Math.round(h * scale);
+          var cv = document.createElement("canvas");
+          cv.width = cw; cv.height = ch;
+          cv.getContext("2d").drawImage(img, 0, 0, cw, ch);
+          cv.toBlob(function (blob) {
+            URL.revokeObjectURL(url);
+            if (!blob || blob.size >= file.size) return resolve(null);
+            resolve(new File([blob], file.name.replace(/\.(png|webp)$/i, ".jpg"),
+              { type: "image/jpeg" }));
+          }, "image/jpeg", 0.82);
+        } catch (e) { URL.revokeObjectURL(url); resolve(null); }
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+  }
+
   function fileNode(f) {
     var box = el("div", { class: "file" + (state.files[f.k] ? " has" : "") });
     var pick = el("input", { type: "file", class: "pick",
@@ -544,8 +578,15 @@
           } }),
       ]));
     }
-    function take(file) {
-      if (!file) return;
+    async function take(raw) {
+      if (!raw) return;
+      // التصغيرُ أوّلًا، فالحدُّ يُقاس على ما يُرفع فعلًا لا على ما اختاره
+      var small = null;
+      try { small = await shrinkImage(raw); } catch (e) { small = null; }
+      var file = small || raw;
+      if (small) msg("ok", L === "ar"
+        ? "صُغّرت «" + raw.name + "» من " + human(raw.size) + " إلى " + human(small.size) + " قبل الرفع."
+        : "“" + raw.name + "” was shrunk from " + human(raw.size) + " to " + human(small.size) + ".");
       // ⚠️ الردُّ في البطاقة نفسِها لا في أعلى الصفحة وحده: من يُرفق من
       // جواله لا يرى شريطًا فوق الشاشة وقد تجاوزه بالتمرير — فيظنّ الملفّ
       // أُرفق. والرسالةُ تقول حجمَه وحدَّه معًا، لا «كبير» مجرّدة.
