@@ -1222,6 +1222,54 @@
     }
   }
 
+  // ─────────────────────── استعادةُ ملفٍّ أُعيد ───────────────────────
+  // ⚠️ من صحّح من جهازٍ آخر كان يبدأ من الصفر: أربعون حقلًا تُكتب من جديد
+  // ليصحّح سطرًا. فصار له بابان — رابطُه الذي وصله مع الإعادة، أو رقمُ
+  // ملفّه مع رقم هويته. ولا يُفتح إلا لملفٍّ أعادته الموارد البشرية.
+  function fillFromServer(j) {
+    if (!j || !j.ok || !j.data) return false;
+    Object.keys(j.data).forEach(function (k) { state.data[k] = j.data[k]; });
+    if (state.data.full_name_ar && !state.data.name_first) {
+      var p = String(state.data.full_name_ar).trim().split(/\s+/);
+      state.data.name_first = p[0] || ""; state.data.name_father = p[1] || "";
+      state.data.name_grand = p[2] || ""; state.data.name_family = p.slice(3).join(" ") || "";
+    }
+    SENT = { ref: j.ref || "", at: Date.now() };
+    save();
+    startWizard();
+    msg("bad", (L === "ar" ? "ملفُّك " + (j.ref || "") + " أُعيد للتصحيح: " : "Returned: ")
+      + (j.reason || "") + (L === "ar" ? " — صحّح ما ذُكر وأعد الإرسال (وأعد إرفاق المستندات)." : ""));
+    return true;
+  }
+
+  function recoverBox() {
+    var wrap = el("div", { class: "recover" });
+    var ref = el("input", { type: "text", placeholder: "رقم الملف (HR-JOIN-…)", dir: "ltr" });
+    var idn = el("input", { type: "tel", inputmode: "numeric", maxlength: 10,
+      placeholder: "رقم الهوية / الإقامة", dir: "ltr" });
+    var out = el("div", { class: "help" });
+    var btn = el("button", { class: "btn o", type: "button", text: "استعادة بياناتي",
+      onclick: async function () {
+        var r = String(ref.value || "").trim().toUpperCase();
+        var i = String(idn.value || "").replace(/[^0-9]/g, "");
+        if (!r || i.length !== 10) { out.textContent = "اكتب رقم الملف ورقم الهوية كاملين."; return; }
+        btn.disabled = true; out.textContent = "جارٍ البحث…";
+        try {
+          var res = await fetch("/api/join/resume", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ref: r, idNumber: i }),
+          });
+          var j = await res.json().catch(function () { return {}; });
+          if (!fillFromServer(j)) out.textContent = j.error || "لم نجد ملفًّا بهذه البيانات.";
+        } catch (e) { out.textContent = "تعذّر الاتصال — حاول مرّةً أخرى."; }
+        btn.disabled = false;
+      } });
+    wrap.appendChild(el("div", { class: "rt", text: "أُعيد ملفُّك للتصحيح وتفتحه من جهازٍ آخر؟" }));
+    wrap.appendChild(el("div", { class: "rr" }, [ref, idn, btn]));
+    wrap.appendChild(out);
+    return wrap;
+  }
+
   // ─────────────────────── التشغيل ───────────────────────
   function startWizard() {
     // الصورةُ تُكتم عند بدء التعبئة: أثرٌ خلف الورق لا مزاحمةٌ للحقول
@@ -1297,7 +1345,19 @@
         paintProgress();
       })
       .catch(function () { msg("bad", "تعذّر جلب بياناتك — أعد فتح الصفحة."); });
-  } else if (restore()) {
+  } else {
+    // رمزُ رابطٍ في العنوان: يُسأل عنه الخادم — فإن كان ملفًّا أُعيد
+    // للتصحيح مُلئت الحقول منه، وإلا فمسودّةُ الجهاز إن كانت.
+    var maybeToken = token && token !== "open" && token !== "join" && token.length >= 12;
+    (async function () {
+      if (maybeToken) {
+        try {
+          var res = await fetch("/api/join/resume/" + encodeURIComponent(token));
+          var j = await res.json().catch(function () { return {}; });
+          if (fillFromServer(j)) return;
+        } catch (e) { /* الشبكةُ تعثّرت — تبقى المسودّة المحلية */ }
+      }
+      if (restore()) {
     // ⚠️ المسودّةُ تُستأنف ولا تُفرض: من ترك التعبئةَ أمسِ يُكمل من حيث
     // وقف، ومن أراد البدءَ من جديد يجد زرًّا يقوله — وكان الاستئنافُ
     // يقع صامتًا فيظنّ من يفتح الرابط أنّ بياناته ضاعت أو أنّها بيانات
@@ -1324,5 +1384,12 @@
     var pane = $("#pane");
     if (pane && pane.parentNode) pane.parentNode.insertBefore(bar, pane);
     msg("");
+      } else {
+        // لا مسودّةَ ولا رمز: يُعرض في الصفحة الافتتاحية بابُ الاستعادة
+        // لمن أُعيد ملفُّه وفتحها من جهازٍ آخر.
+        var land = $("#land");
+        if (land) land.appendChild(recoverBox());
+      }
+    })();
   }
 })();

@@ -40,6 +40,40 @@ router.post("/me/intake", requireAuth, async (req, res, next) => {
 //   على شبكة جوّالٍ متوسّطة ينقطع في منتصفه فيسقط كلُّ شيء، ولا يدري صاحبُه
 //   أيُّ ملفٍّ أعجزه. وهنا ما وصل بقي، وما انقطع يُعاد وحده.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// استعادةُ ملفٍّ أُعيد للتصحيح — من أيّ جهاز.
+//   ⚠️ لا يُفتح إلا لملفٍّ أعادته الموارد البشرية، وبرمز رابطه أو برقمه مع
+//   رقم الهوية معًا. وبلا هذا القيد يصير الرابطُ العامُّ بابًا لقراءة بيانات
+//   موظفٍ بمعرفة رقم هويته.
+// ---------------------------------------------------------------------------
+const RES_RATE = new Map();
+function resOk(ip) {
+  const now = Date.now();
+  const hits = (RES_RATE.get(ip) || []).filter((t) => now - t < 60 * 60 * 1000);
+  if (hits.length >= 10) return false;
+  hits.push(now); RES_RATE.set(ip, hits);
+  return true;
+}
+
+router.get("/join/resume/:token", async (req, res, next) => {
+  try {
+    const { data } = await runAction("intake.resume",
+      { token: req.params.token }, { user: null });
+    res.json(data || { ok: false });
+  } catch (e) { next(badRequest(e?.message || "تعذّرت الاستعادة")); }
+});
+
+router.post("/join/resume", async (req, res, next) => {
+  try {
+    const ip = req.ip || req.headers["x-forwarded-for"] || "—";
+    if (!resOk(ip)) throw tooMany("محاولاتٌ كثيرة — انتظر ساعةً أو راجع الموارد البشرية.");
+    const { data } = await runAction("intake.resumeByRef",
+      { ref: req.body?.ref, idNumber: req.body?.idNumber }, { user: null });
+    res.json(data || { ok: false });
+  } catch (e) { next(e?.status ? e : badRequest(e?.message || "تعذّرت الاستعادة")); }
+});
+
 const UP_RATE = new Map();
 function upOk(ip) {
   const now = Date.now();

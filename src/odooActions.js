@@ -3837,6 +3837,26 @@ const actions = {
    *  ⚠️ هذا أوّلُ ما يُقرأ من البابِ المفتوح، وحدودُه مقصودة: أسماءٌ فقط،
    *  لا معرّفات ولا موظفين ولا عدد. ومن كتب قسمًا بيده لا يُطابَق أحدٌ به.
    */
+  /** استعادةُ ملفٍّ أُعيد للتصحيح — برمز رابطه. */
+  async "intake.resume"(params) {
+    return withOdoo(
+      async () => odoo.execKw("sharqia.employee.intake", "sharqia_resume",
+        [String(params?.token || "")]),
+      async () => ({ ok: false, error: "غير متاح" }),
+      { emptyOnError: () => ({ ok: false, error: "تعذّر الوصول إلى النظام" }) }
+    );
+  },
+
+  /** أو برقم الملف مع رقم الهوية — لمن ضاع رابطُه. */
+  async "intake.resumeByRef"(params) {
+    return withOdoo(
+      async () => odoo.execKw("sharqia.employee.intake", "sharqia_resume_by_ref",
+        [String(params?.ref || ""), String(params?.idNumber || "")]),
+      async () => ({ ok: false, error: "غير متاح" }),
+      { emptyOnError: () => ({ ok: false, error: "تعذّر الوصول إلى النظام" }) }
+    );
+  },
+
   async "intake.options"() {
     return withOdoo(
       async () => {
