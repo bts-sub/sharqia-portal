@@ -382,10 +382,13 @@
     var sel = el("select", { id: "fld-" + f.k });
     sel.appendChild(el("option", { value: "", text: L === "ar" ? "اختر…" : "Select…" }));
     list.forEach(function (v) { sel.appendChild(el("option", { value: v, text: v })); });
-    if (!lock) sel.appendChild(el("option", { value: "__other", text: L === "ar" ? "غير موجود — أكتبه" : "Not listed — type it" }));
+    if (!lock) sel.appendChild(el("option", { value: "__other", text: L === "ar" ? "أخرى — أكتبه بنفسك" : "Other — type it yourself" }));
     sel.value = known ? cur : (cur ? "__other" : "");
+    // خانةُ الكتابة تقول ما يُكتب فيها: «أخرى» بلا إرشادٍ تُترك فارغة
     var free = el("input", {
-      type: "text", placeholder: f.ph || "", style: "margin-top:8px",
+      type: "text", style: "margin-top:8px",
+      placeholder: (f.ph && typeof f.ph === "object" ? (f.ph[L] || f.ph.ar) : f.ph)
+        || (L === "ar" ? "اكتب " + (f.ar || "") + " كما هو" : "Type it as it is"),
       hidden: known || !cur ? true : false,
     });
     free.value = known ? "" : cur;
