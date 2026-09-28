@@ -833,6 +833,20 @@
     if (body.iban) body.iban = body.iban.replace(/\s/g, "").toUpperCase();
     body.full_name_ar = [body.name_first, body.name_father, body.name_grand, body.name_family]
       .filter(Boolean).join(" ");
+    // ⚠️ المجموعُ يُقاس قبل الإرسال: من أرفق صورًا كبيرةً يُردّ من الخادم
+    // برسالةٍ إنجليزيةٍ غامضة («request entity too large»)، وقد انتظر رفعها
+    // كلَّها. والقياسُ هنا يقول له ما يحذف قبل أن ينتظر.
+    var tot = 0;
+    Object.keys(state.files).forEach(function (k) { tot += (state.files[k].size || 0); });
+    if (state.sign) tot += Math.round(String(state.sign).length * 0.75);
+    if (tot > 20 * 1024 * 1024) {
+      msg("bad", L === "ar"
+        ? "مجموعُ المرفقات " + (tot / 1048576).toFixed(1) + " ميجابايت، والحدّ ٢٠ — احذف أو صغّر بعضها ثمّ أعد الإرسال."
+        : "Attachments total " + (tot / 1048576).toFixed(1) + " MB; the limit is 20 MB.");
+      btn.disabled = false; btn.textContent = t("submit");
+      go(SEC.findIndex(function (s) { return s.files; }));
+      return;
+    }
     body.ack = true;
     // التوقيعُ يُرسل صورةً كالمرفقات، فيُحفظ في ملفّ الموظف ويظهر في نموذجه
     if (state.sign) body.signature = String(state.sign).split(",")[1] || "";
@@ -855,6 +869,9 @@
       });
       if (timer) clearTimeout(timer);
       var out = await res.json().catch(function () { return {}; });
+      if (res.status === 413) throw new Error(L === "ar"
+        ? "المرفقات أكبر ممّا يقبله الخادم — احذف أو صغّر بعضها ثمّ أعد الإرسال."
+        : "Attachments are too large for the server — remove or shrink some.");
       if (!res.ok) throw new Error(out.error || (L === "ar" ? "تعذّر الإرسال — حاول مرّةً أخرى." : "Could not send."));
       dirty = false;
       try { localStorage.removeItem(LS); } catch (e) {}
