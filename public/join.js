@@ -123,8 +123,8 @@
       sub: { ar: "نتواصل معك عبرها — تأكّد من صحّتها.", en: "We will reach you here — please verify." },
       fields: [
         { k: "mobile", ar: "رقم الجوال", en: "Mobile number", req: true, phone: true, rule: "mobile",
-          help: { ar: "اختر كود الدولة ثمّ اكتب الرقم — والسعوديُّ يبدأ بـ05.",
-                  en: "Pick the country code, then type the number." } },
+          help: { ar: "اختر كود الدولة ثمّ اكتب الأرقام. السعوديُّ يبدأ بـ05، وغيرُه بلا صفرٍ أوّل.",
+                  en: "Pick the country code, then type digits. Saudi numbers start with 05." } },
         // البريدُ أساسيٌّ: بيانات الدخول والخطاباتُ تصل عليه
         { k: "email", ar: "البريد الإلكتروني", en: "Email", req: true, type: "email", dir: "ltr", rule: "email" },
         { k: "city", ar: "المدينة", en: "City", rule: "letters" },
@@ -408,6 +408,20 @@
       var byDept = (OPTS.jobsByDept || {})[dept];
       if (dept && byDept && byDept.length) list = byDept;
     }
+    // ⚠️ المسمّى لا يُفتح قبل القسم: قائمةُ الأربعين مسمًّى تُربك من لم
+    // يحدّد قسمَه، ويختار منها ما ليس من عمله. فيُقفل الحقلُ ويُقال له
+    // السبب، ويُفتح فور اختيار القسم.
+    var needDept = f.src === "jobs" && !(state.data.department_txt || "").toString().trim();
+    if (needDept) {
+      var lockSel = el("select", { id: "fld-" + f.k, disabled: true });
+      lockSel.appendChild(el("option", { text: L === "ar" ? "اختر القسم أوّلًا…" : "Pick the department first…" }));
+      wrap.appendChild(lockSel);
+      wrap.appendChild(el("div", { class: "help",
+        text: L === "ar" ? "المسمّيات تُعرض بحسب القسم الذي تختاره."
+                         : "Titles are listed for the department you pick." }));
+      wrap.appendChild(el("div", { class: "hint" }));
+      return wrap;
+    }
     var cur = (state.data[f.k] || "").toString();
     var known = cur && list.indexOf(cur) >= 0;
     // ⚠️ قائمةٌ بمئتين وخمسين جنسية لا تُقلَّب بالإصبع: تُكتب فيها أحرفٌ
@@ -511,6 +525,9 @@
     var d = String(num || "").replace(/[^0-9]/g, "");
     if (!d) return "";
     if (code === "966") return d;                 // 05xxxxxxxx كما هو
+    // ⚠️ الصفرُ الأوّل محليٌّ لا يُكتب مع كود الدولة: «+964 0771…» رقمٌ لا
+    // يُطلب. يُحذف كما يفعل كلُّ مُتّصلٍ دوليٍّ بيده.
+    d = d.replace(/^0+/, "");
     return "+" + String(code).replace(/[^0-9]/g, "") + d;
   }
 
@@ -530,13 +547,15 @@
       value: cur.code === "other" ? "" : "" });
     var inp = el("input", {
       type: "tel", inputmode: "numeric", id: "fld-" + f.k, name: f.k, dir: "ltr",
-      maxlength: 15, placeholder: cur.code === "966" ? "05xxxxxxxx" : "رقم الجوال",
+      maxlength: 15,
+      placeholder: cur.code === "966" ? "05xxxxxxxx" : "أرقام الجوال بلا صفرٍ أوّل",
     });
     inp.value = cur.num;
     function sync() {
       var code = sel.value === "other" ? free.value : sel.value;
       inp.value = inp.value.replace(/[^0-9]/g, "");
-      inp.placeholder = sel.value === "966" ? "05xxxxxxxx" : "رقم الجوال";
+      // الشرحُ يتبع الكود: من اختار دولةً أخرى لا يُطالَب بـ05
+      inp.placeholder = sel.value === "966" ? "05xxxxxxxx" : "أرقام الجوال بلا صفرٍ أوّل";
       state.data[f.k] = joinPhone(code, inp.value);
       dirty = true;
       if (wrap.classList.contains("err")) checkOne(f, wrap);
