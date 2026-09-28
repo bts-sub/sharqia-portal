@@ -297,6 +297,11 @@
     border-radius: 14px; background: #fff; touch-action: none; cursor: crosshair; }
   .signrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .signrow .help { font-size: 12px; color: var(--mut); margin: 0; }
+  /* شريطُ الاستئناف: يقول ما بقي ويفتح بابَ البدء من جديد */
+  .resume { display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    flex-wrap: wrap; margin: 0 0 16px; padding: 12px 16px; border-radius: 12px;
+    background: var(--ok-bg); border: 1px solid rgba(16,64,44,.18); font-size: 13.5px; }
+  .resume .btn { padding: 7px 14px; font-size: 12.5px; }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>

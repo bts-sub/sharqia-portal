@@ -1247,8 +1247,25 @@
       })
       .catch(function () { msg("bad", "تعذّر جلب بياناتك — أعد فتح الصفحة."); });
   } else if (restore()) {
-    // مسودّةٌ محفوظة: يُستأنف منها بلا أن يُعاد ما كُتب
+    // ⚠️ المسودّةُ تُستأنف ولا تُفرض: من ترك التعبئةَ أمسِ يُكمل من حيث
+    // وقف، ومن أراد البدءَ من جديد يجد زرًّا يقوله — وكان الاستئنافُ
+    // يقع صامتًا فيظنّ من يفتح الرابط أنّ بياناته ضاعت أو أنّها بيانات
+    // غيره.
     startWizard();
-    msg("good", "استأنفنا من حيث توقّفت — بياناتك محفوظة على هذا الجهاز.");
+    var pc = percent();
+    var bar = el("div", { class: "resume" }, [
+      el("span", { text: "استأنفنا من حيث توقّفت — اكتمال ملفّك " + pc + "٪، وبياناتك محفوظةٌ على هذا الجهاز." }),
+      el("button", { class: "btn o", type: "button", text: "ابدأ من جديد",
+        onclick: function () {
+          if (!window.confirm("سيُمسح ما كتبتَه على هذا الجهاز ويبدأ الملفُّ من أوّله. متأكّد؟")) return;
+          try { localStorage.removeItem(LS); } catch (e) {}
+          state.data = {}; state.files = {}; state.sign = ""; state.ack = false; state.step = 0;
+          dirty = false;
+          location.reload();
+        } }),
+    ]);
+    var pane = $("#pane");
+    if (pane && pane.parentNode) pane.parentNode.insertBefore(bar, pane);
+    msg("");
   }
 })();
