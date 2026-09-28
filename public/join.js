@@ -196,7 +196,8 @@
     {
       id: "files", n: "٠٦", nEn: "06",
       title: { ar: "المرفقات", en: "Attachments" },
-      sub: { ar: "صورةٌ واضحة من الجوال تكفي — حتى ٦ ميجابايت للملف.", en: "A clear phone photo is enough — up to 6 MB each." },
+      sub: { ar: "صورةٌ واضحة من الجوال تكفي. الحدّ ٦ ميجابايت للملف و٢٠ للمجموع — وإن كان أكبر نقول لك فورًا.",
+             en: "A clear phone photo is enough. Limit: 6 MB per file, 20 MB in total — we tell you at once if it exceeds." },
       files: [
         // شهادةُ الآيبان وحدها إجبارية: عليها يُبنى تحويل الراتب، وخطأُ رقمٍ
         // فيها يُرجع الحوالة. وصورةُ الهوية تُطلب ولا تُشترط.
@@ -545,9 +546,33 @@
     }
     function take(file) {
       if (!file) return;
+      // ⚠️ الردُّ في البطاقة نفسِها لا في أعلى الصفحة وحده: من يُرفق من
+      // جواله لا يرى شريطًا فوق الشاشة وقد تجاوزه بالتمرير — فيظنّ الملفّ
+      // أُرفق. والرسالةُ تقول حجمَه وحدَّه معًا، لا «كبير» مجرّدة.
       if (file.size > FILE_MAX) {
-        msg("bad", L === "ar" ? "«" + file.name + "» أكبر من ٦ ميجابايت — اختر صورةً أصغر."
-          : "“" + file.name + "” is larger than 6 MB.");
+        var why = L === "ar"
+          ? "الملف كبير: «" + file.name + "» حجمه " + human(file.size)
+            + " والحدّ ٦ ميجابايت — صوّره بدقّةٍ أقلّ أو اختر نسخةً أصغر."
+          : "File too large: “" + file.name + "” is " + human(file.size) + "; the limit is 6 MB.";
+        msg("bad", why);
+        box.classList.add("bad");
+        var w0 = box.querySelector(".warn");
+        if (!w0) { w0 = el("div", { class: "warn" }); box.appendChild(w0); }
+        w0.textContent = why;
+        return;
+      }
+      box.classList.remove("bad");
+      var w1 = box.querySelector(".warn"); if (w1) w1.remove();
+      // ومجموعُ ما أُرفق يُحسب قبل القبول: الحدُّ الأعلى للطلب كلِّه ٢٠م
+      var sum = file.size;
+      Object.keys(state.files).forEach(function (k) {
+        if (k !== f.k) sum += (state.files[k].size || 0);
+      });
+      if (sum > 20 * 1024 * 1024) {
+        msg("bad", L === "ar"
+          ? "مجموع المرفقات يتجاوز ٢٠ ميجابايت (" + (sum / 1048576).toFixed(1)
+            + ") — احذف مرفقًا أو صغّره قبل إضافة هذا."
+          : "Attachments would exceed 20 MB (" + (sum / 1048576).toFixed(1) + ").");
         return;
       }
       var r = new FileReader();
