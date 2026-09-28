@@ -144,15 +144,31 @@ function buildIntakeVals(b) {
 // قوائمُ الاختيار: أقسامٌ ومسمّيات من أودو. تُخبَّأ عشر دقائق — قائمةٌ
 // تتغيّر مرّةً في الشهر لا تُقرأ مع كل فتحةٍ للصفحة.
 let OPTS = { at: 0, data: { departments: [], jobs: [] } };
-router.get("/join/options", async (req, res, next) => {
+// ⚠️ القوائمُ تُردّ فورًا ولو كانت قديمة، وتُجدَّد خلفَ الردّ: كان الزائرُ
+// الأوّلُ بعد انقضاء المهلة ينتظر أودو (نحو ثانيتين ونصف) قبل أن تُملأ
+// قائمتا القسم والمسمّى — وهو انتظارٌ لا يفهمه.
+let OPTS_BUSY = false;
+async function refreshOptions() {
+  if (OPTS_BUSY) return;
+  OPTS_BUSY = true;
   try {
-    if (Date.now() - OPTS.at > 10 * 60 * 1000) {
-      const { data } = await runAction("intake.options", {}, { user: null });
-      OPTS = { at: Date.now(), data: data || { departments: [], jobs: [] } };
+    const { data } = await runAction("intake.options", {}, { user: null });
+    if (data && (data.departments?.length || data.jobs?.length)) {
+      OPTS = { at: Date.now(), data };
     }
-    res.set("Cache-Control", "public, max-age=600");
-    res.json(OPTS.data);
-  } catch (e) { res.json({ departments: [], jobs: [] }); }
+  } catch (e) {
+    console.warn("⚠️ تعذّر تحديث قوائم النموذج:", e.message);
+  } finally { OPTS_BUSY = false; }
+}
+
+router.get("/join/options", async (req, res) => {
+  const age = Date.now() - OPTS.at;
+  const empty = !OPTS.data || !(OPTS.data.departments || []).length;
+  // أوّلُ نداءٍ في عمر الخادم ينتظر — وما بعده يُردّ فورًا
+  if (empty) await refreshOptions();
+  else if (age > 30 * 60 * 1000) refreshOptions();
+  res.set("Cache-Control", "public, max-age=1800");
+  res.json(OPTS.data || { departments: [], jobs: [], nationalities: [] });
 });
 
 router.post("/join/:token", async (req, res, next) => {
