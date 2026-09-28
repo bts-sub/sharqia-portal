@@ -196,8 +196,8 @@
     {
       id: "files", n: "٠٦", nEn: "06",
       title: { ar: "المرفقات", en: "Attachments" },
-      sub: { ar: "صورةٌ واضحة من الجوال تكفي. الحدّ ٦ ميجابايت للملف و٢٠ للمجموع — وإن كان أكبر نقول لك فورًا.",
-             en: "A clear phone photo is enough. Limit: 6 MB per file, 20 MB in total — we tell you at once if it exceeds." },
+      sub: { ar: "صوّر بجوالك ولا تهتمّ بالحجم — نُصغّر الصور تلقائيًّا. والحدّ ٥ ميجابايت للملف الواحد و٢٥ للمجموع، ونقول لك فورًا إن تجاوزه ملفّ.",
+             en: "Shoot with your phone — images are shrunk automatically. Limit: 5 MB per file, 25 MB in total; we tell you at once if a file exceeds it." },
       files: [
         // شهادةُ الآيبان وحدها إجبارية: عليها يُبنى تحويل الراتب، وخطأُ رقمٍ
         // فيها يُرجع الحوالة. وصورةُ الهوية تُطلب ولا تُشترط.
@@ -225,7 +225,11 @@
     },
   ];
 
-  var FILE_MAX = 6 * 1024 * 1024;
+  // ⚠️ الحدُّ يُقاس بعد التصغير: صورةُ الكاميرا تُصغَّر فتمرّ، وملفٌّ لا
+  // يُصغَّر (PDF غالبًا) أكبرُ من خمسة ميجابايت يُردّ فورًا برسالةٍ تقول
+  // حجمَه — لا يُترك ليُرفع فينقطع في منتصفه فيظنّ صاحبُه العطبَ عندنا.
+  var FILE_MAX = 5 * 1024 * 1024;
+  var TOTAL_MAX = 25 * 1024 * 1024;   // المجموع: واسعٌ لأنّ الصور تُصغَّر
   var state = { data: {}, files: {}, step: 0, ack: false, sign: "" };
   var dirty = false;
   // أقسامُ المنشأة ومسمّياتها — تُجلب مرّةً وتُملأ بها القوائم
@@ -299,10 +303,16 @@
     },
     iban: function (v) {
       if (!v) return "";
-      var s = (v || "").replace(/\s/g, "").toUpperCase();
-      if (!/^SA\d{22}$/.test(s)) return L === "ar"
-        ? "الآيبان يبدأ بـSA ويتكوّن من ٢٤ خانة." : "IBAN must start with SA and be 24 characters.";
-      return "";
+      // ⚠️ لا تُطلب منه SA: هي مكتوبةٌ له في الصندوق المجاور، وذكرُها في
+      // رسالة الخطأ يُوهمه أنّ عليه كتابتها فيكتبها مرّةً أخرى. يُقال له
+      // كم رقمًا كتب وكم بقي — وهذا كلُّ ما يعنيه.
+      var d = String(v).replace(/^SA/i, "").replace(/\D/g, "");
+      if (d.length === 22) return "";
+      return L === "ar"
+        ? (d.length < 22
+            ? "أدخل ٢٢ رقمًا — كتبتَ " + d.length + " وبقي " + (22 - d.length) + "."
+            : "الأرقام أكثر من ٢٢ — احذف " + (d.length - 22) + ".")
+        : "Enter 22 digits — you typed " + d.length + ".";
     },
     past: function (v) {
       if (!v) return "";
@@ -514,8 +524,9 @@
   // ورفعُها على شبكةٍ متوسّطة يطول حتى ينقطع في منتصفه — وهو ما كان يقع:
   // طلباتٌ تموت قبل أن تصل الخادم. وشهادةُ الآيبان تُقرأ في صورةٍ عرضُها
   // ١٨٠٠ بكسل قراءةً تامّة، وحجمُها بعدها نحو ثلث ميجابايت.
-  var SHRINK_OVER = 900 * 1024;      // ما دونها لا يستحقّ إعادة الترميز
-  var MAX_SIDE = 1800;
+  var SHRINK_OVER = 500 * 1024;      // ما دونها لا يستحقّ إعادة الترميز
+  // ١٤٠٠ بكسل: الشهادةُ والهويةُ تُقرآن كلمةً كلمة، والحجمُ نحو ١٥٠ كيلوبايت
+  var MAX_SIDE = 1400;
 
   function shrinkImage(file) {
     return new Promise(function (resolve) {
@@ -536,7 +547,7 @@
             if (!blob || blob.size >= file.size) return resolve(null);
             resolve(new File([blob], file.name.replace(/\.(png|webp)$/i, ".jpg"),
               { type: "image/jpeg" }));
-          }, "image/jpeg", 0.82);
+          }, "image/jpeg", 0.74);
         } catch (e) { URL.revokeObjectURL(url); resolve(null); }
       };
       img.onerror = function () { URL.revokeObjectURL(url); resolve(null); };
@@ -593,7 +604,7 @@
       if (file.size > FILE_MAX) {
         var why = L === "ar"
           ? "الملف كبير: «" + file.name + "» حجمه " + human(file.size)
-            + " والحدّ ٦ ميجابايت — صوّره بدقّةٍ أقلّ أو اختر نسخةً أصغر."
+            + " والحدّ ٥ ميجابايت للملف الواحد — صغّره أو اختر نسخةً أخفّ."
           : "File too large: “" + file.name + "” is " + human(file.size) + "; the limit is 6 MB.";
         msg("bad", why);
         box.classList.add("bad");
@@ -609,9 +620,9 @@
       Object.keys(state.files).forEach(function (k) {
         if (k !== f.k) sum += (state.files[k].size || 0);
       });
-      if (sum > 20 * 1024 * 1024) {
+      if (sum > TOTAL_MAX) {
         msg("bad", L === "ar"
-          ? "مجموع المرفقات يتجاوز ٢٠ ميجابايت (" + (sum / 1048576).toFixed(1)
+          ? "مجموع المرفقات يتجاوز ٢٥ ميجابايت (" + (sum / 1048576).toFixed(1)
             + ") — احذف مرفقًا أو صغّره قبل إضافة هذا."
           : "Attachments would exceed 20 MB (" + (sum / 1048576).toFixed(1) + ").");
         return;
@@ -905,10 +916,10 @@
     var tot = 0;
     Object.keys(state.files).forEach(function (k) { tot += (state.files[k].size || 0); });
     if (state.sign) tot += Math.round(String(state.sign).length * 0.75);
-    if (tot > 20 * 1024 * 1024) {
+    if (tot > TOTAL_MAX) {
       msg("bad", L === "ar"
-        ? "مجموعُ المرفقات " + (tot / 1048576).toFixed(1) + " ميجابايت، والحدّ ٢٠ — احذف أو صغّر بعضها ثمّ أعد الإرسال."
-        : "Attachments total " + (tot / 1048576).toFixed(1) + " MB; the limit is 20 MB.");
+        ? "مجموعُ المرفقات " + (tot / 1048576).toFixed(1) + " ميجابايت، والحدّ ٢٥ — احذف أو صغّر بعضها ثمّ أعد الإرسال."
+        : "Attachments total " + (tot / 1048576).toFixed(1) + " MB; the limit is 25 MB.");
       btn.disabled = false; btn.textContent = t("submit");
       go(SEC.findIndex(function (s) { return s.files; }));
       return;
