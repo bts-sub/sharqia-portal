@@ -237,6 +237,7 @@
   var TOTAL_MAX = 40 * 1024 * 1024;   // واسعٌ: كلُّ ملفٍّ يُرفع وحده فلا ينقطع
   var state = { data: {}, files: {}, step: 0, ack: false, sign: "" };
   var dirty = false;
+  var SENT = null;   // ملفٌّ سبق إرساله من هذا الجهاز: { ref, at }
   // أقسامُ المنشأة ومسمّياتها — تُجلب مرّةً وتُملأ بها القوائم
   var OPTS = { departments: [], jobs: [], jobsByDept: {}, nationalities: [] };
 
@@ -257,6 +258,7 @@
       if (!o || !o.data) return false;
       if (Date.now() - (o.at || 0) > 30 * 864e5) { localStorage.removeItem(LS); return false; }
       state.data = o.data; state.step = Math.min(o.step || 0, SEC.length - 1);
+      SENT = o.sent || null;
       return Object.keys(o.data).length > 0;
     } catch (e) { return false; }
   }
@@ -285,16 +287,35 @@
     },
     intlOpt: function (v) {
       if (!v) return "";
-      var d = String(v).replace(/[\s()-]/g, "");
-      return /^\+?\d{7,15}$/.test(d) ? ""
-        : (L === "ar" ? "رقمٌ غير صحيح — اكتبه بأرقامه ورمز دولته."
-                      : "Invalid number — digits and country code only.");
+      var s = String(v).replace(/[\s()-]/g, "");
+      if (!/^\+?\d{7,15}$/.test(s)) return L === "ar"
+        ? "رقمٌ غير صحيح — اكتب أرقامه بعد كود الدولة."
+        : "Invalid number — digits only after the country code.";
+      // ⚠️ الطولُ بحسب الدولة: رقمٌ ناقصٌ خانةً لا يُتّصل به، ويُكتشف بعد
+      // شهورٍ حين يُحتاج صاحبُه.
+      if (s.charAt(0) === "+") {
+        for (var i = 0; i < DIAL.length; i++) {
+          var c = DIAL[i].c;
+          if (s.slice(1, 1 + c.length) === c) {
+            var rest = s.slice(1 + c.length).length;
+            if (rest !== DIAL[i].n) {
+              return L === "ar"
+                ? "أرقام هذه الدولة " + DIAL[i].n + " بعد الكود — كتبتَ " + rest + "."
+                : "Expected " + DIAL[i].n + " digits after the code; you typed " + rest + ".";
+            }
+            break;
+          }
+        }
+      }
+      return "";
     },
     id: function (v) {
       var d = (v || "").replace(/\D/g, "");
       return d.length === 10 ? "" : (L === "ar" ? "رقم الهوية أو الإقامة عشرة أرقام."
         : "ID number must be exactly 10 digits.");
     },
+    // جوالُ الطوارئ اختياريٌّ، فإن كُتب فُحص كما يُفحص جوالُ صاحب الملف
+    mobileOpt: function (v) { return v ? RULES.mobile(v) : ""; },
     mobile: function (v) {
       var s = String(v || "");
       // ⚠️ السعوديُّ بصيغته المحلية، وغيرُه دوليٌّ بكوده — ومن لم يُقم في
@@ -489,23 +510,38 @@
     wrap.appendChild(el("div", { class: "hint" }));
     return wrap;
   }
-
-  // أكواد الدول الأكثر ورودًا في ملفّات المنشأة، والبقيّةُ تُكتب بعد «أخرى».
+  // أكواد الدول الأكثر ورودًا في ملفّات المنشأة، ومعها طولُ الرقم المحليّ
+  // فيها — فلا يُكتب أكثر ولا يُقبل أقلّ. والبقيّةُ تُكتب بعد «أخرى».
+  //   n: عددُ أرقام الجوال بعد كود الدولة (بلا الصفر المحليّ)
   var DIAL = [
-    { c: "966", ar: "السعودية +966" }, { c: "20", ar: "مصر +20" },
-    { c: "91", ar: "الهند +91" }, { c: "92", ar: "باكستان +92" },
-    { c: "880", ar: "بنغلاديش +880" }, { c: "63", ar: "الفلبين +63" },
-    { c: "249", ar: "السودان +249" }, { c: "967", ar: "اليمن +967" },
-    { c: "962", ar: "الأردن +962" }, { c: "963", ar: "سوريا +963" },
-    { c: "964", ar: "العراق +964" }, { c: "212", ar: "المغرب +212" },
-    { c: "216", ar: "تونس +216" }, { c: "213", ar: "الجزائر +213" },
-    { c: "90", ar: "تركيا +90" }, { c: "94", ar: "سريلانكا +94" },
-    { c: "251", ar: "إثيوبيا +251" }, { c: "256", ar: "أوغندا +256" },
-    { c: "254", ar: "كينيا +254" }, { c: "62", ar: "إندونيسيا +62" },
-    { c: "971", ar: "الإمارات +971" }, { c: "965", ar: "الكويت +965" },
-    { c: "973", ar: "البحرين +973" }, { c: "974", ar: "قطر +974" },
-    { c: "968", ar: "عُمان +968" },
+    { c: "966", ar: "السعودية +966", n: 9 },   // 05xxxxxxxx محليًّا (١٠)
+    { c: "20",  ar: "مصر +20",        n: 10 },
+    { c: "91",  ar: "الهند +91",      n: 10 },
+    { c: "92",  ar: "باكستان +92",    n: 10 },
+    { c: "880", ar: "بنغلاديش +880",  n: 10 },
+    { c: "63",  ar: "الفلبين +63",    n: 10 },
+    { c: "249", ar: "السودان +249",   n: 9 },
+    { c: "967", ar: "اليمن +967",     n: 9 },
+    { c: "962", ar: "الأردن +962",    n: 9 },
+    { c: "963", ar: "سوريا +963",     n: 9 },
+    { c: "964", ar: "العراق +964",    n: 10 },
+    { c: "212", ar: "المغرب +212",    n: 9 },
+    { c: "216", ar: "تونس +216",      n: 8 },
+    { c: "213", ar: "الجزائر +213",   n: 9 },
+    { c: "90",  ar: "تركيا +90",      n: 10 },
+    { c: "94",  ar: "سريلانكا +94",   n: 9 },
+    { c: "251", ar: "إثيوبيا +251",   n: 9 },
+    { c: "256", ar: "أوغندا +256",    n: 9 },
+    { c: "254", ar: "كينيا +254",     n: 9 },
+    { c: "62",  ar: "إندونيسيا +62",  n: 10 },
+    { c: "971", ar: "الإمارات +971",  n: 9 },
+    { c: "965", ar: "الكويت +965",    n: 8 },
+    { c: "973", ar: "البحرين +973",   n: 8 },
+    { c: "974", ar: "قطر +974",       n: 8 },
+    { c: "968", ar: "عُمان +968",      n: 8 },
   ];
+  var DIAL_LEN = {};
+  DIAL.forEach(function (d) { DIAL_LEN[d.c] = d.n; });
 
   // ⚠️ الرقمُ يُخزَّن كما يُقرأ: السعوديُّ بصيغته المحلية (05…) لأنّ أنظمة
   // المنشأة كلَّها تعرفه بها، وغيرُه بكود دولته (+…) — فيُتّصل به فعلًا.
@@ -553,9 +589,14 @@
     inp.value = cur.num;
     function sync() {
       var code = sel.value === "other" ? free.value : sel.value;
-      inp.value = inp.value.replace(/[^0-9]/g, "");
+      // ⚠️ الطولُ بحسب الدولة: لا يُكتب أكثرُ ممّا تحمله أرقامُها، فيُقطع
+      // الزائدُ وقتَ الكتابة لا بعد الإرسال.
+      var lim = sel.value === "966" ? 10 : ((DIAL_LEN[sel.value] || 14) + 1);
+      inp.value = inp.value.replace(/[^0-9]/g, "").slice(0, lim);
+      inp.maxLength = lim;
       // الشرحُ يتبع الكود: من اختار دولةً أخرى لا يُطالَب بـ05
-      inp.placeholder = sel.value === "966" ? "05xxxxxxxx" : "أرقام الجوال بلا صفرٍ أوّل";
+      inp.placeholder = sel.value === "966" ? "05xxxxxxxx"
+        : ((DIAL_LEN[sel.value] || 9) + " أرقام بلا صفرٍ أوّل");
       state.data[f.k] = joinPhone(code, inp.value);
       dirty = true;
       if (wrap.classList.contains("err")) checkOne(f, wrap);
@@ -1134,7 +1175,17 @@
         : "Attachments are too large for the server — remove or shrink some.");
       if (!res.ok) throw new Error(out.error || (L === "ar" ? "تعذّر الإرسال — حاول مرّةً أخرى." : "Could not send."));
       dirty = false;
-      try { localStorage.removeItem(LS); } catch (e) {}
+      // ⚠️ البياناتُ تبقى في الجهاز بعد الإرسال: الملفُّ قد يُعاد للتصحيح،
+      // فإن مُحيت أعاد صاحبُه كتابةَ كلِّ شيءٍ ليصحّح سطرًا واحدًا. تُحفظ
+      // ومعها رقمُ الملف وتاريخُه — والمرفقاتُ وحدها تسقط لأنّ معرّفاتها
+      // تنتهي في الخادم بعد ساعة.
+      try {
+        Object.keys(state.files).forEach(function (k) { delete state.files[k]; });
+        localStorage.setItem(LS, JSON.stringify({
+          data: state.data, step: 0, at: Date.now(),
+          sent: { ref: out.ref || "", at: Date.now() },
+        }));
+      } catch (e) {}
       $("#wiz").hidden = true; $("#acts").hidden = true; $("#succ").hidden = false;
       $("#succRef").textContent = out.ref || "—";
       $("#succDate").textContent = new Date().toLocaleDateString(
@@ -1253,8 +1304,14 @@
     // غيره.
     startWizard();
     var pc = percent();
+    // من أرسل ملفَّه ثمّ عاد: يُذكَّر برقمه، ويُقال له إنّ ما يلزمه تصحيحُ
+    // ما ذُكر وإعادةُ الإرسال — لا إعادةُ كتابة كلّ شيء.
+    var note = SENT && SENT.ref
+      ? "أرسلتَ ملفَّك برقم " + SENT.ref + " — إن طُلب منك تصحيحٌ فعدّل ما ذُكر وأعد الإرسال. "
+        + "وأعِد إرفاق المستندات المطلوبة (لا تُحفظ المرفقاتُ في الجهاز)."
+      : "استأنفنا من حيث توقّفت — اكتمال ملفّك " + pc + "٪، وبياناتك محفوظةٌ على هذا الجهاز.";
     var bar = el("div", { class: "resume" }, [
-      el("span", { text: "استأنفنا من حيث توقّفت — اكتمال ملفّك " + pc + "٪، وبياناتك محفوظةٌ على هذا الجهاز." }),
+      el("span", { text: note }),
       el("button", { class: "btn o", type: "button", text: "ابدأ من جديد",
         onclick: function () {
           if (!window.confirm("سيُمسح ما كتبتَه على هذا الجهاز ويبدأ الملفُّ من أوّله. متأكّد؟")) return;
