@@ -552,10 +552,13 @@
     var cur = splitPhone(state.data[f.k]);
     var row = el("div", { class: "pfxrow" });
     var sel = el("select", { class: "dial", id: "fld-" + f.k + "-code" });
+    // ⚠️ علامةُ الزائد تنقلب في النصّ العربي فتُقرأ «966+»: تُحاط بعلامتَي
+    // اتجاهٍ (LRM) فتبقى قبل رقمها كما تُكتب.
     DIAL.forEach(function (d) {
-      sel.appendChild(el("option", { value: d.c, text: d.ar }));
+      var t = d.ar.replace(/\s*\+(\d+)$/, " \u200E+$1\u200E");
+      sel.appendChild(el("option", { value: d.c, text: t }));
     });
-    sel.appendChild(el("option", { value: "other", text: "أخرى +" }));
+    sel.appendChild(el("option", { value: "other", text: "دولةٌ أخرى" }));
     sel.value = cur.code;
     var free = el("input", { type: "tel", inputmode: "numeric", class: "dialfree",
       placeholder: "الكود", hidden: cur.code !== "other", maxlength: 4,
@@ -1306,7 +1309,9 @@
   paintStatic();
 
   // القوائم تُجلب مبكّرًا فتكون جاهزةً قبل أن يبلغ القسم الوظيفي
-  fetch("/api/join/options")
+  // ⚠️ رقمُ النسخة يكسر كاشَ المتصفّح: قائمةٌ قديمةٌ محفوظةٌ عنده تُعرض
+  // إنجليزيةً بعد أن صارت عربية، أو بمسمّياتٍ قبل ترتيبها.
+  fetch("/api/join/options?v=" + encodeURIComponent(window.SQ_JOIN_V || "2"))
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (j) {
       if (!j) return;
@@ -1388,7 +1393,7 @@
         // — حيث ينظر من أُعيد ملفُّه، لا في ركنٍ أسفل الصفحة.
         var facts = document.querySelector(".facts");
         // أوّلُ البطاقات لا آخرُها: من جاء يصحّح يجدها أوّل ما ينظر
-        if (facts) facts.insertBefore(recoverCard(), facts.firstChild);
+        if (facts) facts.appendChild(recoverCard());
       }
     })();
   }

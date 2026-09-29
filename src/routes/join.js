@@ -253,7 +253,9 @@ router.get("/join/options", async (req, res) => {
   // أوّلُ نداءٍ في عمر الخادم ينتظر — وما بعده يُردّ فورًا
   if (empty) await refreshOptions();
   else if (age > 30 * 60 * 1000) refreshOptions();
-  res.set("Cache-Control", "public, max-age=1800");
+  // ⚠️ كاشٌ قصير: القوائمُ تتغيّر بتغيّر الأقسام، وكاشٌ نصفَ ساعةٍ يُبقي
+  // في المتصفّح قائمةً قديمة — إنجليزيةً بعد التعريب مثلًا.
+  res.set("Cache-Control", "public, max-age=120");
   res.json(OPTS.data || { departments: [], jobs: [], nationalities: [] });
 });
 
