@@ -1293,6 +1293,108 @@ async function geofenceApprovalsOn() {
   return val;
 }
 
+// ---------------------------------------------------------------------------
+// مواعيدُ كلِّ إجازةٍ بحسب طبيعتها
+//
+// ⚠️ ثلاثةُ أنواعٍ لا يصحّ فيها أيُّ تاريخ، وكانت تُقبل بأيّ تاريخ:
+//   • الحجُّ موسمٌ معلوم، وطلبُه في رمضان ليس حجًّا.
+//   • الاضطراريةُ سببُها طارئٌ وقع اليوم — والطارئُ لا يُجدوَل بعد أسبوع،
+//     ومن جدوله فإجازتُه سنوية.
+//   • المرضيةُ من التطبيق يومان بحدّ أقصى؛ وما زاد يحتاج تقريرًا وقرارًا من
+//     الموارد البشرية لا ضغطةً في شاشة.
+// والفحصُ هنا على الخادم لا في الشاشة: الواجهةُ تُتجاوَز بنداءٍ مباشر.
+// ---------------------------------------------------------------------------
+const ymd = (d) => {
+  const t = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return t.toISOString().slice(0, 10);
+};
+// «اليوم» بتوقيت الرياض لا بتوقيت الخادم: الخادم يعمل على UTC، فمن يطلب
+// إجازةً اضطراريةً بعد الثالثة فجرًا بتوقيت الرياض كان تاريخُه عند الخادم
+// يومَ أمس — فيُردّ طلبُه لأنّ «اليوم» عندنا غيرُ «اليوم» عنده.
+const riyadhToday = () => ymd(new Date(Date.now() + 3 * 3600 * 1000));
+
+function leaveDates(params) {
+  const ex = params?.extra || {};
+  const from = String(params?.from || ex.from || "").slice(0, 10);
+  const to = String(params?.to || ex.to || from).slice(0, 10);
+  const ok = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+  return ok(from) ? { from, to: ok(to) ? to : from } : null;
+}
+
+function leaveKind(params) {
+  return String(params?.service || "") + " " + String(params?.extra?.leaveType || "");
+}
+
+let HAJJ_WIN = { at: 0, val: null };
+async function hajjWindow() {
+  if (Date.now() - HAJJ_WIN.at < 60000 && HAJJ_WIN.val) return HAJJ_WIN.val;
+  let val = { from: "", to: "" };
+  try {
+    const [f, t] = await Promise.all([
+      odoo.execKw("ir.config_parameter", "get_param", ["sharqia_portal.hajj_from"]),
+      odoo.execKw("ir.config_parameter", "get_param", ["sharqia_portal.hajj_to"]),
+    ]);
+    const clean = (x) => (/^\d{4}-\d{2}-\d{2}$/.test(String(x || "")) ? String(x) : "");
+    val = { from: clean(f), to: clean(t) };
+  } catch (e) {
+    console.warn("⚠️ تعذّرت قراءة موسم الحج:", e.message);
+  }
+  HAJJ_WIN = { at: Date.now(), val };
+  return val;
+}
+
+/** إجازةُ الحج لا تُطلب إلا داخل موسمه — وموسمُه تضبطه الموارد البشرية. */
+async function assertHajjSeason(params, empId) {
+  if (String(params?.category || "") !== "leave" || !empId) return;
+  if (!leaveKind(params).includes("حج")) return;
+  const d = leaveDates(params);
+  if (!d) return;
+  const w = await hajjWindow();
+  // بلا فترةٍ مضبوطة لا قيد: موسمُ الحجّ يُعلَن سنويًّا، ومنعُ الجميع لأنّ
+  // أحدًا لم يكتب تاريخًا بعدُ يوقف حقًّا لا يملك النظامُ إيقافه.
+  if (!w.from || !w.to) return;
+  if (d.from < w.from || d.to > w.to) {
+    throw new Error(
+      `إجازة الحج تُطلب داخل موسم الحج وحده: من ${w.from} إلى ${w.to}. ` +
+      `وتواريخُك من ${d.from} إلى ${d.to}. عدّلها، أو اطلب إجازةً سنوية.`);
+  }
+}
+
+/** الاضطرارية: يومُها هو اليوم — لا قبله ولا بعده. */
+function assertUrgentSameDay(params, empId) {
+  if (String(params?.category || "") !== "leave" || !empId) return;
+  if (!/اضطرار/.test(leaveKind(params))) return;
+  const d = leaveDates(params);
+  if (!d) return;
+  const today = riyadhToday();
+  if (d.from !== today || d.to !== today) {
+    throw new Error(
+      `الإجازة الاضطرارية ليومها وحده (${today}). ` +
+      "لِما بعده اطلب إجازةً سنوية، ولِما مضى راجع الموارد البشرية.");
+  }
+}
+
+/** المرضية من التطبيق: اليوم وغدٌ لا أكثر. */
+function assertSickWindow(params, empId) {
+  if (String(params?.category || "") !== "leave" || !empId) return;
+  const kind = leaveKind(params);
+  if (!/مرضي/.test(kind) || /تعديل\s*إجازة/.test(String(params?.service || ""))) return;
+  const d = leaveDates(params);
+  if (!d) return;
+  const today = riyadhToday();
+  const tomorrow = ymd(new Date(Date.now() + 3 * 3600 * 1000 + 86400000));
+  if (d.from < today) {
+    throw new Error(
+      `الإجازة المرضية لا تُطلب بأثرٍ رجعيّ (${d.from} مضى). ` +
+      "راجع الموارد البشرية بتقريرك.");
+  }
+  if (d.from > tomorrow || d.to > tomorrow) {
+    throw new Error(
+      `الإجازة المرضية من التطبيق ليومين: ${today} و${tomorrow}. ` +
+      "ولِما زاد راجع الموارد البشرية بالتقرير الطبي.");
+  }
+}
+
 async function assertHajjOnce(params, empId) {
   if (String(params?.category || "") !== "leave" || !empId) return;
   const kind = String(params?.service || "") + " " + String(params?.extra?.leaveType || "");
@@ -2330,6 +2432,9 @@ const actions = {
         const owner = await resolveBeneficiary(params, ctx);
         await assertNoLeaveOverlap(params, owner);
         await assertHajjOnce(params, owner);
+        await assertHajjSeason(params, owner);
+        assertUrgentSameDay(params, owner);
+        assertSickWindow(params, owner);
         await assertLeaveWindowOpen(params, owner);
 
         const vals = {
