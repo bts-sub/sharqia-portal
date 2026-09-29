@@ -98,9 +98,8 @@
         { k: "passport_no", ar: "رقم جواز السفر", en: "Passport number", dir: "ltr" },
         // الجنسيةُ قائمةٌ من أودو، وتُملأ «السعودية» وحدها متى كانت الهوية وطنية
         { k: "nationality_txt", ar: "الجنسية", en: "Nationality", src: "nationalities", req: true,
-          search: true,
-          help: { ar: "اكتب أوّل حرفين ثمّ اختر من القائمة.",
-                  en: "Type the first letters, then pick from the list." } },
+          help: { ar: "افتح القائمة واكتب أوّل حرفٍ لتقفز إليه.",
+                  en: "Open the list and type the first letter to jump." } },
         { k: "gender", ar: "الجنس", en: "Gender", opts: [
           { v: "male", ar: "ذكر", en: "Male" }, { v: "female", ar: "أنثى", en: "Female" }] },
         { k: "birthday", ar: "تاريخ الميلاد", en: "Date of birth", type: "date", rule: "birth18",
@@ -123,7 +122,7 @@
       sub: { ar: "نتواصل معك عبرها — تأكّد من صحّتها.", en: "We will reach you here — please verify." },
       fields: [
         { k: "mobile", ar: "رقم الجوال", en: "Mobile number", req: true, phone: true, rule: "mobile",
-          help: { ar: "اختر كود الدولة ثمّ اكتب الأرقام. السعوديُّ يبدأ بـ05، وغيرُه بلا صفرٍ أوّل.",
+          help: { ar: "اختر كود الدولة ثمّ اكتب الأرقام بلا صفرٍ أوّل — الكودُ يُغني عنه.",
                   en: "Pick the country code, then type digits. Saudi numbers start with 05." } },
         // البريدُ أساسيٌّ: بيانات الدخول والخطاباتُ تصل عليه
         { k: "email", ar: "البريد الإلكتروني", en: "Email", req: true, type: "email", dir: "ltr", rule: "email" },
@@ -368,8 +367,8 @@
   // تُترك لاجتهاده: تُملأ له وتبقى قابلةً للتعديل إن غيّر نوع هويّته.
   function onPivot(k) {
     if (k === "id_type") {
-      if (state.data.id_type === "national") state.data.nationality_txt = "السعودية";
-      else if (state.data.nationality_txt === "السعودية") state.data.nationality_txt = "";
+      if (state.data.id_type === "national") state.data.nationality_txt = "المملكة العربية السعودية";
+      else if (/(السعودية|سعودي)/.test(state.data.nationality_txt || "")) state.data.nationality_txt = "";
     }
     save(); render(); paintProgress(); paintTabs();
   }
@@ -418,9 +417,11 @@
     // بابَ للكتابة. ومن يحمل إقامةً تُفتح له القائمة كاملةً إلا السعودية —
     // فحاملُ الإقامة ليس سعوديًّا، واختيارُها يُخرج خطاباتٍ وتأميناتٍ خطأ.
     var lock = f.k === "nationality_txt" && state.data.id_type === "national";
-    if (lock) list = ["السعودية"];
+    if (lock) list = ["المملكة العربية السعودية"];
     else if (f.k === "nationality_txt" && state.data.id_type === "iqama") {
-      list = list.filter(function (n) { return !/^(السعودية|سعودي)/.test(n); });
+      list = list.filter(function (n) {
+        return !/(السعودية|سعودي|المملكة العربية السعودية|Saudi)/i.test(n);
+      });
     }
     // المسمّياتُ تتبع القسم المختار: من اختار «التقني» لا يُعرض عليه
     // «مشغل ماكينة تطريز». ومن لم يختر قسمًا بعدُ تُعرض عليه القائمة كلُّها.
@@ -445,31 +446,6 @@
     }
     var cur = (state.data[f.k] || "").toString();
     var known = cur && list.indexOf(cur) >= 0;
-    // ⚠️ قائمةٌ بمئتين وخمسين جنسية لا تُقلَّب بالإصبع: تُكتب فيها أحرفٌ
-    // فتُرشَّح. وdatalist يفعلها بلا مكتبةٍ ولا شفرةٍ إضافية، ويقبل ما ليس
-    // فيها أيضًا — فمن لم يجد جنسيّته كتبها.
-    if (f.search) {
-      var dlId = "dl-" + f.k;
-      var inp = el("input", {
-        type: "text", id: "fld-" + f.k, list: dlId, autocomplete: "off",
-        placeholder: L === "ar" ? "اكتب أول حرفين للبحث…" : "Type to search…",
-      });
-      inp.value = cur;
-      var dl = el("datalist", { id: dlId });
-      list.forEach(function (v) { dl.appendChild(el("option", { value: v })); });
-      inp.addEventListener("input", function () {
-        state.data[f.k] = inp.value.trim();
-        dirty = true;
-        if (wrap.classList.contains("err")) checkOne(f, wrap);
-        save(); paintProgress(); paintTabs();
-      });
-      inp.addEventListener("blur", function () { checkOne(f, wrap); });
-      wrap.appendChild(inp);
-      wrap.appendChild(dl);
-      if (f.help) wrap.appendChild(el("div", { class: "help", text: f.help[L] || f.help.ar }));
-      wrap.appendChild(el("div", { class: "hint" }));
-      return wrap;
-    }
     var sel = el("select", { id: "fld-" + f.k });
     sel.appendChild(el("option", { value: "", text: L === "ar" ? "اختر…" : "Select…" }));
     list.forEach(function (v) { sel.appendChild(el("option", { value: v, text: v })); });
@@ -555,12 +531,15 @@
       }
       return { code: "other", num: s.slice(1) };
     }
-    return { code: "966", num: s };
+    // المحفوظُ محليًّا (05…) يُعرض بلا صفره مع كود السعودية
+    return { code: "966", num: s.replace(/^0+/, "") };
   }
   function joinPhone(code, num) {
     var d = String(num || "").replace(/[^0-9]/g, "");
     if (!d) return "";
-    if (code === "966") return d;                 // 05xxxxxxxx كما هو
+    // السعوديُّ يُخزَّن بصيغته المحلية (05…) لأنّ أنظمة المنشأة تعرفه بها،
+    // والصفرُ يُعاد هنا لا في الشاشة.
+    if (code === "966") return d.length === 9 ? "0" + d : d;
     // ⚠️ الصفرُ الأوّل محليٌّ لا يُكتب مع كود الدولة: «+964 0771…» رقمٌ لا
     // يُطلب. يُحذف كما يفعل كلُّ مُتّصلٍ دوليٍّ بيده.
     d = d.replace(/^0+/, "");
@@ -591,16 +570,15 @@
       var code = sel.value === "other" ? free.value : sel.value;
       // ⚠️ الطولُ بحسب الدولة: لا يُكتب أكثرُ ممّا تحمله أرقامُها، فيُقطع
       // الزائدُ وقتَ الكتابة لا بعد الإرسال.
-      var lim = sel.value === "966" ? 10 : (DIAL_LEN[sel.value] || 14);
-      var raw = inp.value.replace(/[^0-9]/g, "");
-      // ⚠️ الصفرُ الأوّل مع كود الدولة لا يُكتب أصلًا: «+964 0771…» رقمٌ لا
-      // يُطلب. يُمنع وقتَ الكتابة لا عند الحفظ، فيرى صاحبُه رقمَه كما يُتّصل به.
-      if (sel.value !== "966") raw = raw.replace(/^0+/, "");
+      // ⚠️ الصفرُ الأوّل لا يُكتب مع كود الدولة — ولا السعوديُّ منه: الكودُ
+      // مكتوبٌ بجانبه (+966)، و«+966 0541…» رقمٌ لا يُطلب. فيُحذف وقتَ الكتابة
+      // في الدول كلِّها، ويُعاد للصيغة المحلية عند الحفظ وحده.
+      var lim = DIAL_LEN[sel.value] || 14;
+      var raw = inp.value.replace(/[^0-9]/g, "").replace(/^0+/, "");
       inp.value = raw.slice(0, lim);
       inp.maxLength = lim;
-      // الشرحُ يتبع الكود: من اختار دولةً أخرى لا يُطالَب بـ05
-      inp.placeholder = sel.value === "966" ? "05xxxxxxxx"
-        : ((DIAL_LEN[sel.value] || 9) + " أرقام بلا صفرٍ أوّل");
+      // الشرحُ يقول ما يُكتب بلا صفر — في الدول كلِّها
+      inp.placeholder = (DIAL_LEN[sel.value] || 9) + " أرقام بلا صفرٍ أوّل";
       state.data[f.k] = joinPhone(code, inp.value);
       dirty = true;
       if (wrap.classList.contains("err")) checkOne(f, wrap);
@@ -1249,11 +1227,10 @@
   // بطاقةٌ رابعةٌ مع البطاقات البيضاء: من أُعيد ملفُّه يجدها حيث ينظر،
   // ويفتحها فتسأله رقمًا واحدًا — أيَّ رقمٍ يحفظه.
   function recoverCard() {
-    var card = el("button", { class: "fact rec", type: "button", onclick: recoverModal }, [
+    // سطرٌ واحدٌ يكفي: البطاقةُ نداءٌ لا شرح، وما تحتَه يُطيلها بلا فائدة
+    return el("button", { class: "fact rec", type: "button", onclick: recoverModal }, [
       el("b", { text: "لتصحيح بياناتك اضغط هنا" }),
-      el("span", { text: "أُعيد ملفُّك؟ استعِد ما كتبتَه من أيّ جهاز." }),
     ]);
-    return card;
   }
 
   function recoverModal() {
@@ -1410,7 +1387,8 @@
         // لا مسودّةَ ولا رمز: تُضاف بطاقةُ التصحيح إلى بطاقات الافتتاحية
         // — حيث ينظر من أُعيد ملفُّه، لا في ركنٍ أسفل الصفحة.
         var facts = document.querySelector(".facts");
-        if (facts) facts.appendChild(recoverCard());
+        // أوّلُ البطاقات لا آخرُها: من جاء يصحّح يجدها أوّل ما ينظر
+        if (facts) facts.insertBefore(recoverCard(), facts.firstChild);
       }
     })();
   }

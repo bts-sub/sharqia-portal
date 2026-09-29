@@ -3862,29 +3862,30 @@ const actions = {
       async () => {
         const deps = await odoo.searchRead("hr.department", [],
           ["name"], { limit: 120, order: "name" });
-        // ⚠️ المسمّياتُ مرتّبةٌ تحت أقسامها: من يختار «التقني» لا يُعرض عليه
-        // «مشغل ماكينة تطريز». والقائمةُ الطويلة تُخفي ما يبحث عنه.
+        // ⚠️ المسمّياتُ تحت أقسامها من «الوظائف» وحدها: كانت تُجمع أيضًا من
+        // مسمّيات الموظفين، فمسمّى موظفٍ في قسمٍ يُنسب إليه ولو لم يكن من
+        // وظائفه — فتختلط القوائم وتظهر للتقنيّ وظائفُ المصنع.
         const jobs = await odoo.searchRead("hr.job", [], ["name", "department_id"],
           { limit: 300, order: "name" });
-        // ومسمّياتٌ يستعملها موظفون ولا وظيفةَ معرَّفة لها: تُجمع كما هي
         const used = await odoo.searchRead("hr.employee", [["job_title", "!=", false]],
-          ["job_title", "department_id"], { limit: 400 });
+          ["job_title"], { limit: 400 });
 
         const byDept = {};
         const all = new Set();
-        const add = (dept, name) => {
-          const n = String(name || "").trim();
-          if (!n) return;
+        for (const j of jobs) {
+          const n = String(j.name || "").trim();
+          if (!n) continue;
           all.add(n);
-          const d = String(dept || "").trim();
-          if (!d) return;
-          (byDept[d] = byDept[d] || new Set()).add(n);
-        };
-        jobs.forEach((j) => add(j.department_id && j.department_id[1], j.name));
-        used.forEach((e) => add(e.department_id && e.department_id[1], e.job_title));
+          const d = j.department_id && String(j.department_id[1] || "").trim();
+          if (d) (byDept[d] = byDept[d] || new Set()).add(n);
+        }
+        // ومسمّياتُ الموظفين تبقى في القائمة العامّة لمن لم يختر قسمًا بعد
+        used.forEach((e) => e.job_title && all.add(String(e.job_title).trim()));
 
+        // الجنسياتُ بالعربية: أسماءُ الدول مترجَمةٌ في أودو (ar_001)، وكانت
+        // تُقرأ بلغة حساب الخدمة فتخرج إنجليزية في صفحةٍ عربية.
         const countries = await odoo.searchRead("res.country", [], ["name"],
-          { limit: 300, order: "name" });
+          { limit: 300, order: "name", context: { lang: "ar_001" } });
         const names = countries.map((c) => String(c.name || "").trim()).filter(Boolean);
         const ar = (a, b) => a.localeCompare(b, "ar");
 

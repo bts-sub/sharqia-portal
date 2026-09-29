@@ -137,7 +137,7 @@ function buildIntakeVals(b) {
   // وتأميناتٍ على جنسيةٍ لا تخصّه، ويُعطّل قيدَه في أنظمة العمل.
   const nationality = clean(b.nationality_txt, 60);
   const isIqama = b.id_type === "iqama";
-  if (isIqama && /^(السعودية|سعودي|سعودية|saudi)/i.test(nationality))
+  if (isIqama && /(السعودية|سعودي|saudi)/i.test(nationality))
     throw badRequest("حاملُ الإقامة ليس سعوديًّا — اختر جنسيّتك من القائمة");
 
   const mobileOk = /^05\d{8}$/.test(mobile) || /^\+\d{8,15}$/.test(mobile);
