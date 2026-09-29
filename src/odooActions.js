@@ -7,6 +7,7 @@
 import * as odoo from "./lib/odooClient.js";
 import { isTestMode, profileGateMode } from "./lib/settings.js";
 import { nearestLocation } from "./lib/geo.js";
+import { NATIONALITIES } from "./lib/nationalities.js";
 import * as FX from "./fixtures.js";
 
 // غلاف موحّد: يجرّب Odoo، ويسقط لبيانات الاختبار عند التفعيل اليدوي أو فشل الاتصال
@@ -3882,11 +3883,6 @@ const actions = {
         // ومسمّياتُ الموظفين تبقى في القائمة العامّة لمن لم يختر قسمًا بعد
         used.forEach((e) => e.job_title && all.add(String(e.job_title).trim()));
 
-        // الجنسياتُ بالعربية: أسماءُ الدول مترجَمةٌ في أودو (ar_001)، وكانت
-        // تُقرأ بلغة حساب الخدمة فتخرج إنجليزية في صفحةٍ عربية.
-        const countries = await odoo.searchRead("res.country", [], ["name"],
-          { limit: 300, order: "name", context: { lang: "ar_001" } });
-        const names = countries.map((c) => String(c.name || "").trim()).filter(Boolean);
         const ar = (a, b) => a.localeCompare(b, "ar");
 
         return {
@@ -3894,7 +3890,8 @@ const actions = {
           jobs: [...all].sort(ar),
           jobsByDept: Object.fromEntries(
             Object.entries(byDept).map(([d, s]) => [d, [...s].sort(ar)])),
-          nationalities: [...new Set(names)].sort(ar),
+          // مرتّبةٌ بالورود لا بالأبجدية — انظر lib/nationalities.js
+          nationalities: NATIONALITIES,
         };
       },
       async () => ({ departments: [], jobs: [], jobsByDept: {}, nationalities: [] }),

@@ -367,7 +367,7 @@
   // تُترك لاجتهاده: تُملأ له وتبقى قابلةً للتعديل إن غيّر نوع هويّته.
   function onPivot(k) {
     if (k === "id_type") {
-      if (state.data.id_type === "national") state.data.nationality_txt = "المملكة العربية السعودية";
+      if (state.data.id_type === "national") state.data.nationality_txt = "سعودي";
       else if (/(السعودية|سعودي)/.test(state.data.nationality_txt || "")) state.data.nationality_txt = "";
     }
     save(); render(); paintProgress(); paintTabs();
@@ -417,7 +417,7 @@
     // بابَ للكتابة. ومن يحمل إقامةً تُفتح له القائمة كاملةً إلا السعودية —
     // فحاملُ الإقامة ليس سعوديًّا، واختيارُها يُخرج خطاباتٍ وتأميناتٍ خطأ.
     var lock = f.k === "nationality_txt" && state.data.id_type === "national";
-    if (lock) list = ["المملكة العربية السعودية"];
+    if (lock) list = ["سعودي"];
     else if (f.k === "nationality_txt" && state.data.id_type === "iqama") {
       list = list.filter(function (n) {
         return !/(السعودية|سعودي|المملكة العربية السعودية|Saudi)/i.test(n);
