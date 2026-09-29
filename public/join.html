@@ -97,7 +97,9 @@
   .cta i { font-style: normal; transition: transform .18s; }
   .cta:hover i { transform: translateX(-4px); }
 
-  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 56px; }
+  /* أربعُ بطاقاتٍ حين تُضاف بطاقةُ التصحيح، وثلاثٌ بدونها */
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px; margin-top: 56px; }
   .fact { background: var(--card); border: 1px solid var(--line); border-radius: var(--r);
     padding: 18px 20px; box-shadow: var(--sh-1); }
   .fact b { display: block; font-size: 13.5px; margin-bottom: 3px; }
@@ -324,6 +326,16 @@
   .pickmenu .mi { display: block; width: 100%; text-align: start; background: transparent;
     border: none; padding: 9px 12px; border-radius: 9px; font-size: 13px; color: var(--ink); }
   .pickmenu .mi:hover { background: var(--gold-tint); color: var(--gold); }
+  /* بطاقةُ التصحيح: كبقيّة البطاقات البيضاء، لكنّها تُضغط */
+  .fact.rec { cursor: pointer; text-align: start; font-family: inherit;
+    border: 1px solid var(--gold); background: #fff; width: 100%; }
+  .fact.rec:hover { box-shadow: var(--sh-2); transform: translateY(-1px); }
+  .fact.rec b { color: var(--gold); }
+  /* نافذةُ الاستعادة: حقلٌ واحدٌ يقبل أيَّ رقمٍ يحفظه */
+  .modal .box #recVal { width: 100%; padding: 12px 14px; margin: 6px 0 4px;
+    border: 1px solid var(--line); border-radius: 11px; font-family: inherit;
+    font-size: 15px; background: #FDFCFA; color: var(--ink); }
+  .modal .box .help { font-size: 12px; color: var(--mut); margin: 0 0 12px; }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>

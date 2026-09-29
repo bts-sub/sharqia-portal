@@ -69,7 +69,7 @@ router.post("/join/resume", async (req, res, next) => {
     const ip = req.ip || req.headers["x-forwarded-for"] || "—";
     if (!resOk(ip)) throw tooMany("محاولاتٌ كثيرة — انتظر ساعةً أو راجع الموارد البشرية.");
     const { data } = await runAction("intake.resumeByRef",
-      { ref: req.body?.ref, idNumber: req.body?.idNumber }, { user: null });
+      { value: req.body?.value || req.body?.ref || req.body?.idNumber }, { user: null });
     res.json(data || { ok: false });
   } catch (e) { next(e?.status ? e : badRequest(e?.message || "تعذّرت الاستعادة")); }
 });

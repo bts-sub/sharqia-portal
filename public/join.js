@@ -1246,59 +1246,52 @@
     return true;
   }
 
-  function recoverBox() {
-    var wrap = el("div", { class: "recover" });
-    // ⚠️ أيسرُ ما يحفظه الموظف رقمُ هويته: رقمُ الملف ورقةٌ تضيع. فيكفي
-    // أحدهما، ومن أراد التدقيق جمعهما. ولا يُفتح ملفٌّ إلا إن أعادته
-    // الموارد البشرية للتصحيح — نافذةٌ ضيّقةٌ تُغلق بأوّل إرسالٍ مصحَّح.
-    var mode = "id";     // id | ref
-    var ref = el("input", { type: "text", placeholder: "رقم الطلب (HR-JOIN-…)", dir: "ltr", hidden: true });
-    var idn = el("input", { type: "tel", inputmode: "numeric", maxlength: 10,
-      placeholder: "رقم الهوية / الإقامة", dir: "ltr" });
-    var out = el("div", { class: "help", text: "يكفي رقمُ هويتك — ومن شاء أضاف رقم الطلب." });
+  // بطاقةٌ رابعةٌ مع البطاقات البيضاء: من أُعيد ملفُّه يجدها حيث ينظر،
+  // ويفتحها فتسأله رقمًا واحدًا — أيَّ رقمٍ يحفظه.
+  function recoverCard() {
+    var card = el("button", { class: "fact rec", type: "button", onclick: recoverModal }, [
+      el("b", { text: "لتصحيح بياناتك اضغط هنا" }),
+      el("span", { text: "أُعيد ملفُّك؟ استعِد ما كتبتَه من أيّ جهاز." }),
+    ]);
+    return card;
+  }
 
-    var gear = el("button", { class: "pick", type: "button", title: "بماذا تبحث؟",
-      html: "<span>⚙</span>" });
-    var menu = el("div", { class: "pickmenu", hidden: true });
-    function setMode(m) {
-      mode = m;
-      ref.hidden = (m === "id");
-      out.textContent = m === "id"
-        ? "يكفي رقمُ هويتك — ومن شاء أضاف رقم الطلب."
-        : "اكتب رقم الطلب ورقم الهوية معًا.";
-      menu.hidden = true;
-    }
-    [["id", "برقم الهوية / الإقامة"], ["ref", "برقم الطلب مع الهوية"]].forEach(function (o) {
-      menu.appendChild(el("button", { class: "mi", type: "button", text: o[1],
-        onclick: function () { setMode(o[0]); } }));
+  function recoverModal() {
+    var inp = el("input", { type: "text", dir: "auto", id: "recVal",
+      placeholder: "رقم الهوية أو الجوال أو رقم الطلب" });
+    var out = el("div", { class: "help",
+      text: "اكتب واحدًا منها: رقم هويتك/إقامتك، أو جوالك، أو رقم طلبك (HR-JOIN-…)." });
+    var go = el("button", { class: "btn gold", type: "button", text: "استعادة بياناتي" });
+    var m = el("div", { class: "modal" }, [
+      el("div", { class: "box" }, [
+        el("h3", { text: "تصحيح بياناتك" }),
+        el("p", { text: "إن أعادت الموارد البشرية ملفَّك للتصحيح، استعِد ما كتبتَه بدل كتابته من جديد." }),
+        inp, out,
+        el("div", { class: "row" }, [
+          el("button", { class: "btn o", type: "button", text: "إغلاق",
+            onclick: function () { m.remove(); } }),
+          go,
+        ]),
+      ]),
+    ]);
+    go.addEventListener("click", async function () {
+      var v = String(inp.value || "").trim();
+      if (v.length < 5) { out.textContent = "اكتب رقمًا صحيحًا."; return; }
+      go.disabled = true; out.textContent = "جارٍ البحث…";
+      try {
+        var res = await fetch("/api/join/resume", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: v }),
+        });
+        var j = await res.json().catch(function () { return {}; });
+        if (j && j.ok) { m.remove(); fillFromServer(j); return; }
+        out.textContent = (j && j.error) || "لم نجد ملفًّا بهذا الرقم.";
+      } catch (e) { out.textContent = "تعذّر الاتصال — حاول مرّةً أخرى."; }
+      go.disabled = false;
     });
-    gear.addEventListener("click", function () { menu.hidden = !menu.hidden; });
-
-    var btn = el("button", { class: "btn o", type: "button", text: "استعادة بياناتي",
-      onclick: async function () {
-        var r = mode === "ref" ? String(ref.value || "").trim().toUpperCase() : "";
-        var i = String(idn.value || "").replace(/[^0-9]/g, "");
-        if (i.length !== 10) { out.textContent = "اكتب رقم الهوية أو الإقامة كاملًا (عشرة أرقام)."; return; }
-        if (mode === "ref" && !r) { out.textContent = "اكتب رقم الطلب."; return; }
-        btn.disabled = true; out.textContent = "جارٍ البحث…";
-        try {
-          var res = await fetch("/api/join/resume", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ref: r, idNumber: i }),
-          });
-          var j = await res.json().catch(function () { return {}; });
-          if (!fillFromServer(j)) out.textContent = j.error || "لم نجد ملفًّا بهذه البيانات.";
-        } catch (e) { out.textContent = "تعذّر الاتصال — حاول مرّةً أخرى."; }
-        btn.disabled = false;
-      } });
-
-    wrap.appendChild(el("div", { class: "rt" }, [
-      el("span", { text: "أُعيد ملفُّك للتصحيح وتفتحه من جهازٍ آخر؟" }),
-      el("span", { class: "pickwrap" }, [gear, menu]),
-    ]));
-    wrap.appendChild(el("div", { class: "rr" }, [idn, ref, btn]));
-    wrap.appendChild(out);
-    return wrap;
+    inp.addEventListener("keydown", function (e) { if (e.key === "Enter") go.click(); });
+    document.body.appendChild(m);
+    setTimeout(function () { inp.focus(); }, 40);
   }
   function startWizard() {
     // الصورةُ تُكتم عند بدء التعبئة: أثرٌ خلف الورق لا مزاحمةٌ للحقول
@@ -1414,10 +1407,10 @@
     if (pane && pane.parentNode) pane.parentNode.insertBefore(bar, pane);
     msg("");
       } else {
-        // لا مسودّةَ ولا رمز: يُعرض في الصفحة الافتتاحية بابُ الاستعادة
-        // لمن أُعيد ملفُّه وفتحها من جهازٍ آخر.
-        var land = $("#land");
-        if (land) land.appendChild(recoverBox());
+        // لا مسودّةَ ولا رمز: تُضاف بطاقةُ التصحيح إلى بطاقات الافتتاحية
+        // — حيث ينظر من أُعيد ملفُّه، لا في ركنٍ أسفل الصفحة.
+        var facts = document.querySelector(".facts");
+        if (facts) facts.appendChild(recoverCard());
       }
     })();
   }
