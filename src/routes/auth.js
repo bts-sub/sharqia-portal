@@ -12,8 +12,20 @@ import { loginLimiter } from "../middleware/rateLimit.js";
 import { badRequest, unauthorized } from "../lib/errors.js";
 import { notifyOdooUserEvent } from "../lib/odooBridge.js";
 import { syncRoleFromOdoo } from "../lib/roleSync.js";
+import { userPerms } from "../lib/permissions.js";
+import * as odoo from "../lib/odooClient.js";
 
 const router = Router();
+
+/** استثناءاتُ صاحب الجلسة من أودو — وتعذّرُها لا يمنع الدخول. */
+async function sessionPerms(login) {
+  try {
+    return await userPerms(login, (m, meth, a) => odoo.execKw(m, meth, a)) || {};
+  } catch (e) {
+    console.warn("⚠️ تعذّرت قراءة صلاحيات", login, e.message);
+    return {};
+  }
+}
 
 router.post("/login", loginLimiter, async (req, res, next) => {
   try {
@@ -30,6 +42,7 @@ router.post("/login", loginLimiter, async (req, res, next) => {
     const token = signToken({ sub: user.id, role: user.role, login: user.login });
     setSessionCookie(res, token);
     const { passwordHash, ...safe } = user;
+    safe.permissions = await sessionPerms(user.login);
     res.json({ ok: true, user: safe });
   } catch (e) { next(e); }
 });
@@ -43,7 +56,12 @@ router.get("/me", requireAuth, async (req, res) => {
   // يوائم الدور مع Odoo مرة كل 5 دقائق كحدّ أقصى — فتغيير الدور يسري على
   // الجلسة الجارية عند أول تحديث للتطبيق، بلا إعادة تسجيل دخول.
   const fresh = await syncRoleFromOdoo(req.user.login);
-  res.json({ user: fresh || req.user });
+  const user = { ...(fresh || req.user) };
+  // ⚠️ والاستثناءاتُ تُرسَل مع كلّ تحديث لا عند الدخول وحده: الموظفُ يبقى
+  // أيامًا بجلسةٍ واحدة، فلو حُملت مرّةً لبقي ما غيّرَته الموارد البشرية
+  // اليومَ معطَّلًا حتى يخرج ويدخل — وهو لا يدري أنّ عليه ذلك.
+  user.permissions = await sessionPerms(req.user.login);
+  res.json({ user });
 });
 
 

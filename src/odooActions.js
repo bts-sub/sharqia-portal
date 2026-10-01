@@ -5,6 +5,7 @@
 //   ملاحظة الأمان: ctx.user يأتي من الجلسة (JWT) ويحدّد الموظف المرتبط في Odoo.
 // ===========================================================================
 import * as odoo from "./lib/odooClient.js";
+import { userPerms, rankOf } from "./lib/permissions.js";
 import { isTestMode, profileGateMode } from "./lib/settings.js";
 import { nearestLocation } from "./lib/geo.js";
 import { NATIONALITIES } from "./lib/nationalities.js";
@@ -1395,6 +1396,42 @@ function assertSickWindow(params, empId) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// صلاحيّةُ الخدمة — استثناءُ المستخدم المكتوب في أودو
+//
+// ⚠️ والفحصُ على الخادم لا في الشاشة: إخفاءُ زرٍّ ليس منعًا — يُنادى المسارُ
+// مباشرةً فيمرّ. ومن مُنع من خدمةٍ بقرارٍ إداريّ يجب أن يُردّ هنا.
+//
+// ولا يُنظر إلا فيما خالف حكمَ دوره: الجدولُ في أودو مولَّدٌ لكلّ خدمةٍ على
+// حكم الدور، فما ساواه ليس قرارًا — والمنطقُ المعروف في التطبيق هو صاحبُه.
+// ---------------------------------------------------------------------------
+async function assertServiceAllowed(params, ctx) {
+  const svc = String(params?.service || "").trim();
+  const login = ctx?.user?.login;
+  if (!svc || !login) return;
+  let perms = {};
+  try {
+    perms = await userPerms(login, (m, meth, a) => odoo.execKw(m, meth, a));
+  } catch (e) {
+    // تعذّرُ أودو لا يُغلق الباب: الموظفُ لا يُحرم بسبب عطلٍ عندنا
+    console.warn("⚠️ تعذّرت قراءة الصلاحيات:", e.message);
+    return;
+  }
+  const lvl = perms[svc];
+  if (!lvl) return;                       // لا استثناء — حكمُ الدور كما كان
+  const rank = rankOf(lvl);
+  if (rank === 0) {
+    throw new Error(`خدمة «${svc}» غير متاحة لك. راجع الموارد البشرية.`);
+  }
+  if (rank === 1) {
+    throw new Error(`صلاحيتك على «${svc}» اطّلاعٌ فقط، فلا تُرفع منها طلبات.`);
+  }
+  // الطلبُ نيابةً عن غيره يحتاج مستوى الفريق صراحةً
+  if (params?.onBehalf && rank < 3) {
+    throw new Error(`صلاحيتك على «${svc}» لنفسك وحدك، فلا تُرفع نيابةً عن غيرك.`);
+  }
+}
+
 async function assertHajjOnce(params, empId) {
   if (String(params?.category || "") !== "leave" || !empId) return;
   const kind = String(params?.service || "") + " " + String(params?.extra?.leaveType || "");
@@ -2429,6 +2466,7 @@ const actions = {
         // ⚠️ كان employee_id = صاحب الجلسة دائمًا، فطلبُ المدير نيابةً عن
         // موظفه يظهر في أودو باسم المدير: الإجازة تُخصم من رصيد المدير،
         // والخطاب يصدر باسمه، والموظف المستفيد لا أثر له إطلاقًا.
+        await assertServiceAllowed(params, ctx);
         const owner = await resolveBeneficiary(params, ctx);
         await assertNoLeaveOverlap(params, owner);
         await assertHajjOnce(params, owner);
