@@ -10,6 +10,7 @@ import { Router } from "express";
 import crypto from "crypto";
 import { requireAuth } from "../middleware/auth.js";
 import { readAll, writeAll } from "../lib/store.js";
+import * as odoo from "./../lib/odooClient.js";
 
 const router = Router();
 const KEY = "certs";
@@ -29,6 +30,27 @@ function decodeDataUrl(raw) {
                      : Buffer.from(decodeURIComponent(m[3]), "utf8");
     return buf.length ? { type, buf } : null;
   } catch { return null; }
+}
+
+// ⚠️ وتُرفع إلى بطاقة الموظف في أودو: كانت تبقى عندنا وحدنا — ملفٌّ على
+// خادمنا لا تراه الموارد البشرية ولا يظهر في ملفّ صاحبه. يرفعها الموظفُ
+// ظانًّا أنّه أبلغ، ولا أحدَ أُبلغ. وموضعُها «السيرة الذاتية» في بطاقته.
+//
+// وفشلُ الرفع لا يُسقط الحفظ عندنا: الشهادةُ محفوظةٌ ولو تعذّر أودو، ويُعاد
+// دفعُها بإجراءٍ مستقلّ.
+async function pushToOdoo(empId, rec) {
+  if (!empId) return { ok: false, error: "لا موظف مرتبط بالحساب" };
+  const m = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(String(rec.file || ""));
+  const b64 = m && m[2] ? m[3] : "";
+  const ext = ((m && m[1]) || "").split("/")[1] || "pdf";
+  return odoo.execKw("hr.employee", "sharqia_add_certificate", [], {
+    employee_id: Number(empId),
+    name: rec.name,
+    date: rec.date || false,
+    date_kind: rec.dateKind || "expiry",
+    file_b64: b64 || false,
+    filename: `${rec.name}.${ext.replace("jpeg", "jpg")}`,
+  });
 }
 
 router.use("/api/me/certs", requireAuth);
@@ -66,7 +88,7 @@ router.get("/api/me/certs/:id/file", (req, res) => {
   res.send(d.buf);
 });
 
-router.post("/api/me/certs", (req, res) => {
+router.post("/api/me/certs", async (req, res) => {
   const b = req.body || {};
   const name = String(b.name || "").trim();
   const date = String(b.date || "").slice(0, 10);
@@ -96,7 +118,28 @@ router.post("/api/me/certs", (req, res) => {
   const all = readAll(KEY);
   all.unshift(rec);
   writeAll(KEY, all);
-  res.json({ ok: true, id: rec.id });
+  let odooOk = false;
+  try {
+    const r = await pushToOdoo(req.user?.odooEmployeeId, rec);
+    odooOk = !!(r && r.ok);
+    if (!odooOk) console.warn("⚠️ لم تُرفع الشهادة إلى أودو:", r && r.error);
+  } catch (e) {
+    console.warn("⚠️ تعذّر رفع الشهادة إلى أودو:", e.message);
+  }
+  res.json({ ok: true, id: rec.id, inOdoo: odooOk });
+});
+
+/** دفعُ ما لم يصل أودو — للشهادات المسجّلة قبل الربط أو التي تعثّر رفعُها. */
+router.post("/api/me/certs/sync", async (req, res) => {
+  const mine = readAll(KEY).filter((c) => c.userId === req.user.id);
+  let done = 0, failed = 0;
+  for (const rec of mine) {
+    try {
+      const r = await pushToOdoo(req.user?.odooEmployeeId, rec);
+      if (r && r.ok) done++; else failed++;
+    } catch { failed++; }
+  }
+  res.json({ ok: true, total: mine.length, done, failed });
 });
 
 router.delete("/api/me/certs/:id", (req, res) => {
