@@ -112,3 +112,18 @@ export function effRankFor(role, category, unit, uperms) {
   if (own) return Math.min(rankOf(catPerm(role, category)), rankOf(own));
   return effRank(role, category, unit);
 }
+// ⚠️ تاريخٌ يُقرأ بالصيغتين: كُتب الموسمُ «30-09-2026» — وهي صيغةُ الناس هنا —
+// فردّته القراءةُ فارغًا وسقط القيدُ كلُّه في صمت، ومرّ طلبُ حجٍّ خارج موسمه.
+// والسنةُ تُعرف بطولها لا بموضعها.
+export function isoDate(raw) {
+  const txt = String(raw || "").trim();
+  if (!txt) return "";
+  const p = txt.split(/[-/.\s]+/);
+  if (p.length !== 3 || !p.every((x) => /^\d+$/.test(x))) return "";
+  const [y, m, d] = p[0].length === 4 ? [p[0], p[1], p[2]] : [p[2], p[1], p[0]];
+  const Y = +y, M = +m, D = +d;
+  if (!(Y >= 1900 && Y <= 2200 && M >= 1 && M <= 12 && D >= 1 && D <= 31)) return "";
+  const dt = new Date(Date.UTC(Y, M - 1, D));
+  if (dt.getUTCFullYear() !== Y || dt.getUTCMonth() !== M - 1 || dt.getUTCDate() !== D) return "";
+  return `${Y}-${String(M).padStart(2, "0")}-${String(D).padStart(2, "0")}`;
+}

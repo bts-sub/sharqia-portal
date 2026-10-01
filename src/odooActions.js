@@ -5,7 +5,7 @@
 //   ملاحظة الأمان: ctx.user يأتي من الجلسة (JWT) ويحدّد الموظف المرتبط في Odoo.
 // ===========================================================================
 import * as odoo from "./lib/odooClient.js";
-import { userPerms, rankOf } from "./lib/permissions.js";
+import { userPerms, rankOf, isoDate } from "./lib/permissions.js";
 import { isTestMode, profileGateMode } from "./lib/settings.js";
 import { nearestLocation } from "./lib/geo.js";
 import { NATIONALITIES } from "./lib/nationalities.js";
@@ -1335,8 +1335,14 @@ async function hajjWindow() {
       odoo.execKw("ir.config_parameter", "get_param", ["sharqia_portal.hajj_from"]),
       odoo.execKw("ir.config_parameter", "get_param", ["sharqia_portal.hajj_to"]),
     ]);
-    const clean = (x) => (/^\d{4}-\d{2}-\d{2}$/.test(String(x || "")) ? String(x) : "");
-    val = { from: clean(f), to: clean(t) };
+    val = { from: isoDate(f), to: isoDate(t) };
+    // ⚠️ قيمةٌ مكتوبةٌ لا تُقرأ تُقال ولا تُبتلع: سقوطُ القيد في صمتٍ هو
+    // ما مرّر طلبَ حجٍّ خارج موسمه، وصاحبُ الإعداد يظنّه قائمًا.
+    for (const [k, raw] of [["من", f], ["إلى", t]]) {
+      if (String(raw || "").trim() && !isoDate(raw)) {
+        console.warn(`⚠️ موسم الحج «${k}» مكتوبٌ بصيغةٍ لا تُقرأ: ${raw} — القيد معطّل.`);
+      }
+    }
   } catch (e) {
     console.warn("⚠️ تعذّرت قراءة موسم الحج:", e.message);
   }

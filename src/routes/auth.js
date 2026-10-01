@@ -12,7 +12,7 @@ import { loginLimiter } from "../middleware/rateLimit.js";
 import { badRequest, unauthorized } from "../lib/errors.js";
 import { notifyOdooUserEvent } from "../lib/odooBridge.js";
 import { syncRoleFromOdoo } from "../lib/roleSync.js";
-import { userPerms } from "../lib/permissions.js";
+import { userPerms, isoDate } from "../lib/permissions.js";
 import * as odoo from "../lib/odooClient.js";
 
 const router = Router();
@@ -39,9 +39,8 @@ async function sessionRules() {
       odoo.execKw("ir.config_parameter", "get_param", ["sharqia_portal.hajj_from"]),
       odoo.execKw("ir.config_parameter", "get_param", ["sharqia_portal.hajj_to"]),
     ]);
-    const clean = (x) => (/^\d{4}-\d{2}-\d{2}$/.test(String(x || "")) ? String(x) : "");
-    val.hajjFrom = clean(f);
-    val.hajjTo = clean(t);
+    val.hajjFrom = isoDate(f);
+    val.hajjTo = isoDate(t);
   } catch (e) {
     console.warn("⚠️ تعذّرت قراءة قواعد الإجازات:", e.message);
   }
