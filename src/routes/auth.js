@@ -27,6 +27,28 @@ async function sessionPerms(login) {
   }
 }
 
+// ⚠️ قواعدُ الإجازات تُعرض للموظف قبل أن يصطدم بها: موسمُ الحجّ يتبدّل كلَّ
+// سنةٍ وتكتبه الموارد البشرية، فنصٌّ ثابتٌ في التطبيق يكذب بعد أشهر. ويُقرأ
+// من أودو مرّةً كلّ عشر دقائق لا مع كلّ تحديث جلسة.
+let RULES = { at: 0, val: null };
+async function sessionRules() {
+  if (RULES.val && Date.now() - RULES.at < 600000) return RULES.val;
+  const val = { hajjFrom: "", hajjTo: "", sickCertHours: 72 };
+  try {
+    const [f, t] = await Promise.all([
+      odoo.execKw("ir.config_parameter", "get_param", ["sharqia_portal.hajj_from"]),
+      odoo.execKw("ir.config_parameter", "get_param", ["sharqia_portal.hajj_to"]),
+    ]);
+    const clean = (x) => (/^\d{4}-\d{2}-\d{2}$/.test(String(x || "")) ? String(x) : "");
+    val.hajjFrom = clean(f);
+    val.hajjTo = clean(t);
+  } catch (e) {
+    console.warn("⚠️ تعذّرت قراءة قواعد الإجازات:", e.message);
+  }
+  RULES = { at: Date.now(), val };
+  return val;
+}
+
 router.post("/login", loginLimiter, async (req, res, next) => {
   try {
     const { login, password } = req.body || {};
@@ -43,6 +65,7 @@ router.post("/login", loginLimiter, async (req, res, next) => {
     setSessionCookie(res, token);
     const { passwordHash, ...safe } = user;
     safe.permissions = await sessionPerms(user.login);
+    safe.rules = await sessionRules();
     res.json({ ok: true, user: safe });
   } catch (e) { next(e); }
 });
@@ -61,6 +84,7 @@ router.get("/me", requireAuth, async (req, res) => {
   // أيامًا بجلسةٍ واحدة، فلو حُملت مرّةً لبقي ما غيّرَته الموارد البشرية
   // اليومَ معطَّلًا حتى يخرج ويدخل — وهو لا يدري أنّ عليه ذلك.
   user.permissions = await sessionPerms(req.user.login);
+  user.rules = await sessionRules();
   res.json({ user });
 });
 
