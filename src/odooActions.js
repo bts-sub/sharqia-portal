@@ -1233,9 +1233,32 @@ async function assertLeaveWindowOpen(params, empId) {
 //
 // ومن رفض خدمةَ الموقع لا يعتمد: لا نُفرّق بين رافضٍ ومعطِّل، فكلاهما لا
 // يُثبت أنّه في مكانه.
+// ⚠️ المستثنَون من قيد المكان — يُقرأون من أودو لا من ملفٍّ عندنا، فالإدارة
+// تستثني وتَرفع الاستثناء من بطاقة المستخدم بلا نشرٍ ولا انتظار.
+// ويُقرأون مرّةً كلَّ دقيقة: الاعتمادُ يُضغط مرّاتٍ في الدقيقة الواحدة.
+let GEO_EXEMPT = { at: 0, val: null };
+async function approveAnywhereLogins() {
+  if (GEO_EXEMPT.val && Date.now() - GEO_EXEMPT.at < 60000) return GEO_EXEMPT.val;
+  let val = new Set();
+  try {
+    const rows = await odoo.execKw("sharqia.portal.user", "sharqia_approve_anywhere_logins", []);
+    val = new Set((rows || []).map((x) => String(x || "").toLowerCase()));
+  } catch (e) {
+    // الموديول لم يُحدَّث بعد: يبقى القيدُ على الجميع كما هو، ولا يُفتح بابٌ
+    // بسبب عطلٍ عندنا — فالخطأ هنا يكون في جانب التشدّد لا التساهل.
+    console.warn("⚠️ تعذّرت قراءة المستثنَين من قيد المكان:", e.message);
+    val = GEO_EXEMPT.val || new Set();
+  }
+  GEO_EXEMPT = { at: Date.now(), val };
+  return val;
+}
+
 async function assertApprovalPlace(params, ctx) {
   const on = await geofenceApprovalsOn();
   if (!on) return;
+
+  const login = String(ctx?.user?.login || "").toLowerCase();
+  if (login && (await approveAnywhereLogins()).has(login)) return;
 
   const lat = Number(params?.lat ?? params?.latitude);
   const lng = Number(params?.lng ?? params?.longitude);
