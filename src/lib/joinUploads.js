@@ -13,8 +13,24 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import { fileURLToPath } from "node:url";
 
-const DIR = path.join(os.tmpdir(), "sq-join-uploads");
+// ⚠️ على القرص الدائم لا في /tmp: كانت تُحتجَز داخل الحاوية، وكلُّ نشرةٍ
+// تُعيد بناءها فتمحوها. فمن رفع مستنداته ثمّ أكمل التعبئة ونشرنا في تلك
+// الدقائق، وصل طلبُه **بلا مرفقاته** — ولا أحدَ يدري: لا رسالةَ خطأ ولا
+// أثر، والموارد البشرية ترى خاناتٍ فارغةً وتظنّ الموظف لم يرفع.
+// وهذا وقع فعلًا، وبقي في المجلد ملفٌّ يتيمٌ شاهدًا عليه.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DATA_DIR = path.resolve(__dirname, "../../data");
+const DIR = (() => {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.accessSync(DATA_DIR, fs.constants.W_OK);
+    return path.join(DATA_DIR, "join-uploads");
+  } catch {
+    return path.join(os.tmpdir(), "sq-join-uploads");   // تطويرٌ محلّيّ
+  }
+})();
 const TTL_MS = 60 * 60 * 1000;           // ساعةٌ تكفي أبطأ تعبئة
 const MAX_FILE = 10 * 1024 * 1024;       // لكلّ ملف
 const MAX_DISK = 400 * 1024 * 1024;      // سقفُ ما يُحتجز على القرص

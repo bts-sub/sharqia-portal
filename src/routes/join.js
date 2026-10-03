@@ -202,6 +202,13 @@ function buildIntakeVals(b) {
 
   // المرفقات: base64 بلا ترويسة، بسقفٍ لكلٍّ منها وللمجموع
   let total = 0;
+  // أسماءُ المستندات كما يراها الموظف — لتُذكر في الخطأ باسمها لا برمزها
+  const DOC_AR = {
+    photo: "الصورة الشخصية", id_copy: "صورة الهوية / الإقامة",
+    iban_copy: "شهادة الآيبان", cv_copy: "السيرة الذاتية",
+    qual_copy: "المؤهل العلمي", certs_copy: "الشهادات",
+    other_copy: "مرفقات أخرى", signature: "التوقيع",
+  };
   // والتوقيعُ منها: صورةٌ تُحفظ في الملفّ ويُطبع بها نموذجُ الموظف
   for (const key of ["photo", "id_copy", "iban_copy", "cv_copy", "qual_copy",
                      "certs_copy", "other_copy", "signature"]) {
@@ -212,6 +219,14 @@ function buildIntakeVals(b) {
     if (fid) data = takeFile(fid);
     if (!data) {
       const raw = typeof b[key] === "string" ? b[key] : "";
+      // ⚠️ معرّفٌ أُرسل وملفُّه مفقود: لا يُبتلع في صمت. كان الطلب يمضي
+      // بلا مرفقه، فتصل الموارد البشرية خانةٌ فارغةٌ تظنّ صاحبها لم يرفع —
+      // وهو رفع ورأى «رُفع ✓». يُقال له أيُّ مستندٍ يُعيده، لا أن يُسكت
+      // عنه ويُكتشف بعد أسبوع.
+      if (fid && !raw) {
+        throw badRequest(
+          `انتهت مهلةُ حفظ «${DOC_AR[key] || key}» قبل الإرسال — أعد إرفاقه ثمّ أرسل.`);
+      }
       if (!raw) continue;
       data = raw.includes(",") ? raw.slice(raw.indexOf(",") + 1) : raw;
     }
