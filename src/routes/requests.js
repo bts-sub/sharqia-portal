@@ -12,7 +12,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import * as wf from "../lib/workflow.js";
-import { runAction, flowFor, producesLetter, managerStageIsVacant, stageRoleIsVacant, ownsStageByDepartment, SIGN_ON_EMPLOYEE_STAGE } from "../odooActions.js";
+import { runAction, flowFor, producesLetter, managerStageIsVacant, stageRoleIsVacant, ownsStageByDepartment, isLineManagerOf, SIGN_ON_EMPLOYEE_STAGE } from "../odooActions.js";
 import { isTestMode, profileGateMode } from "../lib/settings.js";
 import { badRequest, notFound, forbidden } from "../lib/errors.js";
 
@@ -162,6 +162,12 @@ async function assertCanAct(user, id, verb = "الاعتماد", expectStage = n
   if (stage === "manager") {
     if (user.role === "manager") {
       if (String(rec.empId) === "E" + user.odooEmployeeId) throw forbidden("لا يمكنك اعتماد طلبك بنفسك");
+      // ⚠️ ومديرًا لهذا الموظف بعينه لا لأيّ موظف: كان دورُ «مدير» وحده
+      //   يكفي، فمديرُ المبيعات يعتمد مرحلةَ المدير لموظفٍ في التصنيع.
+      //   والشاشةُ لا تعرض له إلا فريقه، لكنّ المنعَ في الشاشة ليس منعًا —
+      //   ورقمُ الطلب يُرسل بغيرها.
+      if (!(await isLineManagerOf(user.odooEmployeeId, rec.empId)))
+        throw forbidden("هذا الطلب بانتظار المدير المباشر لصاحبه، ولست مديرًا له.");
       return rec;
     }
     // مرحلةٌ بلا صاحب (الموظف بلا مدير، أو مديره بلا حساب يعتمد) تحبس الطلب

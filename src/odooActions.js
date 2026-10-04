@@ -1109,7 +1109,9 @@ function mapLeave(rec) {
 //   صاحب الطلب لا يعتمد لنفسه، والموارد البشرية تُمنع لأن المرحلة ليست
 //   مرحلتها. فيعلق الطلب في «بانتظار المدير المباشر» إلى الأبد.
 // ---------------------------------------------------------------------------
-const APPROVING_ROLES = ["manager", "hr", "finance", "it", "admin"];
+// ⚠️ و«hrm» معها: مديرُ الموارد البشرية يعتمد لفريقه كغيره، وغيابُه عن
+//   القائمة كان يجعل مرحلةَ المدير لمرؤوسيه تُقرأ «شاغرة» فتُفتح لغيره.
+const APPROVING_ROLES = ["manager", "hr", "hrm", "finance", "it", "admin"];
 
 async function managerVacancy(empIds) {
   const ids = [...new Set(empIds.filter(Boolean))];
@@ -1144,6 +1146,33 @@ export async function stageRoleIsVacant(role) {
     return users.length === 0;
   } catch (e) {
     console.warn("⚠️ تعذّر فحص مستخدمي المرحلة:", e.message);
+    return false;
+  }
+}
+
+// هل الفاعلُ مديرٌ لصاحب الطلب — مباشرًا أو فوقه في السلسلة؟
+//   سلسلةُ الإدارة لا المباشرُ وحده: مديرُ الإدارة يعتمد لموظفٍ تحت رئيس
+//   قسمٍ يتبعه، وهو ما يقع فعلًا حين يغيب رئيسُ القسم.
+export async function isLineManagerOf(actorEmpId, empId) {
+  const actor = toEmpId(actorEmpId);
+  const target = toEmpId(empId);
+  if (!actor || !target || actor === target) return false;
+  try {
+    let node = target;
+    const seen = new Set([target]);
+    for (let hop = 0; hop < 12; hop++) {
+      const [e] = await odoo.searchRead("hr.employee", [["id", "=", node]],
+        ["parent_id"], { limit: 1 });
+      const boss = e?.parent_id?.[0];
+      if (!boss || seen.has(boss)) return false;
+      if (boss === actor) return true;
+      seen.add(boss);
+      node = boss;
+    }
+    return false;
+  } catch (e) {
+    // تعذّرت القراءة: لا يُفتح الاعتماد بناءً على مجهول
+    console.warn("⚠️ تعذّر فحص سلسلة الإدارة:", e.message);
     return false;
   }
 }
