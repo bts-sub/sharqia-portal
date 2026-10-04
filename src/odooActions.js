@@ -1434,6 +1434,57 @@ function assertSickWindow(params, empId) {
 // ولا يُنظر إلا فيما خالف حكمَ دوره: الجدولُ في أودو مولَّدٌ لكلّ خدمةٍ على
 // حكم الدور، فما ساواه ليس قرارًا — والمنطقُ المعروف في التطبيق هو صاحبُه.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// تصحيحُ البصمة: ثلاثٌ في الشهر، والثالثةُ معها إنذار
+//
+// ⚠️ البصمةُ أصلُ احتساب الدوام، وتصحيحُها استثناءٌ لا بابٌ مفتوح: من
+// يصحّحها كلَّ أسبوع لم يعد يبصم — يعمل بالورق ويُسجَّل حضورُه بكلامه.
+// فثلاثٌ في الشهر تكفي النسيانَ والعطلَ، والثالثةُ تُنذر صاحبَها أنّه بلغ
+// الحدّ، والرابعةُ تُردّ إلى الموارد البشرية لتنظر في سببها.
+//
+// والعدُّ بالشهر الميلاديّ لا بالثلاثين يومًا الماضية: الموظفُ يفهم «ثلاثٌ
+// في الشهر» ويعرف متى يبدأ شهرُه، ولا يفهم نافذةً متحرّكةً تفتح وتغلق.
+// ---------------------------------------------------------------------------
+const ATT_FIX_RE = /تصحيح\s*(حضور|انصراف|بصمة)/;
+const ATT_FIX_MAX = 3;
+
+async function assertAttendanceFixQuota(params, empId, ctx) {
+  const svc = String(params?.service || "");
+  if (!ATT_FIX_RE.test(svc) || !empId) return;
+  const now = new Date(Date.now() + 3 * 3600 * 1000);          // بتوقيت الرياض
+  const from = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  let used = [];
+  try {
+    used = await odoo.searchRead("sharqia.portal.request",
+      [["employee_id", "=", empId], ["create_date", ">=", `${from} 00:00:00`],
+        ["state", "not in", ["rejected", "cancelled"]]],
+      ["service", "name", "create_date"], { limit: 100 });
+  } catch (e) {
+    // تعذّرُ العدّ لا يمنع الموظف من تصحيح بصمته: الخطأ هنا في جانب
+    // التيسير — والحدُّ يُحسب في المرّة القادمة.
+    console.warn("⚠️ تعذّر عدّ تصحيحات البصمة:", e.message);
+    return;
+  }
+  const fixes = used.filter((r) => ATT_FIX_RE.test(String(r.service || "")));
+  const n = fixes.length + 1;                                   // مع هذا الطلب
+  if (n > ATT_FIX_MAX) {
+    throw new Error(
+      `بلغتَ حدَّ تصحيح البصمة هذا الشهر (${ATT_FIX_MAX} مرّات). ` +
+      "راجع الموارد البشرية — التصحيحُ استثناءٌ لا يتكرّر.");
+  }
+  if (n === ATT_FIX_MAX) {
+    // الإنذارُ يُسجَّل في أودو ويصل الموظفَ والموارد البشرية إشعارًا —
+    // ولا يمنع الطلب: الثالثةُ مسموحةٌ بنصّ القرار.
+    try {
+      await odoo.execKw("sharqia.portal.request", "sharqia_attendance_fix_warning", [], {
+        employee_id: Number(empId), used: ATT_FIX_MAX, month: from.slice(0, 7),
+      });
+    } catch (e) {
+      console.warn("⚠️ تعذّر تسجيل إنذار تصحيح البصمة:", e.message);
+    }
+  }
+}
+
 async function assertServiceAllowed(params, ctx) {
   const svc = String(params?.service || "").trim();
   const login = ctx?.user?.login;
@@ -2497,6 +2548,7 @@ const actions = {
         // والخطاب يصدر باسمه، والموظف المستفيد لا أثر له إطلاقًا.
         await assertServiceAllowed(params, ctx);
         const owner = await resolveBeneficiary(params, ctx);
+        await assertAttendanceFixQuota(params, owner, ctx);
         await assertNoLeaveOverlap(params, owner);
         await assertHajjOnce(params, owner);
         await assertHajjSeason(params, owner);

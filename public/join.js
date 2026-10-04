@@ -133,9 +133,9 @@
           dir: "ltr", full: true, max: 8, rule: "shortAddr", upper: true, mask: "addr4x4",
           help: { ar: "أربعةُ حروفٍ ثمّ أربعةُ أرقام — كما في تطبيق العنوان الوطني.",
                   en: "Four letters then four digits, as in the National Address app." } },
-        { k: "emergency_name", ar: "اسم شخص للطوارئ", en: "Emergency contact name", rule: "letters" },
+        { k: "emergency_name", ar: "اسم شخص للطوارئ", en: "Emergency contact name", rule: "letters", req: true },
         { k: "emergency_phone", ar: "جوال الطوارئ", en: "Emergency contact mobile",
-          phone: true, rule: "mobileOpt" },
+          phone: true, rule: "mobile", req: true },
         // ⚠️ لغير السعوديّ رقمٌ في بلده: يُرجَع إليه إن انقطع خبرُه أو وقعت
         // حادثة، ولا يُسأل عنه السعوديّ فلا محلّ له.
         { k: "home_phone", ar: "رقم تواصل في البلد الأم", en: "Home-country contact number",
@@ -159,7 +159,7 @@
         { k: "contract_type", ar: "نوع العقد", en: "Contract type", opts: [
           { v: "full", ar: "دوام كامل", en: "Full time" },
           { v: "part", ar: "دوام جزئي", en: "Part time" },
-          { v: "temp", ar: "مؤقّت", en: "Temporary" },
+          { v: "temp", ar: "موسمي", en: "Seasonal" },
           { v: "train", ar: "تدريب", en: "Training" }] },
       ],
     },

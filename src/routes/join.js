@@ -151,6 +151,14 @@ function buildIntakeVals(b) {
     throw badRequest("البريد الإلكتروني مطلوب وصحيح");
   const iban = clean(b.iban, 34).replace(/\s/g, "").toUpperCase();
   if (!/^SA\d{22}$/.test(iban)) throw badRequest("رقم الآيبان مطلوب — SA ثمّ ٢٢ رقمًا");
+  // ⚠️ جهةُ اتصال الطوارئ إلزامية، وتُفحص هنا لا في الشاشة وحدها: يومَ
+  // تقع حادثةٌ لا يُبحث عن أهله في الأوراق. ورقمٌ لا يُتّصل به لا ينفع،
+  // فيُقاس كما يُقاس رقمُ صاحبه.
+  if (!clean(b.emergency_name).trim())
+    throw badRequest("اسم شخصٍ للطوارئ مطلوب");
+  const emgDigits = clean(b.emergency_phone, 20).replace(/\D/g, "");
+  if (emgDigits.length < 9 || emgDigits.length > 15)
+    throw badRequest("جوال الطوارئ مطلوب — رقمٌ صحيحٌ يُتّصل به");
   const shortAddr = clean(b.address, 20).replace(/\s/g, "").toUpperCase();
   if (shortAddr && !/^[A-Z]{4}\d{4}$/.test(shortAddr))
     throw badRequest("العنوان الوطني المختصر: أربعةُ حروفٍ ثمّ أربعةُ أرقام");
