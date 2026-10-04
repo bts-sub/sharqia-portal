@@ -8,7 +8,7 @@ import { readAll, writeAll } from "./store.js";
 import { config } from "../config.js";
 
 const COLLECTION = "users";
-const ROLES = ["employee", "manager", "hr", "finance", "it", "admin"];
+const ROLES = ["employee", "manager", "hr", "hrm", "finance", "it", "admin"];
 
 const genId = (all) => "U" + String(all.reduce((m, u) => Math.max(m, +String(u.id).slice(1) || 0), 0) + 1);
 

@@ -8,18 +8,18 @@ import { readAll, writeAll, insert, updateById, findById } from "./store.js";
 
 // مسارات الموافقة و SLA حسب التصنيف (مطابقة للواجهة)
 export const FLOW = {
-  leave: { flow: ["manager", "hr", "done"], sla: 3 },
-  attend: { flow: ["manager", "hr", "done"], sla: 3 },
-  finance: { flow: ["manager", "hr", "finance", "done"], sla: 3 },
+  leave: { flow: ["manager", "hr", "hrm", "done"], sla: 3 },
+  attend: { flow: ["manager", "hr", "hrm", "done"], sla: 3 },
+  finance: { flow: ["manager", "hr", "hrm", "finance", "done"], sla: 3 },
   custody: { flow: ["manager", "it", "finance", "done"], sla: 3 },
-  transfer: { flow: ["manager", "hr", "done"], sla: 3 },
-  personal: { flow: ["hr", "done"], sla: 3 },
-  letters: { flow: ["hr", "done"], sla: 3 },
-  training: { flow: ["manager", "hr", "done"], sla: 3 },
-  insurance: { flow: ["hr", "done"], sla: 3 },
-  complaint: { flow: ["hr", "done"], sla: 3 },
-  offboard: { flow: ["manager", "hr", "done"], sla: 3 },
-  general: { flow: ["manager", "hr", "done"], sla: 3 },
+  transfer: { flow: ["manager", "hr", "hrm", "done"], sla: 3 },
+  personal: { flow: ["hr", "hrm", "done"], sla: 3 },
+  letters: { flow: ["hr", "hrm", "done"], sla: 3 },
+  training: { flow: ["manager", "hr", "hrm", "done"], sla: 3 },
+  insurance: { flow: ["hr", "hrm", "done"], sla: 3 },
+  complaint: { flow: ["hr", "hrm", "done"], sla: 3 },
+  offboard: { flow: ["manager", "hr", "hrm", "done"], sla: 3 },
+  general: { flow: ["manager", "hr", "hrm", "done"], sla: 3 },
 };
 // مسار خاص بخدمة بعينها — يتقدّم على مسار تصنيفها.
 //   التصنيف وحدةٌ خشنة: «الدوام والحضور» يضمّ تصحيح بصمة تحتاجه الموارد

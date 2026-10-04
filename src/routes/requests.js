@@ -98,7 +98,7 @@ router.post("/requests", async (req, res, next) => {
 });
 
 // أدوار مسموح لها بالاعتماد
-const APPROVER_ROLES = ["manager", "hr", "finance", "it", "admin"];
+const APPROVER_ROLES = ["manager", "hr", "hrm", "finance", "it", "admin"];
 
 // النطاق يُشتق من الدور: الموظف يرى طلباته فقط مهما أرسل في الاستعلام.
 //   all   = كل طلبات المنشأة (موارد بشرية/أدمن فقط)
@@ -167,7 +167,7 @@ async function assertCanAct(user, id, verb = "الاعتماد", expectStage = n
     // مرحلةٌ بلا صاحب (الموظف بلا مدير، أو مديره بلا حساب يعتمد) تحبس الطلب
     // إلى الأبد: صاحبه لا يعتمد لنفسه وغيره ليست مرحلته. الموارد البشرية
     // والإدارة يفكّان الاحتباس — وهما من يقع عليهما البديل تنظيميًّا.
-    if (["hr", "admin"].includes(user.role) && await managerStageIsVacant(rec.empId)) return rec;
+    if (["hr", "hrm", "admin"].includes(user.role) && await managerStageIsVacant(rec.empId)) return rec;
     throw forbidden("هذا الطلب بانتظار المدير المباشر");
   }
   if (user.role !== stage) {
@@ -177,7 +177,7 @@ async function assertCanAct(user, id, verb = "الاعتماد", expectStage = n
     if (await ownsStageByDepartment(user.odooEmployeeId, stage)) return rec;
     // مرحلةٌ لا يحمل دورَها أحد (لا مستخدم مالية مثلًا) تحبس الطلب كما
     // تحبسه مرحلة المدير الشاغرة — والموارد البشرية والإدارة يفكّانها.
-    if (["hr", "admin"].includes(user.role) && await stageRoleIsVacant(stage)) return rec;
+    if (["hr", "hrm", "admin"].includes(user.role) && await stageRoleIsVacant(stage)) return rec;
     throw forbidden(`هذا الطلب في مرحلة «${stage}» وليست مرحلتك`);
   }
   return rec;

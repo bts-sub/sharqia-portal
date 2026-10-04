@@ -16,18 +16,18 @@ export const LVL_RANK = {
 export const rankOf = (lvl) => (LVL_RANK[lvl] ?? 2);
 
 // الأدوار بالعربية (مطابقة للواجهة)
-const ROLE_AR = { employee: "موظف", manager: "مدير قسم", hr: "موارد بشرية", finance: "مسؤول مالي", it: "تقنية المعلومات", admin: "مدير النظام" };
+const ROLE_AR = { employee: "موظف", manager: "مدير قسم", hr: "موارد بشرية", hrm: "مدير الموارد البشرية", finance: "مسؤول مالي", it: "تقنية المعلومات", admin: "مدير النظام" };
 
 // المستوى الافتراضي على مستوى الخدمة حسب الدور
 function defaultSvcLevel(roleAr) {
-  if (["موارد بشرية", "مدير موارد بشرية", "مدير النظام"].includes(roleAr)) return "إدارة كاملة";
+  if (["موارد بشرية", "مدير موارد بشرية", "مدير الموارد البشرية", "مدير النظام"].includes(roleAr)) return "إدارة كاملة";
   if (["مدير قسم", "مدير إدارة"].includes(roleAr)) return "إنشاء لنفسي ولموظفي فريقي";
   if (roleAr === "موظف") return "إنشاء لنفسي فقط";
   return "عرض فقط";
 }
 // المستوى الافتراضي على مستوى التصنيف حسب الدور
 function defaultCatLevel(roleAr) {
-  if (["موارد بشرية", "مدير موارد بشرية", "مدير النظام"].includes(roleAr)) return "إدارة كاملة";
+  if (["موارد بشرية", "مدير موارد بشرية", "مدير الموارد البشرية", "مدير النظام"].includes(roleAr)) return "إدارة كاملة";
   if (["مدير قسم", "مدير إدارة"].includes(roleAr)) return "إنشاء لنفسي ولموظفي فريقي";
   if (roleAr === "موظف") return "إنشاء لنفسي";
   return "عرض فقط";

@@ -861,14 +861,17 @@ export function producesLetter(rec) {
   return LETTER_SERVICE_TOKENS.some((t) => svc.includes(t));
 }
 
+// ⚠️ «مدير الموارد البشرية» مرحلةٌ بعد موظفيها لا بدلًا منهم: الموظف يراجع
+// ويُدقّق، والمدير يعتمد نهائيًّا. وكانا دورًا واحدًا فيضغط الاعتمادَين من
+// يملك الدور — ومراجعةٌ واعتمادٌ بيدٍ واحدة ليسا مرحلتين.
 export const FLOW = {
-  leave: ["manager", "hr", "done"], attend: ["manager", "hr", "done"],
-  finance: ["manager", "hr", "finance", "done"],
+  leave: ["manager", "hr", "hrm", "done"], attend: ["manager", "hr", "hrm", "done"],
+  finance: ["manager", "hr", "hrm", "finance", "done"],
   // المالية في مسار العهدة: العهدة أصلٌ له قيمة، وطلبت الإدارة حضورها فيه.
   custody: ["manager", "it", "finance", "done"],
-  transfer: ["manager", "hr", "done"], personal: ["hr", "done"], letters: ["hr", "done"],
-  training: ["manager", "hr", "done"], insurance: ["hr", "done"], complaint: ["hr", "done"],
-  offboard: ["manager", "hr", "done"], general: ["manager", "hr", "done"],
+  transfer: ["manager", "hr", "hrm", "done"], personal: ["hr", "hrm", "done"], letters: ["hr", "hrm", "done"],
+  training: ["manager", "hr", "hrm", "done"], insurance: ["hr", "hrm", "done"], complaint: ["hr", "hrm", "done"],
+  offboard: ["manager", "hr", "hrm", "done"], general: ["manager", "hr", "hrm", "done"],
 };
 
 // مسار خاص بخدمة بعينها — يتقدّم على مسار تصنيفها. مطابق لما في الموديول
