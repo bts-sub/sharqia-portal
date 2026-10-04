@@ -12,7 +12,16 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import * as wf from "../lib/workflow.js";
-import { runAction, flowFor, producesLetter, managerStageIsVacant, stageRoleIsVacant, ownsStageByDepartment, isLineManagerOf, SIGN_ON_EMPLOYEE_STAGE } from "../odooActions.js";
+import { runAction, flowFor, producesLetter, managerStageIsVacant, stageRoleIsVacant, ownsStageByDepartment, isLineManagerOf, approveCategoriesFor, SIGN_ON_EMPLOYEE_STAGE } from "../odooActions.js";
+
+// أسماءُ أبواب الطلبات — بالرموز نفسها التي في أودو، لتخرج الرسالةُ بما
+// يقرؤه المعتمِد لا برمزٍ داخليّ.
+const CAT_AR = {
+  leave: "الإجازات", attend: "الحضور", finance: "الطلبات المالية",
+  custody: "العهد", transfer: "النقل", personal: "البيانات الشخصية",
+  letters: "الخطابات", training: "التدريب", insurance: "التأمين",
+  complaint: "الشكاوى", offboard: "إنهاء الخدمة", general: "طلب عام",
+};
 import { isTestMode, profileGateMode } from "../lib/settings.js";
 import { badRequest, notFound, forbidden } from "../lib/errors.js";
 
@@ -155,6 +164,14 @@ async function assertCanAct(user, id, verb = "الاعتماد", expectStage = n
   }
 
   if (!APPROVER_ROLES.includes(user.role)) throw forbidden(`لا تملك صلاحية ${verb}`);
+  // ⚠️ والبابُ من نطاقه لا من دوره: الدورُ يعطيه المرحلة، والنطاقُ يعطيه
+  //   البابَ. فثلاثةٌ يحملون «موارد بشرية» يعتمد كلُّ واحدٍ منهم كلَّ شيء ما
+  //   لم تُقسَّم الأبوابُ بينهم. وفارغٌ = بلا قصر، وهو الأصل.
+  const myCats = await approveCategoriesFor(user.login);
+  if (myCats.length && rec.category && !myCats.includes(rec.category))
+    throw forbidden(
+      `صلاحيتُك مقصورةٌ على: ${myCats.map((c) => CAT_AR[c] || c).join("، ")}`
+      + ` — وهذا الطلب من باب «${CAT_AR[rec.category] || rec.category}».`);
   // ⚠️ كان هنا «إن كان أدمن فاسمح» — تجاوزٌ لكل ما تحته. والأدمن دورٌ تقنيّ
   // لا صاحبُ كل مرحلة: مرورُه من مرحلة الإدارة المالية يعني اعتمادَ مبلغٍ
   // بلا مراجعة من يملكها. فصار يخضع لقواعد الموارد البشرية نفسها: مرحلته
