@@ -217,8 +217,8 @@
     {
       id: "sign", n: "٠٧", nEn: "07",
       title: { ar: "التوقيع", en: "Signature" },
-      sub: { ar: "وقّع بإصبعك أو بالفأرة — توقيعُك إقرارٌ بما كتبت.",
-             en: "Sign with your finger or mouse — your signature confirms what you entered." },
+      sub: { ar: "وقّع بقلمٍ أزرق على ورقةٍ بيضاء، وصوّرها وأرفقها — توقيعُك إقرارٌ بما كتبت.",
+             en: "Sign with a blue pen on white paper, photograph it and attach — your signature confirms what you entered." },
       sign: true,
     },
     {
@@ -388,7 +388,7 @@
   }
   function secDone(s) {
     if (s.review) return state.ack;
-    if (s.sign) return !!state.sign;
+    if (s.sign) return !!state.files.signature;
     if (s.files) return (s.files || []).every(function (f) { return !f.req || state.files[f.k]; });
     return fieldsOf(s).every(function (f) { return !fieldError(f); });
   }
@@ -397,7 +397,7 @@
     SEC.forEach(function (s) {
       fieldsOf(s).forEach(function (f) { all.push(!!(state.data[f.k] || "").toString().trim()); });
       (s.files || []).forEach(function (f) { all.push(!!state.files[f.k]); });
-      if (s.sign) all.push(!!state.sign);
+      if (s.sign) all.push(!!state.files.signature);
     });
     all.forEach(function (x) { if (x) done++; });
     return all.length ? Math.round((done / all.length) * 100) : 0;
@@ -862,60 +862,20 @@
   // ─────────────────────── التوقيع ───────────────────────
   // توقيعُ صاحب البيانات يُرسل معها: الإقرارُ بصحّتها لا يكفيه مربّعٌ يُعلَّم،
   // والموارد البشرية تعتمد ملفًّا موقَّعًا لا مجرَّد إدخالٍ من متصفّح.
-  function signNode() {
+  // ⚠️ التوقيعُ صورةٌ تُرفَق لا رسمٌ بالإصبع: الرسمُ على زجاج الجوّال يخرج
+  // مرتعشًا لا يشبه توقيعَ صاحبه، ومستندٌ يحمله يُنازَع فيه. والقلمُ الأزرق
+  // يُفرّق الأصلَ من نسخةٍ مصوَّرة، والظلُّ يُسوّد الورقةَ فيضيع الخطّ.
+  function signUploadNode() {
     var wrap = el("div", { class: "signwrap" });
-    var cv = el("canvas", { class: "signpad", width: 900, height: 320 });
-    var ctx = cv.getContext("2d");
-    var drawn = false, drawing = false;
-
-    function paintBg() {
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, cv.width, cv.height);
-      ctx.strokeStyle = "#1C1917";
-      ctx.lineWidth = 3.2;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-    }
-    paintBg();
-    if (state.sign) {
-      var img = new Image();
-      img.onload = function () { ctx.drawImage(img, 0, 0, cv.width, cv.height); drawn = true; };
-      img.src = state.sign;
-    }
-    function pos(e) {
-      var r = cv.getBoundingClientRect();
-      var p = e.touches && e.touches[0] ? e.touches[0] : e;
-      return { x: (p.clientX - r.left) * (cv.width / r.width),
-               y: (p.clientY - r.top) * (cv.height / r.height) };
-    }
-    function start(e) { e.preventDefault(); drawing = true; var q = pos(e); ctx.beginPath(); ctx.moveTo(q.x, q.y); }
-    function move(e) {
-      if (!drawing) return;
-      e.preventDefault();
-      var q = pos(e); ctx.lineTo(q.x, q.y); ctx.stroke(); drawn = true;
-    }
-    function end() {
-      if (!drawing) return;
-      drawing = false;
-      if (!drawn) return;
-      state.sign = cv.toDataURL("image/png");
-      dirty = true; paintTabs(); paintActions(); paintProgress(); msg("");
-    }
-    ["mousedown", "touchstart"].forEach(function (n) { cv.addEventListener(n, start, { passive: false }); });
-    ["mousemove", "touchmove"].forEach(function (n) { cv.addEventListener(n, move, { passive: false }); });
-    ["mouseup", "mouseleave", "touchend", "touchcancel"].forEach(function (n) { cv.addEventListener(n, end); });
-
-    wrap.appendChild(cv);
-    wrap.appendChild(el("div", { class: "signrow" }, [
-      el("button", { class: "btn o", type: "button", text: L === "ar" ? "مسح والإعادة" : "Clear",
-        onclick: function () {
-          paintBg(); drawn = false; state.sign = "";
-          paintTabs(); paintActions(); paintProgress();
-        } }),
-      el("span", { class: "help", text: L === "ar"
-        ? "وقّع داخل المربّع — التوقيع يُرسل مع بياناتك ويظهر في ملفّك."
-        : "Sign inside the box — it is sent with your data and appears on your file." }),
+    wrap.appendChild(el("div", { class: "signhow" }, [
+      el("b", { text: L === "ar" ? "كيف تُرفق توقيعك" : "How to attach your signature" }),
+      el("ol", {}, [
+        el("li", { text: L === "ar" ? "وقّع بقلمٍ أزرق على ورقةٍ بيضاء." : "Sign with a blue pen on white paper." }),
+        el("li", { text: L === "ar" ? "صوّرها في ضوءٍ جيّد وبلا ظلٍّ على الورقة." : "Photograph it in good light with no shadow on the paper." }),
+        el("li", { text: L === "ar" ? "اقترب حتى يملأ التوقيعُ الصورة، ثمّ أرفقها أدناه." : "Fill the frame with the signature, then attach it below." }),
+      ]),
     ]));
+    wrap.appendChild(fileNode({ k: "signature", ar: "صورة التوقيع", en: "Signature photo", req: true }));
     return wrap;
   }
 
@@ -927,9 +887,9 @@
       if (s.sign) {
         rows.appendChild(el("div", { class: "r" }, [
           el("dt", { text: L === "ar" ? "التوقيع" : "Signature" }),
-          el("dd", { class: state.sign ? "" : "empty",
-            text: state.sign ? (L === "ar" ? "موقَّع" : "Signed")
-                             : (L === "ar" ? "— لم يُوقَّع" : "— not signed") }),
+          el("dd", { class: state.files.signature ? "" : "empty",
+            text: state.files.signature ? (L === "ar" ? "موقَّع ومرفَق" : "Signed and attached")
+                             : (L === "ar" ? "— لم يُرفَق" : "— not attached") }),
         ]));
       }
       fieldsOf(s).forEach(function (f) {
@@ -1022,7 +982,7 @@
       var g = el("div", { class: "files" });
       s.files.forEach(function (f) { g.appendChild(fileNode(f)); });
       pane.appendChild(g);
-    } else if (s.sign) pane.appendChild(signNode());
+    } else if (s.sign) pane.appendChild(signUploadNode());
     else {
       var grid = el("div", { class: "grid" });
       fieldsOf(s).forEach(function (f) { grid.appendChild(fieldNode(f)); });
@@ -1132,8 +1092,7 @@
       return;
     }
     body.ack = true;
-    // التوقيعُ يُرسل صورةً كالمرفقات، فيُحفظ في ملفّ الموظف ويظهر في نموذجه
-    if (state.sign) body.signature = String(state.sign).split(",")[1] || "";
+    // التوقيعُ مرفقٌ كبقيّة المرفقات: يمضي في الحلقة أدناه بمعرّفه
     Object.keys(state.files).forEach(function (k) {
       var g = state.files[k];
       // المرفوعُ سلفًا يُرسَل بمعرّفه لا ببايتاته: الطلبُ يبقى صغيرًا فلا ينقطع

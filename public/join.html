@@ -295,6 +295,11 @@
   }
   /* لوحةُ التوقيع */
   .signwrap { display: grid; gap: 12px; }
+  /* إرشادُ التوقيع: خطواتٌ ثلاثٌ تُقرأ قبل الإرفاق لا بعده */
+  .signhow { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+             background: #FBF8F1; font-size: 13px; line-height: 1.9; }
+  .signhow b { display: block; margin-bottom: 4px; }
+  .signhow ol { margin: 0; padding-inline-start: 20px; }
   .signpad { width: 100%; height: auto; aspect-ratio: 900 / 320; border: 1.5px dashed var(--line);
     border-radius: 14px; background: #fff; touch-action: none; cursor: crosshair; }
   .signrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
