@@ -102,7 +102,11 @@
                   en: "Open the list and type the first letter to jump." } },
         { k: "gender", ar: "الجنس", en: "Gender", opts: [
           { v: "male", ar: "ذكر", en: "Male" }, { v: "female", ar: "أنثى", en: "Female" }] },
-        { k: "birthday", ar: "تاريخ الميلاد", en: "Date of birth", type: "date", rule: "birth18",
+        // ⚠️ مطلوبٌ لا اختياري: التاريخُ يدخل في سنّ التقاعد ونهاية الخدمة
+        // والتأمين، ويُطلب في كلّ معاملةٍ حكومية. وما يُترك فارغًا هنا
+        // يُجمع بعد شهورٍ بالاتّصال واحدًا واحدًا.
+        { k: "birthday", ar: "تاريخ الميلاد", en: "Date of birth", type: "date",
+          req: true, rule: "birth18",
           help: { ar: "ثمانيةَ عشرَ عامًا فأكثر.", en: "18 years or older." } },
         { k: "marital", ar: "الحالة الاجتماعية", en: "Marital status", req: true, opts: [
           { v: "single", ar: "أعزب / عزباء", en: "Single" },

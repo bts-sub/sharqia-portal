@@ -163,7 +163,11 @@ function buildIntakeVals(b) {
   if (shortAddr && !/^[A-Z]{4}\d{4}$/.test(shortAddr))
     throw badRequest("العنوان الوطني المختصر: أربعةُ حروفٍ ثمّ أربعةُ أرقام");
   // العمر: لا يُوظَّف من دون الثامنة عشرة نظامًا
+  // ⚠️ والتاريخُ مطلوبٌ هنا أيضًا لا في الشاشة وحدها: الشاشةُ تُتجاوَز،
+  //    والميلادُ يدخل في سنّ التقاعد ونهاية الخدمة والتأمين.
   const bday = clean(b.birthday, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(bday))
+    throw badRequest("تاريخ الميلاد مطلوب");
   if (bday && /^\d{4}-\d{2}-\d{2}$/.test(bday)) {
     const age = (Date.now() - new Date(bday + "T00:00:00").getTime()) / 31557600000;
     if (age < 18) throw badRequest("تاريخ الميلاد يدلّ على عمرٍ دون الثامنة عشرة");
