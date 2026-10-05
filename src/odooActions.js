@@ -4141,6 +4141,100 @@ const actions = {
     );
   },
 
+  // -------------------------------------------------------------------------
+  // الدعم الفني: قوائمُ الصفحة العامّة وإنشاءُ التذكرة في هيلب ديسك.
+  //   صفحةٌ يفتحها من لا حساب له ولا جلسة — فكلُّ ما يصل منها لا يُوثق به:
+  //   الأقسامُ والمواقعُ تُقرأ من أودو لا تُكتب نصًّا حرًّا، والباقي يُقصّ
+  //   ويُحدّ طولُه قبل أن يُكتب.
+  // -------------------------------------------------------------------------
+  async "support.options"() {
+    return withOdoo(
+      async () => {
+        const deps = await odoo.searchRead("hr.department", [], ["name"],
+          { limit: 120, order: "name" });
+        const locs = await odoo.searchRead("sharqia.portal.location", [], ["name"],
+          { limit: 60, order: "name" });
+        return {
+          departments: deps.map((d) => d.name).filter(Boolean),
+          locations: locs.map((l) => l.name).filter(Boolean),
+        };
+      },
+      async () => ({ departments: [], locations: [] }),
+      { emptyOnError: () => ({ departments: [], locations: [] }) }
+    );
+  },
+
+  async "support.create"(params) {
+    const p = params || {};
+    const cut = (v, n) => String(v ?? "").trim().slice(0, n);
+    const esc = (v) => cut(v, 4000).replace(/[&<>]/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    const name = cut(p.name, 80);
+    const problem = cut(p.problem, 4000);
+    if (!name) throw new Error("الاسم مطلوب");
+    if (problem.length < 10) throw new Error("اكتب وصف المشكلة — عشرة أحرفٍ فأكثر");
+
+    // forceLiveErrors: بلاغٌ لم يصل أودو يجب أن يُقال لصاحبه، لا أن يُردّ
+    //   بنجاحٍ من بيانات تجربة — فينتظر ردًّا على تذكرةٍ لا وجود لها.
+    return withOdoo(async () => {
+      // فريقُ التقنية بالاسم، وأوّلُ فريقٍ إن لم يوجد: تذكرةٌ بلا فريق
+      // لا تظهر في لوحة أحد.
+      let [team] = await odoo.searchRead("helpdesk.team",
+        [["name", "ilike", "IT"]], ["id"], { limit: 1 });
+      if (!team) [team] = await odoo.searchRead("helpdesk.team", [], ["id"], { limit: 1 });
+
+      const kind = cut(p.kind, 40) || "أخرى";
+      const where = [cut(p.location, 60), cut(p.spot, 80)].filter(Boolean).join(" — ");
+      const subject = [kind, name, cut(p.location, 60)].filter(Boolean).join(" · ");
+      const row = (k, v) => v
+        ? `<tr><td style="padding:2px 12px 2px 0"><b>${k}</b></td><td>${esc(v)}</td></tr>` : "";
+      const body = "<p>" + esc(problem).replace(/\n/g, "<br/>") + "</p><table>"
+        + row("مُقدّم البلاغ", name)
+        + row("الرقم الوظيفي", cut(p.empNo, 30))
+        + row("القسم", cut(p.department, 60))
+        + row("الجوال", cut(p.phone, 20))
+        + row("البريد", cut(p.email, 120))
+        + row("المكان", where)
+        + row("نوع المشكلة", kind)
+        + "</table>";
+
+      const vals = {
+        name: subject || "بلاغ دعم فني",
+        description: body,
+        // 0 منخفضة · 1 متوسطة · 2 عالية · 3 عاجلة — والافتراضُ متوسّطة
+        priority: ["0", "1", "2", "3"].includes(String(p.priority)) ? String(p.priority) : "1",
+        ...(team ? { team_id: team.id } : {}),
+        partner_phone: cut(p.phone, 20) || false,
+        partner_email: cut(p.email, 120) || false,
+      };
+      const known = await availableFields("helpdesk.ticket", Object.keys(vals));
+      const payload = {};
+      for (const [k, v] of Object.entries(vals)) if (known.includes(k)) payload[k] = v;
+      const id = await odoo.create("helpdesk.ticket", payload);
+
+      // المرفقُ بعد التذكرة لا معها: لو فشل رفعُه لا يضيع البلاغُ كلُّه
+      const att = p.attachment;
+      if (att && att.base64 && att.base64.length < 12 * 1024 * 1024) {
+        try {
+          await odoo.create("ir.attachment", {
+            name: cut(att.name, 120) || "مرفق",
+            datas: att.base64,
+            res_model: "helpdesk.ticket", res_id: id,
+          });
+        } catch (e) {
+          console.warn("⚠️ تعذّر رفع مرفق بلاغ الدعم:", e.message);
+        }
+      }
+      let ref = String(id);
+      try {
+        const [t] = await odoo.searchRead("helpdesk.ticket", [["id", "=", id]],
+          ["ticket_ref"], { limit: 1 });
+        if (t && t.ticket_ref) ref = t.ticket_ref;
+      } catch { /* الرقمُ الداخلي يكفي مرجعًا */ }
+      return { ok: true, id, ref };
+    }, async () => ({ ok: true, id: 0, ref: "TEST" }), { forceLiveErrors: true });
+  },
+
   async "intake.options"() {
     return withOdoo(
       async () => {

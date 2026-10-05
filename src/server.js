@@ -40,6 +40,7 @@ import legalRoutes from "./routes/legal.js";
 import certRoutes from "./routes/certs.js";
 import iclockRoutes from "./routes/iclock.js";
 import joinRoutes from "./routes/join.js";
+import supportRoutes from "./routes/support.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -157,6 +158,11 @@ app.get("/api/health/odoo", async (req, res) => {
       p === "/" || p === "/join" || p.startsWith("/join/") ||
       p === "/join.js" || p === "/join.html" ||
       p === "/api/join/options" || p.startsWith("/api/join/") ||
+      // صفحةُ الدعم الفني تعمل على النطاقين: من تعطّل حاسبُه قد يكون
+      // الرابطُ المحفوظ عنده أحدَهما، ولا يُطلب منه تذكّرُ أيِّهما.
+      p === "/support" || p === "/it" || p === "/support.html" ||
+      p === "/api/support" ||
+      p === "/api/support/options" ||
       p === "/logo-mark.png" || p === "/logo-head.png" || p === "/office-bg.jpg" ||
       p.startsWith("/fonts/") ||
       p === "/favicon.ico" || p === "/robots.txt";
@@ -169,6 +175,7 @@ app.get("/api/health/odoo", async (req, res) => {
   });
 
 app.use("/api", joinRoutes);
+app.use("/api", supportRoutes);
 app.use("/api", integrationRoutes);
 app.use("/api", authRoutes);
 app.use("/api", odooRoutes);
@@ -254,6 +261,19 @@ if (fs.existsSync(frontendPath)) {
     // يجد النموذج مباشرةً بلا /join ولا رمزٍ في الرابط.
     app.get("/", (req, res, next) =>
       (String(req.hostname || "").toLowerCase() === DATA_HOST ? sendJoin(req, res) : next()));
+  }
+
+  // ⚠️ صفحةُ الدعم الفني قبل التقاط التطبيق لكل المسارات، كصفحة البيانات:
+  // يفتحها من لا حساب له — أو من تعطّل جهازُه فلا يستطيع فتح التطبيق
+  // أصلًا، وهي الحالُ التي فُتحت لأجلها.
+  const supportHtml = path.join(publicDir, "support.html");
+  if (fs.existsSync(supportHtml)) {
+    const sendSupport = (req, res) => {
+      res.set("Cache-Control", "no-cache");
+      res.sendFile(supportHtml);
+    };
+    app.get("/support", sendSupport);
+    app.get("/it", sendSupport);
   }
 
   app.get("/", sendApp);

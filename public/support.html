@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="theme-color" content="#14110D"/>
+<title>الدعم الفني — بيت العباءة الشرقية</title>
+<link rel="icon" href="/logo-mark.png?v=2"/>
+<style>
+  @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+  @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-SemiBold.ttf") format("truetype"); font-weight: 600; font-display: swap; }
+  @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-SemiBold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
+
+  /* الهويةُ نفسها التي في بوابة البيانات: محايدٌ دافئ، والذهبيُّ لهجةٌ لا
+     لونُ صفحة. ومن يفتح الرابطين يعرف أنهما من بيتٍ واحد. */
+  :root {
+    --gold: #B8912A; --gold-tint: #F7F2E4;
+    --ink: #17150F; --ink-2: #3D3830; --mut: #7C756A;
+    --line: #E7E2D8; --bg: #FAF8F4; --card: #FFFFFF;
+    --ok: #16794A; --ok-bg: #EBF7F0; --bad: #B4232A; --bad-bg: #FBEDED;
+    --sh: 0 2px 4px rgba(23,21,15,.04), 0 12px 32px rgba(23,21,15,.06);
+    --r: 14px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "PlexAr", system-ui, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.75; -webkit-font-smoothing: antialiased; }
+  body::before { content: ""; position: fixed; inset: 0; z-index: -2;
+    background: url("/office-bg.jpg") center 20% / cover no-repeat; }
+  body::after { content: ""; position: fixed; inset: 0; z-index: -1;
+    background: linear-gradient(180deg, rgba(250,249,246,.93) 0%, rgba(250,249,246,.96) 60%, rgba(250,249,246,.98) 100%); }
+
+  .wrap { max-width: 760px; margin: 0 auto; padding: 22px 16px 64px; }
+  header { text-align: center; padding: 26px 0 18px; }
+  header img { height: 62px; width: auto; }
+  h1 { font-size: 23px; margin: 14px 0 6px; font-weight: 700; letter-spacing: -.2px; }
+  .sub { color: var(--mut); font-size: 13.5px; margin: 0 auto; max-width: 520px; }
+
+  .card { background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--r); box-shadow: var(--sh); padding: 18px 16px; margin-bottom: 14px; }
+  .sec { font-size: 12px; font-weight: 700; color: var(--gold);
+    letter-spacing: .6px; margin: 0 0 14px; display: flex; align-items: center; gap: 9px; }
+  .sec::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+  .f { display: flex; flex-direction: column; gap: 6px; }
+  .f.full { grid-column: 1 / -1; }
+  label { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+  .star { color: var(--bad); font-weight: 700; }
+  .hint { font-size: 11.5px; color: var(--mut); line-height: 1.65; }
+  input, select, textarea { width: 100%; font-family: inherit; font-size: 14.5px;
+    color: var(--ink); background: #fff; border: 1px solid var(--line);
+    border-radius: 11px; padding: 11px 12px; outline: none; transition: border-color .15s; }
+  input:focus, select:focus, textarea:focus { border-color: var(--gold); }
+  input.bad, select.bad, textarea.bad { border-color: var(--bad); background: var(--bad-bg); }
+  textarea { min-height: 128px; resize: vertical; line-height: 1.8; }
+  .err { font-size: 11.5px; color: var(--bad); font-weight: 600; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 1px solid var(--line); background: #fff; border-radius: 999px;
+    padding: 8px 14px; font-family: inherit; font-size: 13px; color: var(--ink-2);
+    cursor: pointer; transition: all .15s; }
+  .chip:hover { border-color: var(--gold); }
+  .chip[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  .file { display: block; border: 1.5px dashed var(--line); border-radius: 12px;
+    padding: 14px; text-align: center; cursor: pointer; color: var(--mut); font-size: 13px; }
+  .file:hover { border-color: var(--gold); }
+  .file input { display: none; }
+  .thumb { max-width: 100%; max-height: 190px; border-radius: 10px; margin-top: 10px; }
+
+  button.go { width: 100%; border: none; border-radius: 12px; padding: 15px;
+    background: var(--ink); color: #fff; font-family: inherit; font-size: 15.5px;
+    font-weight: 700; cursor: pointer; transition: opacity .15s; }
+  button.go:disabled { opacity: .55; cursor: default; }
+
+  .done { text-align: center; padding: 34px 20px; }
+  .done .tick { font-size: 46px; line-height: 1; }
+  .done h2 { font-size: 20px; margin: 14px 0 8px; }
+  .ref { display: inline-block; margin-top: 12px; background: var(--gold-tint);
+    border: 1px solid #EADFBE; border-radius: 10px; padding: 9px 16px;
+    font-weight: 700; font-size: 15px; letter-spacing: .5px; }
+  .banner { border-radius: 11px; padding: 11px 13px; font-size: 13px; font-weight: 600;
+    margin-bottom: 12px; }
+  .banner.bad { background: var(--bad-bg); color: var(--bad); border: 1px solid #F0C9CB; }
+  footer { text-align: center; color: var(--mut); font-size: 11.5px; margin-top: 22px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="/logo-head.png" alt="بيت العباءة الشرقية"/>
+    <h1>الدعم الفني</h1>
+    <p class="sub">صف عُطلك ومكانك، وتصل التذكرةُ إلى فريق تقنية المعلومات
+      فورًا. ويصلك رقمُ بلاغٍ تُتابع به.</p>
+  </header>
+
+  <div id="form">
+    <div id="banner"></div>
+
+    <div class="card">
+      <p class="sec">من أنت</p>
+      <div class="grid">
+        <div class="f">
+          <label for="name">الاسم الثلاثي <span class="star">*</span></label>
+          <input id="name" autocomplete="name" placeholder="مثال: محمد عبدالله الحربي"/>
+          <div class="err" id="e_name"></div>
+        </div>
+        <div class="f">
+          <label for="phone">رقم الجوال <span class="star">*</span></label>
+          <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="05xxxxxxxx"/>
+          <div class="err" id="e_phone"></div>
+        </div>
+        <div class="f">
+          <label for="department">القسم</label>
+          <select id="department"><option value="">— اختر —</option></select>
+        </div>
+        <div class="f">
+          <label for="empNo">الرقم الوظيفي</label>
+          <input id="empNo" placeholder="إن كنت تذكره"/>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="sec">أين أنت</p>
+      <div class="grid">
+        <div class="f">
+          <label for="location">الموقع</label>
+          <select id="location"><option value="">— اختر —</option></select>
+        </div>
+        <div class="f">
+          <label for="spot">تحديد المكان <span class="star">*</span></label>
+          <input id="spot" placeholder="مثال: الدور الثاني — مكتب المحاسبة"/>
+          <div class="hint">حتى يصل الفنيُّ إليك بلا سؤال.</div>
+          <div class="err" id="e_spot"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="sec">المشكلة</p>
+      <div class="f full" style="margin-bottom:14px">
+        <label>نوعها</label>
+        <div class="chips" id="kinds"></div>
+      </div>
+      <div class="f full" style="margin-bottom:14px">
+        <label>ما مدى تعطّلك؟</label>
+        <div class="chips" id="prios"></div>
+      </div>
+      <div class="f full" style="margin-bottom:14px">
+        <label for="problem">صف المشكلة <span class="star">*</span></label>
+        <textarea id="problem" placeholder="ماذا حدث؟ ومتى بدأ؟ وما الذي جرّبته؟ وهل تظهر رسالة خطأ — اكتب نصّها."></textarea>
+        <div class="err" id="e_problem"></div>
+      </div>
+      <div class="f full">
+        <label>صورة للمشكلة (اختياري)</label>
+        <label class="file" id="fileBox">
+          📎 صوّر الشاشة أو الجهاز وأرفق الصورة
+          <input id="file" type="file" accept="image/png,image/jpeg,image/webp,application/pdf"/>
+        </label>
+        <div class="err" id="e_file"></div>
+        <img class="thumb" id="thumb" style="display:none" alt=""/>
+      </div>
+    </div>
+
+    <button class="go" id="send">إرسال البلاغ</button>
+    <footer>بيت العباءة الشرقية — تقنية المعلومات</footer>
+  </div>
+
+  <div id="done" class="card done" style="display:none">
+    <div class="tick">✅</div>
+    <h2>وصل بلاغُك</h2>
+    <p class="sub" id="doneMsg">فريقُ تقنية المعلومات يراه الآن، ويُتّصل بك على
+      الرقم الذي كتبته.</p>
+    <div class="ref" id="ref"></div>
+    <p class="hint" style="margin-top:16px">احتفظ بالرقم — تُتابع به بلاغك.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var KINDS = ["حاسب آلي", "شبكة وإنترنت", "طابعة أو ماسح", "برنامج أو نظام",
+               "جوال أو تابلت", "بريد إلكتروني", "جهاز البصمة", "كاميرات", "أخرى"];
+  // الأولويةُ بأثرها على العمل لا باسمها: «عاجل» يختاره الجميع، و«متوقّف
+  // عن العمل» يختاره من توقّف فعلًا.
+  var PRIOS = [["1", "أستطيع العمل"], ["2", "يُعطّلني"], ["3", "متوقّف تمامًا"]];
+  var kind = "أخرى", prio = "1", att = null;
+
+  function chips(host, items, get, set) {
+    host.innerHTML = "";
+    items.forEach(function (it) {
+      var v = it[0] === undefined ? it : it[0];
+      var t = it[1] === undefined ? it : it[1];
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "chip"; b.textContent = t;
+      b.setAttribute("aria-pressed", String(get() === v));
+      b.onclick = function () {
+        set(v);
+        Array.prototype.forEach.call(host.children, function (c) {
+          c.setAttribute("aria-pressed", String(c === b));
+        });
+      };
+      host.appendChild(b);
+    });
+  }
+  chips($("kinds"), KINDS, function () { return kind; }, function (v) { kind = v; });
+  chips($("prios"), PRIOS, function () { return prio; }, function (v) { prio = v; });
+
+  fetch("/api/support/options").then(function (r) { return r.json(); }).then(function (o) {
+    function fill(sel, list) {
+      (list || []).forEach(function (n) {
+        var op = document.createElement("option");
+        op.value = n; op.textContent = n; sel.appendChild(op);
+      });
+    }
+    fill($("department"), o.departments);
+    fill($("location"), o.locations);
+  }).catch(function () {});
+
+  $("file").onchange = function (ev) {
+    var f = ev.target.files && ev.target.files[0];
+    $("e_file").textContent = "";
+    if (!f) { att = null; $("thumb").style.display = "none"; return; }
+    if (f.size > 8 * 1024 * 1024) {
+      $("e_file").textContent = "حجم الملف كبير — الحد ٨ ميجابايت";
+      ev.target.value = ""; return;
+    }
+    var rd = new FileReader();
+    rd.onload = function () {
+      var s = String(rd.result);
+      att = { name: f.name, base64: s.slice(s.indexOf(",") + 1) };
+      if (/^image\//.test(f.type)) { $("thumb").src = s; $("thumb").style.display = "block"; }
+      else { $("thumb").style.display = "none"; }
+      $("fileBox").firstChild.textContent = "📎 " + f.name + " — اضغط للتبديل";
+    };
+    rd.readAsDataURL(f);
+  };
+
+  function bad(id, msg) {
+    $(id).classList.add("bad");
+    $("e_" + id).textContent = msg;
+    return false;
+  }
+  function clear(id) { $(id).classList.remove("bad"); $("e_" + id).textContent = ""; }
+
+  $("send").onclick = function () {
+    ["name", "phone", "spot", "problem"].forEach(clear);
+    $("banner").innerHTML = "";
+    var ok = true;
+    if ($("name").value.trim().length < 3) ok = bad("name", "اكتب اسمك الثلاثي");
+    if ($("phone").value.replace(/[^0-9]/g, "").length < 9) ok = bad("phone", "رقمٌ صحيحٌ يُتّصل به");
+    if (!$("spot").value.trim()) ok = bad("spot", "أين أنت بالضبط؟");
+    if ($("problem").value.trim().length < 10) ok = bad("problem", "صف المشكلة في جملةٍ على الأقل");
+    if (!ok) {
+      var first = document.querySelector(".bad");
+      if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    $("send").disabled = true;
+    $("send").textContent = "جارٍ الإرسال…";
+    fetch("/api/support", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: $("name").value, phone: $("phone").value,
+        department: $("department").value, empNo: $("empNo").value,
+        location: $("location").value, spot: $("spot").value,
+        kind: kind, priority: prio, problem: $("problem").value,
+        attachment: att
+      })
+    }).then(function (r) {
+      return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "تعذّر الإرسال"); return j; });
+    }).then(function (j) {
+      $("form").style.display = "none";
+      $("done").style.display = "block";
+      $("ref").textContent = "رقم البلاغ: " + (j.ref || "—");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }).catch(function (e) {
+      $("banner").innerHTML = '<div class="banner bad"></div>';
+      $("banner").firstChild.textContent = e.message || "تعذّر الإرسال — حاول ثانيةً";
+      $("send").disabled = false;
+      $("send").textContent = "إرسال البلاغ";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  };
+})();
+</script>
+</body>
+</html>
