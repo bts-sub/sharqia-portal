@@ -158,11 +158,7 @@ app.get("/api/health/odoo", async (req, res) => {
       p === "/" || p === "/join" || p.startsWith("/join/") ||
       p === "/join.js" || p === "/join.html" ||
       p === "/api/join/options" || p.startsWith("/api/join/") ||
-      // صفحةُ الدعم الفني تعمل على النطاقين: من تعطّل حاسبُه قد يكون
-      // الرابطُ المحفوظ عنده أحدَهما، ولا يُطلب منه تذكّرُ أيِّهما.
-      p === "/support" || p === "/it" || p === "/support.html" ||
-      p === "/api/support" ||
-      p === "/api/support/options" ||
+
       p === "/logo-mark.png" || p === "/logo-head.png" || p === "/office-bg.jpg" ||
       p.startsWith("/fonts/") ||
       p === "/favicon.ico" || p === "/robots.txt";
