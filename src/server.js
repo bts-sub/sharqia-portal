@@ -158,12 +158,39 @@ app.get("/api/health/odoo", async (req, res) => {
       p === "/" || p === "/join" || p.startsWith("/join/") ||
       p === "/join.js" || p === "/join.html" ||
       p === "/api/join/options" || p.startsWith("/api/join/") ||
-
       p === "/logo-mark.png" || p === "/logo-head.png" || p === "/office-bg.jpg" ||
       p.startsWith("/fonts/") ||
       p === "/favicon.ico" || p === "/robots.txt";
     if (!allowed) {
       // لا تطبيقَ هنا: من طلب مسارًا آخر يُردّ إلى الصفحة لا إلى التطبيق
+      if (p.startsWith("/api/")) return res.status(404).json({ error: "غير متاح على هذا النطاق" });
+      return res.redirect(302, "/");
+    }
+    return next();
+  });
+
+  // ⚠️ ونطاقٌ ثالثٌ للدعم الفني، للعلّة نفسها وأشدّ: أندرويد يفتح التطبيقَ
+  // المثبَّتَ لروابط نطاقه قبل أن تبلغ المتصفّحَ أصلًا، واستثناءُ عامل
+  // الخدمة لا يبلغ ذلك. ومن يفتح صفحةَ الدعم قد تعطّل عنده شيءٌ فعلًا —
+  // فلا يُقابَل بشاشة دخولٍ لا يريدها.
+  //
+  // وهو نطاقٌ مستقلٌّ عن نطاق البيانات أيضًا: بابُ بلاغِ عطلٍ غيرُ باب
+  // تعبئةِ ملفّ موظف، ومن يُعطى أحدهما لا يُفتح له الآخر.
+  const IT_HOST = (process.env.IT_HOST || "it.sharqiaa-tech.net").toLowerCase();
+  const onItHost = (req) =>
+    String(req.hostname || "").toLowerCase() === IT_HOST;
+
+  app.use((req, res, next) => {
+    if (!onItHost(req)) return next();
+    const p = req.path;
+    if (p === "/sw.js" || p === "/manifest.webmanifest") return res.status(404).end();
+    const allowed =
+      p === "/" || p === "/support" || p === "/it" || p === "/support.html" ||
+      p === "/api/support" || p === "/api/support/options" ||
+      p === "/logo-mark.png" || p === "/logo-head.png" || p === "/office-bg.jpg" ||
+      p.startsWith("/fonts/") ||
+      p === "/favicon.ico" || p === "/robots.txt";
+    if (!allowed) {
       if (p.startsWith("/api/")) return res.status(404).json({ error: "غير متاح على هذا النطاق" });
       return res.redirect(302, "/");
     }
@@ -270,6 +297,10 @@ if (fs.existsSync(frontendPath)) {
     };
     app.get("/support", sendSupport);
     app.get("/it", sendSupport);
+    // على نطاق الدعم الصفحةُ هي الجذر: من يفتح it.sharqiaa-tech.net يجد
+    // نموذجَ البلاغ مباشرةً بلا مسارٍ يُكتب بعده.
+    app.get("/", (req, res, next) =>
+      (String(req.hostname || "").toLowerCase() === IT_HOST ? sendSupport(req, res) : next()));
   }
 
   app.get("/", sendApp);
