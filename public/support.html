@@ -3,211 +3,442 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<meta name="theme-color" content="#14110D"/>
-<title>الدعم الفني — بيت العباءة الشرقية</title>
+<meta name="theme-color" content="#0A1A33"/>
+<title>بوابة خدمات تقنية المعلومات — بيت العباءة الشرقية</title>
 <link rel="icon" href="/logo-mark.png?v=2"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet"/>
 <style>
+  /* ⚠️ خطٌّ محليٌّ تحت القاهرة لا بعدها وحسب: هذه الصفحة يفتحها من تعطّلت
+     شبكتُه — فلو لم يصل خطُّ جوجل وجب أن تُقرأ الصفحةُ بخطٍّ عربيٍّ من
+     الخادم نفسه، لا بخطّ النظام الافتراضي. */
   @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
-  @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-SemiBold.ttf") format("truetype"); font-weight: 600; font-display: swap; }
-  @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-SemiBold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
+  @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-Medium.ttf") format("truetype"); font-weight: 500 600; font-display: swap; }
+  @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-SemiBold.ttf") format("truetype"); font-weight: 700 900; font-display: swap; }
 
-  /* الهويةُ نفسها التي في بوابة البيانات: محايدٌ دافئ، والذهبيُّ لهجةٌ لا
-     لونُ صفحة. ومن يفتح الرابطين يعرف أنهما من بيتٍ واحد. */
   :root {
-    --gold: #B8912A; --gold-tint: #F7F2E4;
-    --ink: #17150F; --ink-2: #3D3830; --mut: #7C756A;
-    --line: #E7E2D8; --bg: #FAF8F4; --card: #FFFFFF;
-    --ok: #16794A; --ok-bg: #EBF7F0; --bad: #B4232A; --bad-bg: #FBEDED;
-    --sh: 0 2px 4px rgba(23,21,15,.04), 0 12px 32px rgba(23,21,15,.06);
-    --r: 14px;
+    --navy:   #0A1A33;  --navy-2: #102648;  --navy-3: #16325E;
+    --gold:   #C9A227;  --gold-2: #E0C45C;  --gold-tint: #FBF6E6;
+    --ink:    #111827;  --ink-2:  #374151;  --mut: #6B7280;  --faint: #9CA3AF;
+    --line:   #E5E7EB;  --line-2: #F3F4F6;
+    --card:   #FFFFFF;
+    --ok:     #0F7B4F;  --ok-bg:  #ECFDF3;  --ok-line: #A7E3C4;
+    --bad:    #B42318;  --bad-bg: #FEF3F2;  --bad-line: #F5B5B0;
+    --sh-1: 0 1px 2px rgba(10,26,51,.06);
+    --sh-2: 0 4px 10px rgba(10,26,51,.06), 0 18px 44px rgba(10,26,51,.10);
+    --r: 16px;
+    --fam: "Cairo", "PlexAr", system-ui, "Segoe UI", sans-serif;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body { margin: 0; background: var(--bg); color: var(--ink);
-    font-family: "PlexAr", system-ui, "Segoe UI", sans-serif;
-    font-size: 15px; line-height: 1.75; -webkit-font-smoothing: antialiased; }
-  body::before { content: ""; position: fixed; inset: 0; z-index: -2;
-    background: url("/office-bg.jpg") center 20% / cover no-repeat; }
-  body::after { content: ""; position: fixed; inset: 0; z-index: -1;
-    background: linear-gradient(180deg, rgba(250,249,246,.93) 0%, rgba(250,249,246,.96) 60%, rgba(250,249,246,.98) 100%); }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; min-height: 100%; color: var(--ink);
+    font-family: var(--fam); font-size: 16px; line-height: 1.85;
+    -webkit-font-smoothing: antialiased;
+    background: var(--navy);
+  }
+  /* الخلفيةُ كحليّةٌ بتدرّجٍ هادئ، وفوقها شبكةُ نقاطٍ وخطوطِ اتصالٍ خفيفة.
+     رسمٌ متّجهٌ داخل الصفحة لا صورةٌ تُحمَّل: لا طلبَ شبكةٍ إضافيًّا على
+     من شبكتُه هي العطل. */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -2;
+    background:
+      radial-gradient(1100px 620px at 85% -8%, rgba(201,162,39,.16), transparent 62%),
+      radial-gradient(900px 540px at 8% 4%, rgba(22,50,94,.85), transparent 58%),
+      linear-gradient(170deg, #0C1F3C 0%, #0A1A33 46%, #091628 100%);
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0; z-index: -1; opacity: .5;
+    background-image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='360' height='360' viewBox='0 0 360 360'>\
+<g fill='none' stroke='%23C9A227' stroke-width='.9' stroke-opacity='.30'>\
+<path d='M40 60 L150 24 L268 76 L330 40'/><path d='M22 190 L120 140 L240 186 L336 150'/>\
+<path d='M46 318 L144 268 L262 316 L344 272'/><path d='M150 24 L120 140 L144 268'/>\
+<path d='M268 76 L240 186 L262 316'/><path d='M40 60 L22 190 L46 318'/>\
+<path d='M330 40 L336 150 L344 272'/></g>\
+<g fill='%23C9A227' fill-opacity='.46'>\
+<circle cx='40' cy='60' r='2.6'/><circle cx='150' cy='24' r='2.6'/><circle cx='268' cy='76' r='2.6'/>\
+<circle cx='330' cy='40' r='2.6'/><circle cx='22' cy='190' r='2.6'/><circle cx='120' cy='140' r='2.6'/>\
+<circle cx='240' cy='186' r='2.6'/><circle cx='336' cy='150' r='2.6'/><circle cx='46' cy='318' r='2.6'/>\
+<circle cx='144' cy='268' r='2.6'/><circle cx='262' cy='316' r='2.6'/><circle cx='344' cy='272' r='2.6'/>\
+</g></svg>");
+    background-size: 360px 360px;
+  }
 
-  .wrap { max-width: 760px; margin: 0 auto; padding: 22px 16px 64px; }
-  header { text-align: center; padding: 26px 0 18px; }
-  header img { height: 62px; width: auto; }
-  h1 { font-size: 23px; margin: 14px 0 6px; font-weight: 700; letter-spacing: -.2px; }
-  .sub { color: var(--mut); font-size: 13.5px; margin: 0 auto; max-width: 520px; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 0 18px 72px; }
 
-  .card { background: var(--card); border: 1px solid var(--line);
-    border-radius: var(--r); box-shadow: var(--sh); padding: 18px 16px; margin-bottom: 14px; }
-  .sec { font-size: 12px; font-weight: 700; color: var(--gold);
-    letter-spacing: .6px; margin: 0 0 14px; display: flex; align-items: center; gap: 9px; }
-  .sec::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  /* ── الترويسة ── */
+  header { text-align: center; padding: 42px 0 30px; }
+  .badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: #fff; border-radius: 22px; padding: 16px 26px;
+    box-shadow: 0 10px 34px rgba(0,0,0,.26); border: 1px solid rgba(201,162,39,.30);
+  }
+  .badge img { height: 58px; width: auto; display: block; }
+  h1 {
+    color: #fff; font-size: 30px; font-weight: 900; letter-spacing: -.3px;
+    margin: 22px 0 0; line-height: 1.5;
+  }
+  .tag {
+    display: inline-block; margin-top: 10px; color: var(--gold-2);
+    font-size: 16px; font-weight: 600;
+  }
+  .rule {
+    width: 76px; height: 3px; border-radius: 3px; margin: 18px auto 0;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  }
+  .lead {
+    color: rgba(255,255,255,.76); font-size: 14.5px; max-width: 540px;
+    margin: 14px auto 0; line-height: 1.95;
+  }
 
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
-  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
-  .f { display: flex; flex-direction: column; gap: 6px; }
+  /* ── البطاقات ── */
+  .card {
+    background: var(--card); border-radius: var(--r); box-shadow: var(--sh-2);
+    padding: 26px 22px; margin-bottom: 18px; border: 1px solid rgba(255,255,255,.6);
+  }
+  @media (max-width: 560px) { .card { padding: 20px 16px; } }
+  .sec { display: flex; align-items: center; gap: 12px; margin: 0 0 20px; }
+  .sec .n {
+    flex: none; width: 34px; height: 34px; border-radius: 11px;
+    background: var(--navy); color: var(--gold-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14.5px; font-weight: 700;
+  }
+  .sec h2 { font-size: 17px; font-weight: 700; margin: 0; color: var(--ink); letter-spacing: -.2px; }
+  .sec .d { font-size: 12.5px; color: var(--mut); font-weight: 400; margin: 0; line-height: 1.6; }
+  .sec .t { flex: 1; min-width: 0; }
+
+  /* ── الحقول ── */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 620px) { .grid { grid-template-columns: 1fr; gap: 16px; } }
+  .f { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
   .f.full { grid-column: 1 / -1; }
-  label { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+  label { font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
   .star { color: var(--bad); font-weight: 700; }
-  .hint { font-size: 11.5px; color: var(--mut); line-height: 1.65; }
-  input, select, textarea { width: 100%; font-family: inherit; font-size: 14.5px;
-    color: var(--ink); background: #fff; border: 1px solid var(--line);
-    border-radius: 11px; padding: 11px 12px; outline: none; transition: border-color .15s; }
-  input:focus, select:focus, textarea:focus { border-color: var(--gold); }
+  .opt { color: var(--faint); font-weight: 400; font-size: 12px; }
+  .hint { font-size: 12.5px; color: var(--mut); line-height: 1.7; }
+
+  input, select, textarea {
+    width: 100%; font-family: inherit; font-size: 15.5px; color: var(--ink);
+    background: #fff; border: 1.5px solid var(--line); border-radius: 12px;
+    padding: 13px 15px; outline: none; line-height: 1.7;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  select { appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%236B7280' stroke-width='1.8' stroke-linecap='round'/></svg>"); background-repeat: no-repeat; background-position: left 15px center; padding-left: 40px; }
+  input::placeholder, textarea::placeholder { color: #B6BCC6; }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--gold); box-shadow: 0 0 0 4px rgba(201,162,39,.14);
+  }
   input.bad, select.bad, textarea.bad { border-color: var(--bad); background: var(--bad-bg); }
-  textarea { min-height: 128px; resize: vertical; line-height: 1.8; }
-  .err { font-size: 11.5px; color: var(--bad); font-weight: 600; }
+  textarea { min-height: 150px; resize: vertical; }
+  .err { display: none; font-size: 12.5px; color: var(--bad); font-weight: 600; gap: 6px; align-items: flex-start; }
+  .err.on { display: flex; }
+  .err svg { flex: none; margin-top: 4px; }
 
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-  .chip { border: 1px solid var(--line); background: #fff; border-radius: 999px;
-    padding: 8px 14px; font-family: inherit; font-size: 13px; color: var(--ink-2);
-    cursor: pointer; transition: all .15s; }
-  .chip:hover { border-color: var(--gold); }
-  .chip[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  /* ── بطاقاتُ نوع المشكلة ── */
+  .kinds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 680px) { .kinds { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 380px) { .kinds { grid-template-columns: 1fr; } }
+  .kind {
+    display: flex; flex-direction: column; align-items: center; gap: 9px;
+    background: #fff; border: 1.5px solid var(--line); border-radius: 14px;
+    padding: 17px 10px; cursor: pointer; font-family: inherit;
+    text-align: center; transition: all .16s;
+  }
+  .kind svg { width: 26px; height: 26px; stroke: var(--navy-3); fill: none;
+    stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: stroke .16s; }
+  .kind span { font-size: 13.5px; font-weight: 600; color: var(--ink-2); line-height: 1.5; }
+  .kind:hover { border-color: var(--gold); background: #FFFDF6; }
+  .kind[aria-pressed="true"] {
+    border-color: var(--navy); background: var(--navy); box-shadow: var(--sh-1);
+  }
+  .kind[aria-pressed="true"] svg { stroke: var(--gold-2); }
+  .kind[aria-pressed="true"] span { color: #fff; }
 
-  .file { display: block; border: 1.5px dashed var(--line); border-radius: 12px;
-    padding: 14px; text-align: center; cursor: pointer; color: var(--mut); font-size: 13px; }
-  .file:hover { border-color: var(--gold); }
-  .file input { display: none; }
-  .thumb { max-width: 100%; max-height: 190px; border-radius: 10px; margin-top: 10px; }
+  /* ── أثرُ العطل على العمل ── */
+  .prios { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 560px) { .prios { grid-template-columns: 1fr; } }
+  .prio {
+    background: #fff; border: 1.5px solid var(--line); border-radius: 14px;
+    padding: 14px 15px; cursor: pointer; font-family: inherit; text-align: start;
+    display: flex; align-items: center; gap: 11px; transition: all .16s;
+  }
+  .prio .dot { flex: none; width: 11px; height: 11px; border-radius: 50%; background: var(--line); transition: background .16s; }
+  .prio b { display: block; font-size: 14.5px; font-weight: 700; color: var(--ink); }
+  .prio small { display: block; font-size: 12px; color: var(--mut); line-height: 1.6; }
+  .prio:hover { border-color: var(--gold); }
+  .prio[aria-pressed="true"] { border-color: var(--navy); background: #F7F9FC; }
+  .prio[data-v="1"][aria-pressed="true"] .dot { background: var(--ok); }
+  .prio[data-v="2"][aria-pressed="true"] .dot { background: #D97706; }
+  .prio[data-v="3"][aria-pressed="true"] .dot { background: var(--bad); }
 
-  button.go { width: 100%; border: none; border-radius: 12px; padding: 15px;
-    background: var(--ink); color: #fff; font-family: inherit; font-size: 15.5px;
-    font-weight: 700; cursor: pointer; transition: opacity .15s; }
-  button.go:disabled { opacity: .55; cursor: default; }
+  /* ── المرفق ── */
+  .drop {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    border: 2px dashed var(--line); border-radius: 14px; padding: 26px 16px;
+    text-align: center; cursor: pointer; transition: all .16s; background: #FCFCFD;
+  }
+  .drop:hover, .drop.over { border-color: var(--gold); background: var(--gold-tint); }
+  .drop svg { width: 30px; height: 30px; stroke: var(--gold); fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .drop b { font-size: 14.5px; font-weight: 700; color: var(--ink-2); }
+  .drop small { font-size: 12.5px; color: var(--mut); }
+  .drop input { display: none; }
+  .prev { margin-top: 12px; display: none; align-items: center; gap: 12px;
+    background: var(--line-2); border-radius: 12px; padding: 10px 12px; }
+  .prev.on { display: flex; }
+  .prev img { width: 58px; height: 58px; object-fit: cover; border-radius: 9px; flex: none; background: #fff; }
+  .prev .nm { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--ink-2);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prev button { flex: none; border: none; background: #fff; border-radius: 9px;
+    width: 34px; height: 34px; cursor: pointer; color: var(--bad); font-size: 17px; font-family: inherit; }
 
-  .done { text-align: center; padding: 34px 20px; }
-  .done .tick { font-size: 46px; line-height: 1; }
-  .done h2 { font-size: 20px; margin: 14px 0 8px; }
-  .ref { display: inline-block; margin-top: 12px; background: var(--gold-tint);
-    border: 1px solid #EADFBE; border-radius: 10px; padding: 9px 16px;
-    font-weight: 700; font-size: 15px; letter-spacing: .5px; }
-  .banner { border-radius: 11px; padding: 11px 13px; font-size: 13px; font-weight: 600;
-    margin-bottom: 12px; }
-  .banner.bad { background: var(--bad-bg); color: var(--bad); border: 1px solid #F0C9CB; }
-  footer { text-align: center; color: var(--mut); font-size: 11.5px; margin-top: 22px; }
+  /* ── الإرسال ── */
+  .go {
+    width: 100%; border: none; border-radius: 14px; padding: 18px;
+    background: linear-gradient(180deg, var(--navy-3), var(--navy));
+    color: #fff; font-family: inherit; font-size: 17px; font-weight: 700;
+    cursor: pointer; box-shadow: 0 10px 26px rgba(10,26,51,.30);
+    display: flex; align-items: center; justify-content: center; gap: 11px;
+    transition: transform .12s, opacity .15s;
+  }
+  .go:hover:not(:disabled) { transform: translateY(-1px); }
+  .go:disabled { opacity: .72; cursor: default; transform: none; }
+  .spin { width: 19px; height: 19px; border: 2.4px solid rgba(255,255,255,.32);
+    border-top-color: var(--gold-2); border-radius: 50%; animation: sp .7s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+
+  .banner { display: none; border-radius: 13px; padding: 14px 16px; font-size: 14px;
+    font-weight: 600; margin-bottom: 18px; line-height: 1.75; }
+  .banner.on { display: block; }
+  .banner.bad { background: var(--bad-bg); color: var(--bad); border: 1.5px solid var(--bad-line); }
+
+  /* ── النجاح ── */
+  .done { display: none; text-align: center; padding: 44px 24px; }
+  .done.on { display: block; }
+  .done .ok {
+    width: 76px; height: 76px; border-radius: 50%; margin: 0 auto 20px;
+    background: var(--ok-bg); border: 2px solid var(--ok-line);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .done .ok svg { width: 36px; height: 36px; stroke: var(--ok); fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+  .done h2 { font-size: 23px; font-weight: 700; margin: 0 0 10px; }
+  .done p { color: var(--mut); font-size: 14.5px; margin: 0 auto; max-width: 440px; line-height: 1.95; }
+  .ticket {
+    display: inline-block; margin-top: 22px; background: var(--navy);
+    border-radius: 14px; padding: 16px 30px; color: #fff;
+  }
+  .ticket .lb { display: block; font-size: 12px; color: var(--gold-2); font-weight: 600; letter-spacing: .4px; }
+  .ticket .no { display: block; font-size: 27px; font-weight: 900; letter-spacing: 2px; direction: ltr; margin-top: 2px; }
+  .again { margin-top: 24px; background: none; border: 1.5px solid var(--line);
+    border-radius: 12px; padding: 12px 24px; font-family: inherit; font-size: 14px;
+    font-weight: 600; color: var(--ink-2); cursor: pointer; }
+  .again:hover { border-color: var(--gold); color: var(--navy); }
+
+  footer { text-align: center; color: rgba(255,255,255,.52); font-size: 12.5px;
+    margin-top: 26px; line-height: 1.9; }
+  footer b { color: rgba(255,255,255,.72); font-weight: 600; }
 </style>
 </head>
 <body>
 <div class="wrap">
+
   <header>
-    <img src="/logo-head.png" alt="بيت العباءة الشرقية"/>
-    <h1>الدعم الفني</h1>
-    <p class="sub">صف عُطلك ومكانك، وتصل التذكرةُ إلى فريق تقنية المعلومات
-      فورًا. ويصلك رقمُ بلاغٍ تُتابع به.</p>
+    <div class="badge"><img src="/logo-head.png" alt="بيت العباءة الشرقية"/></div>
+    <h1>بوابة خدمات تقنية المعلومات</h1>
+    <span class="tag">دعم تقني يسهّل يومك</span>
+    <div class="rule"></div>
+    <p class="lead">صف عُطلك ومكانك، ويصل بلاغُك إلى فريق تقنية المعلومات
+      مباشرةً. ويظهر لك رقمُ الطلب عند الإرسال.</p>
   </header>
 
-  <div id="form">
-    <div id="banner"></div>
+  <form id="form" novalidate>
+    <div class="banner bad" id="banner"></div>
 
-    <div class="card">
-      <p class="sec">من أنت</p>
+    <!-- ١ · بيانات الموظف -->
+    <section class="card">
+      <div class="sec">
+        <div class="n">١</div>
+        <div class="t">
+          <h2>بيانات الموظف</h2>
+          <p class="d">حتى يُعرف صاحبُ البلاغ ويُتّصل به عند المتابعة.</p>
+        </div>
+      </div>
       <div class="grid">
         <div class="f">
           <label for="name">الاسم الثلاثي <span class="star">*</span></label>
-          <input id="name" autocomplete="name" placeholder="مثال: محمد عبدالله الحربي"/>
+          <input id="name" name="name" autocomplete="name" placeholder="محمد عبدالله الحربي"/>
           <div class="err" id="e_name"></div>
         </div>
         <div class="f">
           <label for="phone">رقم الجوال <span class="star">*</span></label>
-          <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="05xxxxxxxx"/>
+          <input id="phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="05XXXXXXXX"/>
           <div class="err" id="e_phone"></div>
         </div>
         <div class="f">
-          <label for="department">القسم</label>
-          <select id="department"><option value="">— اختر —</option></select>
+          <label for="department">القسم <span class="opt">(اختياري)</span></label>
+          <select id="department" name="department"><option value="">— اختر قسمك —</option></select>
         </div>
         <div class="f">
-          <label for="empNo">الرقم الوظيفي</label>
-          <input id="empNo" placeholder="إن كنت تذكره"/>
+          <label for="empNo">الرقم الوظيفي <span class="opt">(اختياري)</span></label>
+          <input id="empNo" name="empNo" placeholder="إن كنت تذكره"/>
         </div>
       </div>
-    </div>
+    </section>
 
-    <div class="card">
-      <p class="sec">أين أنت</p>
+    <!-- ٢ · الموقع -->
+    <section class="card">
+      <div class="sec">
+        <div class="n">٢</div>
+        <div class="t">
+          <h2>الموقع</h2>
+          <p class="d">ليصل الفنيُّ إليك مباشرةً بلا سؤالٍ عن مكانك.</p>
+        </div>
+      </div>
       <div class="grid">
         <div class="f">
-          <label for="location">الموقع</label>
-          <select id="location"><option value="">— اختر —</option></select>
+          <label for="location">الفرع أو المبنى <span class="opt">(اختياري)</span></label>
+          <select id="location" name="location"><option value="">— اختر الموقع —</option></select>
         </div>
         <div class="f">
           <label for="spot">تحديد المكان <span class="star">*</span></label>
-          <input id="spot" placeholder="مثال: الدور الثاني — مكتب المحاسبة"/>
-          <div class="hint">حتى يصل الفنيُّ إليك بلا سؤال.</div>
+          <input id="spot" name="spot" placeholder="الدور الثاني — مكتب المحاسبة"/>
+          <div class="hint">الدور، أو رقم المكتب، أو خط الإنتاج.</div>
           <div class="err" id="e_spot"></div>
         </div>
       </div>
-    </div>
+    </section>
 
-    <div class="card">
-      <p class="sec">المشكلة</p>
-      <div class="f full" style="margin-bottom:14px">
-        <label>نوعها</label>
-        <div class="chips" id="kinds"></div>
+    <!-- ٣ · تفاصيل المشكلة -->
+    <section class="card">
+      <div class="sec">
+        <div class="n">٣</div>
+        <div class="t">
+          <h2>تفاصيل المشكلة</h2>
+          <p class="d">كلّما وضحت التفاصيل قصُر طريقُ الحل.</p>
+        </div>
       </div>
-      <div class="f full" style="margin-bottom:14px">
-        <label>ما مدى تعطّلك؟</label>
-        <div class="chips" id="prios"></div>
+
+      <div class="f full" style="margin-bottom:22px">
+        <label style="margin-bottom:4px">نوع المشكلة</label>
+        <div class="kinds" id="kinds"></div>
       </div>
-      <div class="f full" style="margin-bottom:14px">
-        <label for="problem">صف المشكلة <span class="star">*</span></label>
-        <textarea id="problem" placeholder="ماذا حدث؟ ومتى بدأ؟ وما الذي جرّبته؟ وهل تظهر رسالة خطأ — اكتب نصّها."></textarea>
+
+      <div class="f full" style="margin-bottom:22px">
+        <label style="margin-bottom:4px">أثرُ العطل على عملك</label>
+        <div class="prios" id="prios"></div>
+      </div>
+
+      <div class="f full" style="margin-bottom:22px">
+        <label for="problem">وصف المشكلة <span class="star">*</span></label>
+        <textarea id="problem" name="problem" placeholder="ماذا حدث؟ ومتى بدأ؟ وما الذي جرّبته؟&#10;وإن ظهرت رسالةُ خطأ فاكتب نصّها كما هو."></textarea>
         <div class="err" id="e_problem"></div>
       </div>
+
       <div class="f full">
-        <label>صورة للمشكلة (اختياري)</label>
-        <label class="file" id="fileBox">
-          📎 صوّر الشاشة أو الجهاز وأرفق الصورة
+        <label style="margin-bottom:4px">صورة للمشكلة <span class="opt">(اختياري)</span></label>
+        <label class="drop" id="drop">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v13"/></svg>
+          <b>صوّر الشاشة أو الجهاز وأرفق الصورة</b>
+          <small>صورة أو PDF — حتى ٨ ميجابايت</small>
           <input id="file" type="file" accept="image/png,image/jpeg,image/webp,application/pdf"/>
         </label>
         <div class="err" id="e_file"></div>
-        <img class="thumb" id="thumb" style="display:none" alt=""/>
+        <div class="prev" id="prev">
+          <img id="thumb" alt=""/>
+          <span class="nm" id="fname"></span>
+          <button type="button" id="rmFile" title="إزالة">✕</button>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <button class="go" id="send">إرسال البلاغ</button>
-    <footer>بيت العباءة الشرقية — تقنية المعلومات</footer>
-  </div>
+    <button type="submit" class="go" id="send">
+      <span id="sendTxt">إرسال البلاغ</span>
+    </button>
+  </form>
 
-  <div id="done" class="card done" style="display:none">
-    <div class="tick">✅</div>
+  <section class="card done" id="done">
+    <div class="ok"><svg viewBox="0 0 24 24"><path d="M4 12.5l5.2 5.2L20 7"/></svg></div>
     <h2>وصل بلاغُك</h2>
-    <p class="sub" id="doneMsg">فريقُ تقنية المعلومات يراه الآن، ويُتّصل بك على
-      الرقم الذي كتبته.</p>
-    <div class="ref" id="ref"></div>
-    <p class="hint" style="margin-top:16px">احتفظ بالرقم — تُتابع به بلاغك.</p>
-  </div>
+    <p>سجَّلناه لدى فريق تقنية المعلومات، ويُتّصل بك على الرقم الذي كتبته.</p>
+    <div class="ticket">
+      <span class="lb">رقم الطلب</span>
+      <span class="no" id="ref">—</span>
+    </div>
+    <p style="margin-top:18px;font-size:13.5px">احتفظ بالرقم — تُراجَع به بلاغُك.</p>
+    <button class="again" id="again" type="button">إرسال بلاغٍ آخر</button>
+  </section>
+
+  <footer>
+    <b>بيت العباءة الشرقية</b> — إدارة تقنية المعلومات
+  </footer>
 </div>
 
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
-  var KINDS = ["حاسب آلي", "شبكة وإنترنت", "طابعة أو ماسح", "برنامج أو نظام",
-               "جوال أو تابلت", "بريد إلكتروني", "جهاز البصمة", "كاميرات", "أخرى"];
-  // الأولويةُ بأثرها على العمل لا باسمها: «عاجل» يختاره الجميع، و«متوقّف
-  // عن العمل» يختاره من توقّف فعلًا.
-  var PRIOS = [["1", "أستطيع العمل"], ["2", "يُعطّلني"], ["3", "متوقّف تمامًا"]];
+
+  // ⚠️ الأسماءُ هنا هي نفسُها في الخادم حرفًا بحرف (routes/support.js):
+  //    ما خرج عنها يُسجَّل «أخرى» بلا أن يدري المبلِّغ.
+  var KINDS = [
+    ["حاسب آلي",       "<rect x='2' y='4' width='20' height='13' rx='2'/><path d='M8 21h8M12 17v4'/>"],
+    ["شبكة وإنترنت",   "<path d='M5 12.5a10 10 0 0 1 14 0'/><path d='M8.5 15.8a5.5 5.5 0 0 1 7 0'/><path d='M2 9a15 15 0 0 1 20 0'/><circle cx='12' cy='19.5' r='1.1'/>"],
+    ["طابعة أو ماسح",  "<path d='M6 9V3h12v6'/><rect x='3' y='9' width='18' height='7' rx='2'/><path d='M6 14h12v7H6z'/>"],
+    ["برنامج أو نظام", "<rect x='2.5' y='3.5' width='19' height='17' rx='2'/><path d='M2.5 8.5h19'/><circle cx='6' cy='6' r='.6'/><circle cx='8.6' cy='6' r='.6'/>"],
+    ["جوال أو تابلت",  "<rect x='6' y='2' width='12' height='20' rx='2.5'/><path d='M10.5 18.5h3'/>"],
+    ["بريد إلكتروني",  "<rect x='2.5' y='5' width='19' height='14' rx='2'/><path d='M3 7l9 6.5L21 7'/>"],
+    ["جهاز البصمة",    "<path d='M12 11v3.5a7 7 0 0 1-1.2 4'/><path d='M8.5 8.6a5 5 0 0 1 7 4.4v1.5'/><path d='M5.4 6.8a9 9 0 0 1 13.2 6.2'/><path d='M15.3 19.2a9 9 0 0 0 1.1-4.2'/>"],
+    ["كاميرات",        "<path d='M3 7.5l12 4.5-12 4.5z'/><rect x='15.5' y='8.5' width='6' height='7' rx='1.5'/>"],
+    ["أخرى",           "<circle cx='12' cy='12' r='9'/><path d='M9.6 9.4a2.5 2.5 0 1 1 3.3 2.4c-.6.2-.9.8-.9 1.4v.4'/><circle cx='12' cy='17' r='.8' stroke='none' fill='currentColor'/>"]
+  ];
+  // الأولويةُ بأثرها على العمل لا باسمها: «عاجل» يختاره الجميع،
+  // و«متوقّف تمامًا» يختاره من توقّف فعلًا.
+  var PRIOS = [
+    ["1", "أستطيع العمل", "مزعجٌ لكنّه لا يوقفني"],
+    ["2", "يُعطّلني",      "أعمل ببطءٍ أو بالتفافٍ على العطل"],
+    ["3", "متوقّف تمامًا", "لا أستطيع إكمال عملي"]
+  ];
   var kind = "أخرى", prio = "1", att = null;
 
-  function chips(host, items, get, set) {
-    host.innerHTML = "";
-    items.forEach(function (it) {
-      var v = it[0] === undefined ? it : it[0];
-      var t = it[1] === undefined ? it : it[1];
+  function svg(paths) {
+    return "<svg viewBox='0 0 24 24'>" + paths + "</svg>";
+  }
+  (function kindCards() {
+    var host = $("kinds");
+    KINDS.forEach(function (k) {
       var b = document.createElement("button");
-      b.type = "button"; b.className = "chip"; b.textContent = t;
-      b.setAttribute("aria-pressed", String(get() === v));
+      b.type = "button"; b.className = "kind";
+      b.setAttribute("aria-pressed", String(kind === k[0]));
+      b.innerHTML = svg(k[1]) + "<span></span>";
+      b.lastChild.textContent = k[0];
       b.onclick = function () {
-        set(v);
+        kind = k[0];
         Array.prototype.forEach.call(host.children, function (c) {
           c.setAttribute("aria-pressed", String(c === b));
         });
       };
       host.appendChild(b);
     });
-  }
-  chips($("kinds"), KINDS, function () { return kind; }, function (v) { kind = v; });
-  chips($("prios"), PRIOS, function () { return prio; }, function (v) { prio = v; });
+  })();
+  (function prioCards() {
+    var host = $("prios");
+    PRIOS.forEach(function (p) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "prio"; b.dataset.v = p[0];
+      b.setAttribute("aria-pressed", String(prio === p[0]));
+      b.innerHTML = "<span class='dot'></span><span><b></b><small></small></span>";
+      b.querySelector("b").textContent = p[1];
+      b.querySelector("small").textContent = p[2];
+      b.onclick = function () {
+        prio = p[0];
+        Array.prototype.forEach.call(host.children, function (c) {
+          c.setAttribute("aria-pressed", String(c === b));
+        });
+      };
+      host.appendChild(b);
+    });
+  })();
 
   fetch("/api/support/options").then(function (r) { return r.json(); }).then(function (o) {
     function fill(sel, list) {
@@ -218,49 +449,87 @@
     }
     fill($("department"), o.departments);
     fill($("location"), o.locations);
-  }).catch(function () {});
+  }).catch(function () { /* القوائمُ اختيارية: غيابُها لا يمنع البلاغ */ });
 
-  $("file").onchange = function (ev) {
-    var f = ev.target.files && ev.target.files[0];
-    $("e_file").textContent = "";
-    if (!f) { att = null; $("thumb").style.display = "none"; return; }
-    if (f.size > 8 * 1024 * 1024) {
-      $("e_file").textContent = "حجم الملف كبير — الحد ٨ ميجابايت";
-      ev.target.value = ""; return;
-    }
+  // ── المرفق ──
+  var WARN = "<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.4' stroke-linecap='round'><circle cx='12' cy='12' r='10'/><path d='M12 7.5v5M12 16.3v.2'/></svg>";
+  function takeFile(f) {
+    clearErr("file");
+    if (!f) return;
+    if (f.size > 8 * 1024 * 1024) { setErr("file", "حجم الملف أكبر من ٨ ميجابايت — اختر صورةً أصغر."); return; }
     var rd = new FileReader();
     rd.onload = function () {
       var s = String(rd.result);
       att = { name: f.name, base64: s.slice(s.indexOf(",") + 1) };
+      $("fname").textContent = f.name;
       if (/^image\//.test(f.type)) { $("thumb").src = s; $("thumb").style.display = "block"; }
       else { $("thumb").style.display = "none"; }
-      $("fileBox").firstChild.textContent = "📎 " + f.name + " — اضغط للتبديل";
+      $("prev").classList.add("on");
     };
+    rd.onerror = function () { setErr("file", "تعذّرت قراءة الملف — جرّب صورةً أخرى."); };
     rd.readAsDataURL(f);
+  }
+  $("file").onchange = function (e) { takeFile(e.target.files && e.target.files[0]); };
+  $("rmFile").onclick = function () {
+    att = null; $("file").value = ""; $("prev").classList.remove("on"); clearErr("file");
   };
+  ["dragenter", "dragover"].forEach(function (ev) {
+    $("drop").addEventListener(ev, function (e) { e.preventDefault(); $("drop").classList.add("over"); });
+  });
+  ["dragleave", "drop"].forEach(function (ev) {
+    $("drop").addEventListener(ev, function (e) { e.preventDefault(); $("drop").classList.remove("over"); });
+  });
+  $("drop").addEventListener("drop", function (e) {
+    if (e.dataTransfer && e.dataTransfer.files) takeFile(e.dataTransfer.files[0]);
+  });
 
-  function bad(id, msg) {
-    $(id).classList.add("bad");
-    $("e_" + id).textContent = msg;
+  // ── التحقّق ──
+  function setErr(id, msg) {
+    var el = $(id); if (el) el.classList.add("bad");
+    var box = $("e_" + id);
+    box.innerHTML = WARN + "<span></span>";
+    box.lastChild.textContent = msg;
+    box.classList.add("on");
     return false;
   }
-  function clear(id) { $(id).classList.remove("bad"); $("e_" + id).textContent = ""; }
+  function clearErr(id) {
+    var el = $(id); if (el) el.classList.remove("bad");
+    var box = $("e_" + id);
+    if (box) { box.classList.remove("on"); box.innerHTML = ""; }
+  }
+  ["name", "phone", "spot", "problem"].forEach(function (id) {
+    $(id).addEventListener("input", function () { clearErr(id); });
+  });
 
-  $("send").onclick = function () {
-    ["name", "phone", "spot", "problem"].forEach(clear);
-    $("banner").innerHTML = "";
+  function validate() {
+    ["name", "phone", "spot", "problem"].forEach(clearErr);
     var ok = true;
-    if ($("name").value.trim().length < 3) ok = bad("name", "اكتب اسمك الثلاثي");
-    if ($("phone").value.replace(/[^0-9]/g, "").length < 9) ok = bad("phone", "رقمٌ صحيحٌ يُتّصل به");
-    if (!$("spot").value.trim()) ok = bad("spot", "أين أنت بالضبط؟");
-    if ($("problem").value.trim().length < 10) ok = bad("problem", "صف المشكلة في جملةٍ على الأقل");
-    if (!ok) {
+    if ($("name").value.trim().length < 3) ok = setErr("name", "اكتب اسمك الثلاثي كما هو في الهوية.");
+    if ($("phone").value.replace(/[^0-9]/g, "").length < 9)
+      ok = setErr("phone", "اكتب رقم جوالٍ صحيحًا — يُتّصل به عند متابعة بلاغك.");
+    if (!$("spot").value.trim())
+      ok = setErr("spot", "حدّد مكانك: الدور أو رقم المكتب أو خط الإنتاج.");
+    if ($("problem").value.trim().length < 10)
+      ok = setErr("problem", "صف المشكلة في جملةٍ على الأقل — ماذا حدث ومتى.");
+    return ok;
+  }
+
+  // ── الإرسال ──
+  var busy = false;
+  $("form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (busy) return;
+    $("banner").classList.remove("on");
+    if (!validate()) {
       var first = document.querySelector(".bad");
-      if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (first) { first.scrollIntoView({ behavior: "smooth", block: "center" }); first.focus({ preventScroll: true }); }
       return;
     }
+    busy = true;
     $("send").disabled = true;
-    $("send").textContent = "جارٍ الإرسال…";
+    $("sendTxt").textContent = "جارٍ إرسال البلاغ…";
+    $("send").insertBefore(Object.assign(document.createElement("span"), { className: "spin", id: "sp" }), $("sendTxt"));
+
     fetch("/api/support", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -271,19 +540,35 @@
         attachment: att
       })
     }).then(function (r) {
-      return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "تعذّر الإرسال"); return j; });
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error(j.error || "تعذّر إرسال البلاغ");
+        return j;
+      });
     }).then(function (j) {
       $("form").style.display = "none";
-      $("done").style.display = "block";
-      $("ref").textContent = "رقم البلاغ: " + (j.ref || "—");
+      $("done").classList.add("on");
+      $("ref").textContent = j.ref || "—";
       window.scrollTo({ top: 0, behavior: "smooth" });
-    }).catch(function (e) {
-      $("banner").innerHTML = '<div class="banner bad"></div>';
-      $("banner").firstChild.textContent = e.message || "تعذّر الإرسال — حاول ثانيةً";
+    }).catch(function (err) {
+      var b = $("banner");
+      b.textContent = (err && err.message) || "تعذّر إرسال البلاغ — تحقّق من اتصالك وحاول ثانيةً.";
+      b.classList.add("on");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }).then(function () {
+      busy = false;
       $("send").disabled = false;
-      $("send").textContent = "إرسال البلاغ";
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      var sp = $("sp"); if (sp) sp.remove();
+      $("sendTxt").textContent = "إرسال البلاغ";
     });
+  });
+
+  $("again").onclick = function () {
+    ["name", "phone", "empNo", "spot", "problem"].forEach(function (id) { $(id).value = ""; });
+    $("department").value = ""; $("location").value = "";
+    $("rmFile").click();
+    $("done").classList.remove("on");
+    $("form").style.display = "";
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 })();
 </script>
