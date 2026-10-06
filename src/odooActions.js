@@ -4174,16 +4174,39 @@ const actions = {
       async () => {
         const users = await odoo.searchRead("sharqia.portal.user",
           [["role", "in", ["it", "admin"]], ["status", "=", "active"]],
-          ["id", "login"], { limit: 20 });
+          ["id", "login", "employee_id"], { limit: 20 });
         for (const u of users) {
           await odoo.create("sharqia.portal.notification", {
             portal_user_id: u.id, ntype: "system", title, body,
           }).catch(() => {});
         }
-        return { logins: users.map((u) => (u.login || "").trim()).filter(Boolean) };
+        // جوّالاتُهم من ملفّاتهم في أودو — لا تُكتب ثانيةً في مكانٍ آخر
+        // يُنسى تحديثُه حين يُبدّل أحدُهم رقمه.
+        const empIds = users.map((u) => u.employee_id?.[0]).filter(Boolean);
+        let phones = [];
+        if (empIds.length) {
+          const emps = await odoo.searchRead("hr.employee",
+            [["id", "in", empIds]], ["mobile_phone", "work_phone"], { limit: 20 });
+          phones = emps.map((e) => e.mobile_phone || e.work_phone)
+            .filter(Boolean).map(String);
+        }
+        return {
+          logins: users.map((u) => (u.login || "").trim()).filter(Boolean),
+          phones,
+        };
       },
-      async () => ({ logins: [] }),
-      { emptyOnError: () => ({ logins: [] }) }
+      async () => ({ logins: [], phones: [] }),
+      { emptyOnError: () => ({ logins: [], phones: [] }) }
+    );
+  },
+
+  /** حالةُ بلاغٍ لصاحبه — بالرقم والجوّال معًا. */
+  async "support.status"(params) {
+    return withOdoo(
+      async () => await odoo.execKw("helpdesk.ticket", "sharqia_support_status",
+        [String(params?.ref || ""), String(params?.phone || "")]) || { found: false },
+      async () => ({ found: false }),
+      { emptyOnError: () => ({ found: false }) }
     );
   },
 

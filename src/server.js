@@ -187,6 +187,7 @@ app.get("/api/health/odoo", async (req, res) => {
     const allowed =
       p === "/" || p === "/support" || p === "/it" || p === "/support.html" ||
       p === "/api/support" || p === "/api/support/options" ||
+      p === "/api/support/status" ||
       p === "/support-bg.jpg" ||
       p === "/logo-mark.png" || p === "/logo-head.png" || p === "/office-bg.jpg" ||
       p.startsWith("/fonts/") ||

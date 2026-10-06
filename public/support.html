@@ -234,6 +234,26 @@
     font-weight: 600; color: var(--ink-2); cursor: pointer; }
   .again:hover { border-color: var(--gold); color: var(--navy); }
 
+  .ask { margin-top: 20px; background: rgba(255,255,255,.10); color: #fff;
+    border: 1px solid rgba(255,255,255,.26); border-radius: 999px;
+    padding: 10px 20px; font-family: inherit; font-size: 13.5px; font-weight: 600;
+    cursor: pointer; backdrop-filter: blur(4px); transition: all .15s; }
+  .ask:hover { background: rgba(201,162,39,.22); border-color: var(--gold); }
+  .look { display: none; }
+  .look.on { display: block; }
+  .stat { margin-top: 18px; border-radius: 13px; padding: 16px;
+    background: var(--line-2); border: 1px solid var(--line); }
+  .stat .hd { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .stat .pill { border-radius: 999px; padding: 5px 13px; font-size: 12.5px; font-weight: 700; }
+  .stat .pill.open { background: #FEF6E7; color: #92400E; border: 1px solid #F5D9A8; }
+  .stat .pill.done { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-line); }
+  .stat .no { font-weight: 900; font-size: 17px; direction: ltr; }
+  .stat dl { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px;
+    margin: 0; font-size: 13.5px; }
+  .stat dt { color: var(--mut); font-weight: 600; }
+  .stat dd { margin: 0; color: var(--ink); font-weight: 600; }
+  .stat .visit { margin-top: 13px; background: var(--gold-tint); border: 1px solid #EADFBE;
+    border-radius: 11px; padding: 12px 14px; font-size: 14px; font-weight: 700; color: #7A5E12; }
   footer { text-align: center; color: rgba(255,255,255,.52); font-size: 12.5px;
     margin-top: 26px; line-height: 1.9; }
   footer b { color: rgba(255,255,255,.72); font-weight: 600; }
@@ -248,7 +268,38 @@
     <div class="rule"></div>
     <p class="lead">صف عُطلك ومكانك، ويصل بلاغُك إلى فريق تقنية المعلومات
       مباشرةً. ويظهر لك رقمُ الطلب عند الإرسال.</p>
+    <button type="button" class="ask" id="askBtn">لديك بلاغٌ سابق؟ استعلم عن حالته</button>
   </header>
+
+  <!-- ⚠️ الاستعلامُ بالرقمين معًا: أرقامُ التذاكر متسلسلة، فمن يعرف
+       واحدًا يعرف ما قبله وما بعده. والجوّالُ هو ما يملكه صاحبُ البلاغ. -->
+  <section class="card look" id="look">
+    <div class="sec">
+      <div class="n">؟</div>
+      <div class="t">
+        <h2>حالة بلاغك</h2>
+        <p class="d">اكتب رقم الطلب والجوال الذي قدّمت به البلاغ.</p>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="f">
+        <label for="qref">رقم الطلب</label>
+        <input id="qref" placeholder="00006"/>
+      </div>
+      <div class="f">
+        <label for="qphone">رقم الجوال</label>
+        <input id="qphone" type="tel" inputmode="numeric" placeholder="05XXXXXXXX"/>
+      </div>
+    </div>
+    <div class="err" id="e_q" style="margin-bottom:10px"></div>
+    <button type="button" class="go" id="qgo" style="padding:14px;font-size:15.5px">
+      <span id="qTxt">استعلام</span>
+    </button>
+    <div id="qres"></div>
+    <div style="text-align:center;margin-top:16px">
+      <button type="button" class="again" id="qback">رجوع إلى نموذج البلاغ</button>
+    </div>
+  </section>
 
   <form id="form" novalidate>
     <div class="banner bad" id="banner"></div>
@@ -554,6 +605,61 @@
       $("sendTxt").textContent = "إرسال البلاغ";
     });
   });
+
+  // ── الاستعلام عن بلاغٍ سابق ──
+  function showLook(on) {
+    $("look").classList.toggle("on", on);
+    $("form").style.display = on ? "none" : "";
+    $("done").classList.remove("on");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  $("askBtn").onclick = function () { showLook(true); };
+  $("qback").onclick = function () { showLook(false); };
+
+  var qbusy = false;
+  $("qgo").onclick = function () {
+    if (qbusy) return;
+    clearErr("q"); $("qres").innerHTML = "";
+    var ref = $("qref").value.trim(), ph = $("qphone").value.trim();
+    if (!ref) return setErr("q", "اكتب رقم الطلب الذي ظهر لك عند الإرسال.");
+    if (ph.replace(/[^0-9]/g, "").length < 9)
+      return setErr("q", "اكتب رقم الجوال الذي قدّمت به البلاغ.");
+    qbusy = true; $("qgo").disabled = true; $("qTxt").textContent = "جارٍ البحث…";
+    fetch("/api/support/status?ref=" + encodeURIComponent(ref) + "&phone=" + encodeURIComponent(ph))
+      .then(function (r) { return r.json().then(function (j) {
+        if (!r.ok) throw new Error(j.error || "تعذّر الاستعلام"); return j; }); })
+      .then(function (j) {
+        if (!j.found) {
+          setErr("q", "لا بلاغ بهذا الرقم مع هذا الجوال — تأكّد من الرقمين كما أرسلتهما.");
+          return;
+        }
+        var row = function (k, v) { return v ? "<dt>" + k + "</dt><dd>" + esc(v) + "</dd>" : ""; };
+        $("qres").innerHTML =
+          '<div class="stat"><div class="hd">'
+          + '<span class="no">' + esc(j.ref) + '</span>'
+          + '<span class="pill ' + (j.closed ? "done" : "open") + '">' + esc(j.stage || "—") + "</span>"
+          + "</div><dl>"
+          + row("البلاغ", j.subject)
+          + row("أُرسل في", j.created)
+          + row("الفنيّ المسؤول", j.assignee)
+          + "</dl>"
+          + (j.visit_at
+              ? '<div class="visit">🕑 موعد زيارة الفنيّ: ' + esc(j.visit_at)
+                + (j.visit_note ? "<br/><span style='font-weight:600;font-size:13px'>" + esc(j.visit_note) + "</span>" : "")
+                + "</div>"
+              : '<div class="hint" style="margin-top:11px">لم يُحدَّد موعدُ زيارةٍ بعد — يصلك حين يُحدَّد.</div>')
+          + "</div>";
+      })
+      .catch(function (e) { setErr("q", (e && e.message) || "تعذّر الاستعلام"); })
+      .then(function () {
+        qbusy = false; $("qgo").disabled = false; $("qTxt").textContent = "استعلام";
+      });
+  };
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
 
   $("again").onclick = function () {
     ["name", "phone", "empNo", "spot", "problem"].forEach(function (id) { $(id).value = ""; });

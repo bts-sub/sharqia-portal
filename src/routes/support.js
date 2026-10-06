@@ -13,6 +13,7 @@ import { runAction } from "../odooActions.js";
 import { badRequest, tooMany } from "../lib/errors.js";
 import { findByLogin } from "../lib/users.js";
 import { sendToUser } from "../lib/push.js";
+import { sendWhatsAppMany, waConfigured } from "../lib/whatsapp.js";
 
 const router = Router();
 
@@ -33,6 +34,35 @@ async function refresh() {
     console.warn("⚠️ تعذّر تحديث قوائم الدعم الفني:", e.message);
   } finally { BUSY = false; }
 }
+
+// ⚠️ الاستعلامُ بالرقمين معًا: أرقامُ التذاكر متسلسلة، فمن يعرف واحدًا
+//    يعرف ما قبله وما بعده — ويقرأ بلاغات الناس وأماكنهم وجوّالاتهم.
+//    والجوّالُ هو ما يملكه صاحبُ البلاغ وحده، فهو كلمةُ السرّ.
+const LOOKUPS = new Map();
+function lookupOk(ip) {
+  const now = Date.now();
+  const list = (LOOKUPS.get(ip) || []).filter((t) => now - t < 10 * 60 * 1000);
+  if (list.length >= 20) { LOOKUPS.set(ip, list); return false; }
+  list.push(now);
+  LOOKUPS.set(ip, list);
+  if (LOOKUPS.size > 5000) LOOKUPS.clear();
+  return true;
+}
+
+router.get("/support/status", async (req, res, next) => {
+  try {
+    const ip = req.ip || req.headers["x-forwarded-for"] || "—";
+    if (!lookupOk(ip)) throw tooMany("محاولاتٌ كثيرة — انتظر قليلًا ثمّ أعد.");
+    const ref = String(req.query.ref || "").trim().slice(0, 32);
+    const phone = String(req.query.phone || "").trim().slice(0, 20);
+    if (!ref) throw badRequest("اكتب رقم الطلب");
+    if (phone.replace(/\D/g, "").length < 9)
+      throw badRequest("اكتب رقم الجوال الذي قدّمت به البلاغ");
+    const { data } = await runAction("support.status", { ref, phone }, { user: null });
+    res.set("Cache-Control", "no-store");
+    res.json(data || { found: false });
+  } catch (e) { next(e); }
+});
 
 router.get("/support/options", async (req, res) => {
   const empty = !OPTS.data || !(OPTS.data.departments || []).length;
@@ -100,12 +130,13 @@ router.post("/support", async (req, res, next) => {
     // ⚠️ التنبيهُ بعد الردّ لا قبله: البلاغُ وصل هيلب ديسك فعلًا، وتعذُّرُ
     //    إيقاظِ فنيٍّ لا يُبطله ولا يُقال لصاحبه «لم يُرسل».
     res.json(data);
-    notifyIt(data, { name, kind: s(b.kind, 40), location: s(b.location, 60), spot })
+    notifyIt(data, { name, kind: s(b.kind, 40), location: s(b.location, 60),
+                     spot, problem, phone })
       .catch((e) => console.warn("⚠️ تعذّر تنبيه فريق التقنية:", e.message));
   } catch (e) { next(e); }
 });
 
-/** يوقظ فريقَ التقنية ببلاغٍ جديد: إشعارٌ في شاشة التطبيق ودفعٌ إلى جهازه. */
+/** يوقظ فريقَ التقنية ببلاغٍ جديد: واتسابًا وإشعارًا في التطبيق ودفعًا. */
 async function notifyIt(data, info) {
   const title = `بلاغ دعم جديد — ${info.kind || "أخرى"}`;
   const body = [
@@ -116,12 +147,27 @@ async function notifyIt(data, info) {
 
   const { data: res } = await runAction("support.notify",
     { title, body }, { user: null });
+
   // الدفعُ إلى الجهاز من هنا لا من أودو: اشتراكاتُ الأجهزة في خادم البوابة.
   for (const login of res?.logins || []) {
     const u = findByLogin(login);
     if (!u) continue;
-    sendToUser(u.id, { title, body, tag: "support", url: "/" })
-      .catch(() => {});
+    sendToUser(u.id, { title, body, tag: "support", url: "/" }).catch(() => {});
+  }
+
+  // وواتسابٌ إلى جوّالاتهم: الإشعارُ يصل من فتح التطبيق، والواتسابُ يصل
+  // من لم يفتحه — والبلاغُ قد يأتي ليلًا ولا أحد عند الشاشة.
+  const phones = res?.phones || [];
+  if (phones.length) {
+    const text = [
+      `🛠️ ${title}`,
+      body,
+      info.problem ? `\n${String(info.problem).slice(0, 600)}` : "",
+      info.phone ? `\nجوّال المبلِّغ: ${info.phone}` : "",
+    ].filter(Boolean).join("\n");
+    const r = await sendWhatsAppMany(phones, text);
+    if (r.total && !r.sent && waConfigured())
+      console.warn("⚠️ لم تصل رسالةُ واتساب لأيّ فنيّ من", r.total);
   }
 }
 

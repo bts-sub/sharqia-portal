@@ -8,6 +8,7 @@ import { requireIntegrationToken } from "../middleware/integrationAuth.js";
 import { upsertFromOdoo, updateByLogin, setPassword, findByLogin } from "../lib/users.js";
 import { insert } from "../lib/store.js";
 import { sendToUser } from "../lib/push.js";
+import { sendWhatsApp } from "../lib/whatsapp.js";
 import { badRequest, notFound, unauthorized } from "../lib/errors.js";
 import * as odoo from "../lib/odooClient.js";
 import { config } from "../config.js";
@@ -17,6 +18,19 @@ const router = Router();
 router.use("/integration", requireIntegrationToken);
 
 router.get("/integration/health", (req, res) => res.json({ ok: true, bridge: "up" }));
+
+// ⚠️ واتسابُ يُرسَل من هنا لا من أودو: مفتاحُ البوّابة في بيئة هذا الخادم
+//    وحده، فلا يُنسخ إلى أودو ولا يظهر في إعداداتٍ تُقرأ. وأودو ينادي هذا
+//    المسار بالمفتاح المشترك حين يحدّد الفنيُّ موعدَ زيارة.
+router.post("/integration/whatsapp", async (req, res, next) => {
+  try {
+    const to = String(req.body?.to || "").slice(0, 25);
+    const text = String(req.body?.text || "").slice(0, 3500);
+    if (!to || !text) return res.status(400).json({ error: "to و text مطلوبان" });
+    const r = await sendWhatsApp(to, text);
+    res.json({ sent: !!r.ok, ...(r.reason ? { reason: r.reason } : {}) });
+  } catch (e) { next(e); }
+});
 
 // إنشاء/تحديث مستخدم التطبيق وربطه بموظف Odoo
 router.post("/integration/users/upsert", async (req, res, next) => {
