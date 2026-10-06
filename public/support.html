@@ -66,16 +66,13 @@
   .wrap { max-width: 880px; margin: 0 auto; padding: 0 18px 72px; }
 
   /* ── الترويسة ── */
-  header { text-align: center; padding: 42px 0 30px; }
-  .badge {
-    display: inline-flex; align-items: center; justify-content: center;
-    background: #fff; border-radius: 22px; padding: 16px 26px;
-    box-shadow: 0 10px 34px rgba(0,0,0,.26); border: 1px solid rgba(201,162,39,.30);
-  }
-  .badge img { height: 58px; width: auto; display: block; }
+  /* ⚠️ لا بطاقةَ شعارٍ هنا: شعارُ الشركة في الخلفية نفسها، وبطاقةٌ بيضاء
+     فوقه تُكرّره مرّتين في شاشةٍ واحدة. والترويسةُ تبدأ بالعنوان. */
+  header { text-align: center; padding: 56px 0 30px; }
   h1 {
     color: #fff; font-size: 30px; font-weight: 900; letter-spacing: -.3px;
-    margin: 22px 0 0; line-height: 1.5;
+    margin: 0; line-height: 1.5;
+    text-shadow: 0 2px 18px rgba(0,0,0,.45);
   }
   .tag {
     display: inline-block; margin-top: 10px; color: var(--gold-2);
@@ -242,7 +239,6 @@
 <div class="wrap">
 
   <header>
-    <div class="badge"><img src="/logo-head.png" alt="بيت العباءة الشرقية"/></div>
     <h1>بوابة خدمات تقنية المعلومات</h1>
     <span class="tag">دعم تقني يسهّل يومك</span>
     <div class="rule"></div>
