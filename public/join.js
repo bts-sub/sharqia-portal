@@ -20,8 +20,12 @@
     var n = document.createElement(tag);
     Object.keys(attrs || {}).forEach(function (k) {
       if (k === "class") n.className = attrs[k];
-      else if (k === "html") n.innerHTML = attrs[k];
-      else if (k === "text") n.textContent = attrs[k];
+      // ⚠️ الهنديةُ تُترجَم هنا لا في كلّ موضعٍ على حدة: الصفحةُ فيها
+      //   سبعةٌ وستّون شرطًا «عربيٌّ أو إنجليزيّ»، وإضافةُ فرعٍ ثالثٍ
+      //   لكلٍّ منها سبعةٌ وستّون موضعَ خطأ. وكلُّ نصٍّ يُعرض يمرّ بهذه
+      //   الدالّة — فترجمتُه عندها تكفي، ويبقى الشرطُ ثنائيًّا كما هو.
+      else if (k === "html") n.innerHTML = hx(attrs[k]);
+      else if (k === "text") n.textContent = hx(attrs[k]);
       else if (k.slice(0, 2) === "on") n.addEventListener(k.slice(2), attrs[k]);
       else if (attrs[k] != null && attrs[k] !== false) n.setAttribute(k, attrs[k]);
     });
@@ -30,7 +34,203 @@
   };
 
   // ─────────────────────── الترجمة ───────────────────────
+  // ثلاثُ لغات: العربية والإنجليزية والهندية. والهنديةُ تُبنى على
+  // الإنجليزية: ما لم يُترجَم منها يظهر إنجليزيًّا — لا عربيًّا يعجز عن
+  // قراءته من اختار الهندية.
+  var LANGS = ["ar", "en", "hi"];
+  var LANG_NAME = { ar: "العربية", en: "English", hi: "हिन्दी" };
   var L = "ar";
+  try { if (LANGS.indexOf(localStorage.getItem("sq.intake.lang")) >= 0) L = localStorage.getItem("sq.intake.lang"); } catch (e) {}
+
+  // قاموسُ الهندية — مفتاحُه النصُّ الإنجليزيّ كما هو في الصفحة.
+  var HI = {
+    // الترويسةُ والصفحةُ الافتتاحية
+    "Abaya Sharqiaa": "अबाया शरकिया",
+    "Employee Data Portal": "कर्मचारी डेटा पोर्टल",
+    "Welcome. Please update your details so your employment record stays accurate.":
+      "आपका स्वागत है। कृपया अपना विवरण अपडेट करें ताकि आपका रोज़गार रिकॉर्ड सही बना रहे।",
+    "Takes about 5 minutes to complete.": "पूरा करने में लगभग ५ मिनट लगते हैं।",
+    "Start now": "अभी शुरू करें",
+    "Seven clear steps": "सात स्पष्ट चरण",
+    "Move between them and return to any one.": "इनके बीच आ-जा सकते हैं और किसी भी चरण पर लौट सकते हैं।",
+    "Saved automatically": "अपने आप सहेजा गया",
+    "Finish later on the same device — nothing is lost.":
+      "इसी डिवाइस पर बाद में पूरा करें — कुछ भी नहीं खोएगा।",
+    "Your data is protected": "आपका डेटा सुरक्षित है",
+    "Never published; used only in your employment file.":
+      "कभी प्रकाशित नहीं होता; केवल आपकी रोज़गार फ़ाइल में उपयोग होता है।",
+    "Profile completion": "प्रोफ़ाइल पूर्णता",
+    "Back": "पिछला", "Next": "अगला",
+    "Reference": "अनुरोध संख्या", "Submitted on": "अपडेट की तारीख",
+    "Back to start": "मुख्य पृष्ठ पर लौटें",
+    "For any question, please contact Human Resources.":
+      "किसी भी प्रश्न के लिए कृपया मानव संसाधन विभाग से संपर्क करें।",
+    "Abaya Sharqiaa — Kingdom of Saudi Arabia": "अबाया शरकिया — सऊदी अरब साम्राज्य",
+    "Confirm and submit": "पुष्टि करें और भेजें", "Sending…": "भेजा जा रहा है…",
+    "Thank you — your update was received": "धन्यवाद — आपका अपडेट प्राप्त हुआ",
+
+    // عناوينُ الأقسام
+    "Personal details": "व्यक्तिगत विवरण",
+    "Exactly as on your ID or Iqama.": "ठीक वैसे ही जैसे आपके आईडी या इक़ामा पर है।",
+    "Contact details": "संपर्क विवरण",
+    "We will reach you here — please verify.": "हम आपसे यहीं संपर्क करेंगे — कृपया जाँच लें।",
+    "Employment details": "रोज़गार विवरण",
+    "What you know; HR will refine it if needed.":
+      "जो आप जानते हैं; ज़रूरत पड़ने पर मानव संसाधन इसे ठीक कर देगा।",
+    "Qualifications & experience": "योग्यता और अनुभव",
+    "Leave anything that does not apply blank.": "जो लागू न हो उसे खाली छोड़ दें।",
+    "Bank details": "बैंक विवरण",
+    "Your salary goes here — check the IBAN carefully.":
+      "आपका वेतन यहीं आएगा — आईबैन को ध्यान से जाँचें।",
+    "Attachments": "संलग्नक",
+    "Shoot with your phone — images are shrunk automatically. Limit: 10 MB per file, 40 MB in total; each file uploads as soon as you pick it.":
+      "अपने फ़ोन से फ़ोटो लें — तस्वीरें अपने आप छोटी कर दी जाती हैं। सीमा: प्रति फ़ाइल १० एमबी, कुल ४० एमबी; हर फ़ाइल चुनते ही अपलोड हो जाती है।",
+    "Signature": "हस्ताक्षर",
+    "Sign with a blue pen on white paper, photograph it and attach — your signature confirms what you entered.":
+      "सफ़ेद काग़ज़ पर नीले पेन से हस्ताक्षर करें, उसकी फ़ोटो लें और संलग्न करें — आपका हस्ताक्षर आपकी दी गई जानकारी की पुष्टि है।",
+    "Review & confirm": "समीक्षा और पुष्टि",
+    "Check everything before sending — HR reviews it next.":
+      "भेजने से पहले सब कुछ जाँच लें — इसके बाद मानव संसाधन इसकी समीक्षा करेगा।",
+
+    // الحقول
+    "First name": "पहला नाम", "Father's name": "पिता का नाम",
+    "Grandfather's name": "दादा का नाम", "Family name": "कुल/वंश का नाम",
+    "Name in English (as in passport)": "अंग्रेज़ी में नाम (पासपोर्ट के अनुसार)",
+    "Latin letters only.": "केवल अंग्रेज़ी अक्षर।",
+    "ID type": "पहचान का प्रकार", "National ID": "राष्ट्रीय पहचान पत्र", "Iqama": "इक़ामा",
+    "ID / Iqama number": "पहचान / इक़ामा संख्या",
+    "ID expiry date": "पहचान की समाप्ति तिथि",
+    "Passport number": "पासपोर्ट संख्या",
+    "Nationality": "राष्ट्रीयता",
+    "Open the list and type the first letter to jump.":
+      "सूची खोलें और पहला अक्षर टाइप करके सीधे पहुँचें।",
+    "Gender": "लिंग", "Male": "पुरुष", "Female": "महिला",
+    "Date of birth": "जन्म तिथि", "18 years or older.": "१८ वर्ष या अधिक।",
+    "Marital status": "वैवाहिक स्थिति",
+    "Single": "अविवाहित", "Married": "विवाहित", "Divorced": "तलाकशुदा", "Widowed": "विधुर / विधवा",
+    "Children": "बच्चों की संख्या",
+    "Mobile number": "मोबाइल नंबर",
+    "Pick the country code, then type digits. Saudi numbers start with 05.":
+      "देश का कोड चुनें, फिर अंक लिखें। सऊदी नंबर ०५ से शुरू होते हैं।",
+    "Email": "ईमेल", "City": "शहर",
+    "Short national address": "संक्षिप्त राष्ट्रीय पता",
+    "Four letters then four digits, as in the National Address app.":
+      "चार अक्षर फिर चार अंक, जैसे राष्ट्रीय पता ऐप में होता है।",
+    "Emergency contact name": "आपात संपर्क का नाम",
+    "Emergency contact mobile": "आपात संपर्क का मोबाइल",
+    "Home-country contact number": "अपने देश का संपर्क नंबर",
+    "Department": "विभाग", "Job title": "पद का नाम",
+    "Pick the department first to see its titles.":
+      "पहले विभाग चुनें ताकि उसके पद दिखें।",
+    "Branch": "शाखा", "Start date": "कार्यारंभ तिथि",
+    "Contract type": "अनुबंध का प्रकार",
+    "Full time": "पूर्णकालिक", "Part time": "अंशकालिक",
+    "Seasonal": "मौसमी", "Training": "प्रशिक्षण",
+    "Qualification": "शैक्षिक योग्यता",
+    "Below secondary": "माध्यमिक से कम", "Secondary": "माध्यमिक",
+    "Diploma": "डिप्लोमा", "Bachelor's": "स्नातक",
+    "Master's": "स्नातकोत्तर", "Doctorate": "पीएच.डी.", "Other": "अन्य",
+    "Field of study": "विशेषज्ञता",
+    "University / institution": "विश्वविद्यालय / संस्थान",
+    "Years of experience": "अनुभव के वर्ष",
+    "Bank name": "बैंक का नाम", "Account holder name": "खाताधारक का नाम",
+    "IBAN": "आईबैन", "22 digits": "२२ अंक",
+    "Enter the 22 digits only — SA is fixed.":
+      "केवल २२ अंक लिखें — SA पहले से लिखा है।",
+    "IBAN letter": "आईबैन प्रमाणपत्र", "ID / Iqama": "पहचान / इक़ामा",
+    "CV / Résumé": "बायोडाटा", "Qualification certificate": "योग्यता प्रमाणपत्र",
+    "Certificates": "प्रमाणपत्र", "Personal photo": "व्यक्तिगत फ़ोटो",
+    "Other attachments": "अन्य संलग्नक", "Signature photo": "हस्ताक्षर की फ़ोटो",
+
+    // رسائلُ التحقّق
+    "This field is required.": "यह फ़ील्ड आवश्यक है।",
+    "Letters only — no digits.": "केवल अक्षर — अंक नहीं।",
+    "Latin letters only, as in the passport.": "केवल अंग्रेज़ी अक्षर, पासपोर्ट के अनुसार।",
+    "Format: four letters then four digits.": "प्रारूप: चार अक्षर फिर चार अंक।",
+    "Invalid number — digits only after the country code.":
+      "अमान्य नंबर — देश कोड के बाद केवल अंक।",
+    "ID number must be exactly 10 digits.": "पहचान संख्या ठीक १० अंकों की होनी चाहिए।",
+    "Saudi numbers start with 05 (10 digits) — or pick another country code.":
+      "सऊदी नंबर ०५ से शुरू होते हैं (१० अंक) — या दूसरा देश कोड चुनें।",
+    "Invalid email address.": "अमान्य ईमेल पता।",
+    "Date must be in the past.": "तारीख बीते समय की होनी चाहिए।",
+    "Age is under 18 — check the date.": "आयु १८ वर्ष से कम है — तारीख जाँचें।",
+    "Please check the date of birth.": "कृपया जन्म तिथि जाँचें।",
+    "Please check the highlighted fields.": "कृपया चिह्नित फ़ील्ड जाँचें।",
+    "Complete this section first.": "पहले यह अनुभाग पूरा करें।",
+    "Please sign before continuing.": "आगे बढ़ने से पहले हस्ताक्षर करें।",
+
+    // القوائمُ والمرفقات
+    "Select…": "चुनें…", "Other — type it yourself": "अन्य — स्वयं लिखें",
+    "Pick the department first…": "पहले विभाग चुनें…",
+    "Titles are listed for the department you pick.":
+      "पद उसी विभाग के दिखाए जाते हैं जो आप चुनते हैं।",
+    "Type it as it is": "जैसा है वैसा लिखें",
+    "Tap to replace": "बदलने के लिए दबाएँ",
+    "Tap to choose — up to 10 MB": "चुनने के लिए दबाएँ — १० एमबी तक",
+    "uploaded ✓": "अपलोड हुआ ✓", "not uploaded": "अपलोड नहीं हुआ",
+    "uploading…": "अपलोड हो रहा है…",
+    "View": "देखें", "Remove": "हटाएँ",
+    "Could not open the file.": "फ़ाइल नहीं खुल सकी।",
+    "Your browser blocked the pop-up.": "आपके ब्राउज़र ने पॉप-अप रोक दिया।",
+    "Attachments are too large for the server — remove or shrink some.":
+      "संलग्नक सर्वर के लिए बहुत बड़े हैं — कुछ हटाएँ या छोटे करें।",
+    "Could not send.": "भेजा नहीं जा सका।",
+    "The connection dropped before your file was sent. Your data is saved on this device — check your network and press Send again.":
+      "फ़ाइल भेजने से पहले कनेक्शन टूट गया। आपका डेटा इसी डिवाइस पर सहेजा है — नेटवर्क जाँचें और फिर से भेजें दबाएँ।",
+    "The response took too long and was cancelled. Your data is saved here — wait a minute and press Send again.":
+      "उत्तर में बहुत समय लगा और रद्द हो गया। आपका डेटा यहीं सहेजा है — एक मिनट रुकें और फिर से भेजें दबाएँ।",
+
+    // التوقيعُ والمراجعة
+    "How to attach your signature": "हस्ताक्षर कैसे संलग्न करें",
+    "Sign with a blue pen on white paper.": "सफ़ेद काग़ज़ पर नीले पेन से हस्ताक्षर करें।",
+    "Photograph it in good light with no shadow on the paper.":
+      "अच्छी रोशनी में फ़ोटो लें, काग़ज़ पर कोई छाया न हो।",
+    "Fill the frame with the signature, then attach it below.":
+      "हस्ताक्षर से पूरा फ़्रेम भरें, फिर नीचे संलग्न करें।",
+    "Signed and attached": "हस्ताक्षरित और संलग्न",
+    "I confirm the information above is correct and I take responsibility for it.":
+      "मैं पुष्टि करता/करती हूँ कि ऊपर दी गई जानकारी सही है और इसकी ज़िम्मेदारी मेरी है।",
+    "Confirm submission": "भेजने की पुष्टि",
+    "After sending, HR reviews your data; you cannot edit it until they respond.":
+      "भेजने के बाद मानव संसाधन आपका डेटा देखेगा; उनके उत्तर तक आप इसे बदल नहीं सकते।",
+    "HR will review it, then it is finally approved and your record is updated.":
+      "मानव संसाधन इसकी समीक्षा करेगा, फिर अंतिम स्वीकृति मिलेगी और आपका रिकॉर्ड अपडेट होगा।",
+    "— empty": "— खाली", "— none": "— कोई नहीं", "— not attached": "— संलग्न नहीं",
+    "Edit": "संपादित करें", "Cancel": "रद्द करें", "Send": "भेजें",
+    "Required attachment: ": "आवश्यक संलग्नक: ",
+    "Returned: ": "वापस भेजा गया: ",
+    "Attachments total ": "कुल संलग्नक ",
+    "Enter 22 digits — you typed ": "२२ अंक लिखें — आपने लिखे ",
+    "Expected ": "अपेक्षित ",
+    " digits after the code; you typed ": " अंक कोड के बाद; आपने लिखे ",
+    "File too large: “": "फ़ाइल बहुत बड़ी: “",
+    "Could not upload “": "अपलोड नहीं हो सकी “",
+    "”. Tap the card to pick it again.": "”. दोबारा चुनने के लिए कार्ड दबाएँ।",
+    "” was shrunk from ": "” छोटी की गई ",
+    "; the limit is 6 MB.": "; सीमा ६ एमबी है।",
+    " MB; the limit is 40 MB.": " एमबी; सीमा ४० एमबी है।"
+  };
+
+  // يترجم نصًّا إلى الهندية: مطابقةً تامّةً أوّلًا، ثمّ استبدالًا داخل
+  // النصوص المركَّبة (نصٌّ فيه اسمُ ملفٍّ أو رقمٌ بين عباراتٍ ثابتة).
+  function hx(s) {
+    if (L !== "hi" || s == null) return s;
+    var v = String(s);
+    if (HI[v]) return HI[v];
+    if (!/[A-Za-z]/.test(v)) return v;
+    Object.keys(HI).forEach(function (k) {
+      if (k.length > 3 && v.indexOf(k) >= 0) v = v.split(k).join(HI[k]);
+    });
+    return v;
+  }
+
+  // ⚠️ والهنديةُ ترجع إلى الإنجليزية لا إلى العربية: بياناتُ الحقول
+  //   مكتوبةٌ بمفتاحَي ar وen، فلو رجعت إلى ar لقرأ الهنديُّ عربيًّا.
+  function lk(o) {
+    if (!o) return "";
+    return o[L] || (L === "hi" ? o.en : "") || o.ar || "";
+  }
   var T = {
     ar: {
       brand: "بيت العباءة الشرقية", brandSub: "بوابة بيانات الموظفين",
@@ -61,14 +261,18 @@
       saved: "Saved automatically", submit: "Confirm and submit", sending: "Sending…",
     },
   };
-  function t(k) { return (T[L] && T[L][k]) || T.ar[k] || k; }
+  function t(k) {
+    return hx((T[L] && T[L][k]) || (L === "hi" ? T.en[k] : "") || T.ar[k] || k);
+  }
   function paintStatic() {
     document.querySelectorAll("[data-t]").forEach(function (n) {
       n.textContent = t(n.getAttribute("data-t"));
     });
     document.documentElement.lang = L;
     document.documentElement.dir = L === "ar" ? "rtl" : "ltr";
-    $("#lang").textContent = L === "ar" ? "English" : "العربية";
+    // الزرُّ يحمل اسمَ اللغة التالية لا الحالية: من يقرأ «العربية» يفهم
+    // أنّ ضغطَها تنقله إليها.
+    $("#lang").textContent = LANG_NAME[LANGS[(LANGS.indexOf(L) + 1) % LANGS.length]];
   }
 
   // ─────────────────────── وصف الأقسام ───────────────────────
@@ -407,7 +611,7 @@
     return all.length ? Math.round((done / all.length) * 100) : 0;
   }
   function label(f) {
-    var lb = el("label", { for: "fld-" + f.k, text: f[L] || f.ar });
+    var lb = el("label", { for: "fld-" + f.k, text: lk(f) });
     if (f.req) lb.appendChild(el("em", { text: " *" }));
     return lb;
   }
@@ -458,7 +662,7 @@
     // خانةُ الكتابة تقول ما يُكتب فيها: «أخرى» بلا إرشادٍ تُترك فارغة
     var free = el("input", {
       type: "text", style: "margin-top:8px",
-      placeholder: (f.ph && typeof f.ph === "object" ? (f.ph[L] || f.ph.ar) : f.ph)
+      placeholder: (f.ph && typeof f.ph === "object" ? (lk(f.ph)) : f.ph)
         || (L === "ar" ? "اكتب " + (f.ar || "") + " كما هو" : "Type it as it is"),
       hidden: known || !cur ? true : false,
     });
@@ -600,7 +804,7 @@
     inp.addEventListener("blur", function () { checkOne(f, wrap); });
     row.appendChild(sel); row.appendChild(free); row.appendChild(inp);
     wrap.appendChild(row);
-    if (f.help) wrap.appendChild(el("div", { class: "help", text: f.help[L] || f.help.ar }));
+    if (f.help) wrap.appendChild(el("div", { class: "help", text: lk(f.help) }));
     wrap.appendChild(el("div", { class: "hint" }));
     return wrap;
   }
@@ -615,12 +819,12 @@
       input = el("select", { id: "fld-" + f.k, name: f.k });
       input.appendChild(el("option", { value: "", text: L === "ar" ? "اختر…" : "Select…" }));
       f.opts.forEach(function (o) {
-        input.appendChild(el("option", { value: o.v, text: o[L] || o.ar }));
+        input.appendChild(el("option", { value: o.v, text: lk(o) }));
       });
     } else {
       input = el("input", {
         id: "fld-" + f.k, name: f.k, type: f.type || "text",
-        placeholder: (f.ph && typeof f.ph === "object" ? (f.ph[L] || f.ph.ar) : f.ph) || "",
+        placeholder: (f.ph && typeof f.ph === "object" ? (lk(f.ph)) : f.ph) || "",
         dir: f.dir || null, maxlength: f.prefix ? f.digits : (f.max || null),
         min: f.min != null ? f.min : null, max: f.type === "number" ? f.max : null,
         inputmode: f.mode || null, autocomplete: "on",
@@ -669,7 +873,7 @@
     } else {
       wrap.appendChild(input);
     }
-    if (f.help) wrap.appendChild(el("div", { class: "help", text: f.help[L] || f.help.ar }));
+    if (f.help) wrap.appendChild(el("div", { class: "help", text: lk(f.help) }));
     wrap.appendChild(el("div", { class: "hint" }));
     return wrap;
   }
@@ -741,7 +945,7 @@
     var pick = el("input", { type: "file", class: "pick",
       accept: f.k === "photo" ? "image/*" : "image/*,application/pdf" });
     var top = el("div", { class: "top" }, [
-      el("span", { class: "nm", html: "<span>" + (f[L] || f.ar) + (f.req ? " <em style='color:var(--bad)'>*</em>" : "")
+      el("span", { class: "nm", html: "<span>" + (lk(f)) + (f.req ? " <em style='color:var(--bad)'>*</em>" : "")
         + "</span><small>" + (state.files[f.k]
             ? (L === "ar" ? "اضغط للاستبدال" : "Tap to replace")
             : (L === "ar" ? "اضغط للاختيار — حتى ١٠ ميجابايت" : "Tap to choose — up to 10 MB")) + "</small>" }),
@@ -900,24 +1104,24 @@
         var v = (state.data[f.k] || "").toString().trim();
         if (f.opts && v) {
           var o = f.opts.filter(function (x) { return x.v === v; })[0];
-          if (o) v = o[L] || o.ar;
+          if (o) v = lk(o);
         }
         rows.appendChild(el("div", { class: "r" }, [
-          el("dt", { text: f[L] || f.ar }),
+          el("dt", { text: lk(f) }),
           el("dd", { class: v ? "" : "empty", text: v || (L === "ar" ? "— لم يُملأ" : "— empty") }),
         ]));
       });
       (s.files || []).forEach(function (f) {
         var g = state.files[f.k];
         rows.appendChild(el("div", { class: "r" }, [
-          el("dt", { text: f[L] || f.ar }),
+          el("dt", { text: lk(f) }),
           el("dd", { class: g ? "" : "empty",
             text: g ? g.name + " · " + human(g.size) : (L === "ar" ? "— لم يُرفَق" : "— none") }),
         ]));
       });
       frag.appendChild(el("section", { class: "rev" }, [
         el("h3", {}, [
-          el("span", { text: (L === "ar" ? s.n : s.nEn) + " — " + (s.title[L] || s.title.ar) }),
+          el("span", { text: (L === "ar" ? s.n : s.nEn) + " — " + (lk(s.title)) }),
           el("button", { type: "button", text: L === "ar" ? "تعديل" : "Edit",
             onclick: function () { go(i); } }),
         ]),
@@ -959,7 +1163,7 @@
         class: "tab" + (i === state.step ? " on" : "") + (done ? " done" : ""),
         onclick: function () { go(i); } }, [
         el("b", { text: L === "ar" ? s.n : s.nEn }),
-        el("span", { text: s.title[L] || s.title.ar }),
+        el("span", { text: lk(s.title) }),
       ]);
       if (done) b.appendChild(el("span", { class: "ck", text: "✓" }));
       box.appendChild(b);
@@ -978,8 +1182,8 @@
     var pane = $("#pane"); pane.innerHTML = "";
     pane.appendChild(el("header", {}, [
       el("div", { class: "n", text: (L === "ar" ? s.n : s.nEn) }),
-      el("h2", { text: s.title[L] || s.title.ar }),
-      el("p", { text: s.sub[L] || s.sub.ar }),
+      el("h2", { text: lk(s.title) }),
+      el("p", { text: lk(s.sub) }),
     ]));
     if (s.review) pane.appendChild(reviewNode());
     else if (s.files) {
@@ -1016,7 +1220,7 @@
       var missing = (s.files || []).filter(function (f) { return f.req && !state.files[f.k]; });
       if (missing.length) {
         msg("bad", (L === "ar" ? "مرفقٌ مطلوب: " : "Required attachment: ")
-          + missing.map(function (f) { return f[L] || f.ar; }).join("، "));
+          + missing.map(function (f) { return lk(f); }).join("، "));
         return false;
       }
     }
@@ -1258,7 +1462,8 @@
     state = { data: {}, files: {}, step: 0, ack: false };
   });
   $("#lang").addEventListener("click", function () {
-    L = L === "ar" ? "en" : "ar";
+    L = LANGS[(LANGS.indexOf(L) + 1) % LANGS.length];
+    try { localStorage.setItem("sq.intake.lang", L); } catch (e) {}
     paintStatic();
     if (!$("#wiz").hidden) render();
   });
