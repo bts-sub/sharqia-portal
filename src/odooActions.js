@@ -4165,6 +4165,38 @@ const actions = {
     );
   },
 
+  // أرقامُ الدعم الفني — مصدرٌ واحدٌ يقرأ منه الإشعارُ وزرُّ الواتساب معًا.
+  //
+  // ⚠️ كانا يقرآن من موضعين: الإشعارُ يرجع إلى جوّالات من دورُهم «تقنية
+  // المعلومات» إن خلت الإعدادات، وزرُّ الواتساب لا يقرأ إلا الإعدادات —
+  // فمن كتب الرقمَ في بطاقة الفنيّ وصله الإشعارُ ولم يظهر الزرُّ، ولا
+  // يُفهم لمَ عمل أحدُهما دون الآخر.
+  //
+  // والترتيب: ما كُتب في الإعدادات أوّلًا — قد يكون مجموعةَ واتساب للفريق
+  // أو جوّالَ مناوبةٍ لا يخصّ موظفًا بعينه — ثمّ جوّالاتُ أصحاب الدور.
+  async _itWhatsappNumbers() {
+    let out = [];
+    try {
+      const raw = await odoo.execKw("ir.config_parameter", "get_param",
+        ["sharqia_portal.it_whatsapp"]);
+      out = String(raw || "").split(/[،,;\s]+/).map((s) => s.trim()).filter(Boolean);
+    } catch { /* الإعدادُ اختياري */ }
+    if (out.length) return out;
+    try {
+      const users = await odoo.searchRead("sharqia.portal.user",
+        [["role", "in", ["it", "admin"]], ["status", "=", "active"]],
+        ["employee_id"], { limit: 20 });
+      const empIds = users.map((u) => u.employee_id?.[0]).filter(Boolean);
+      if (!empIds.length) return [];
+      const emps = await odoo.searchRead("hr.employee", [["id", "in", empIds]],
+        ["mobile_phone", "work_phone"], { limit: 20 });
+      return emps.map((e) => e.mobile_phone || e.work_phone).filter(Boolean).map(String);
+    } catch (e) {
+      console.warn("⚠️ تعذّرت قراءة أرقام الدعم الفني:", e.message);
+      return [];
+    }
+  },
+
   // ⚠️ بلاغٌ يصل هيلب ديسك ولا يوقظ أحدًا يجلس حتى يفتح فنيٌّ الموديولَ
   //    بنفسه. وصاحبُ البلاغ معطَّلٌ عن عمله ينتظر — فيُنبَّه فريقُ التقنية
   //    في شاشة إشعاراته وعلى جهازه ساعةَ يصل.
@@ -4181,28 +4213,9 @@ const actions = {
             portal_user_id: u.id, ntype: "system", title, body,
           }).catch(() => {});
         }
-        // ⚠️ أرقامُ الإعدادات أوّلًا: قد لا يكون الرقمُ لموظفٍ أصلًا —
-        //    مجموعةُ واتساب للفريق، أو جوّالُ مناوبةٍ يُسلَّم بين الفنيّين.
-        //    وإن تُركت فارغةً رجعنا إلى جوّالات من دورُهم «تقنية المعلومات».
-        let phones = [];
-        try {
-          const raw = await odoo.execKw("ir.config_parameter", "get_param",
-            ["sharqia_portal.it_whatsapp"]);
-          phones = String(raw || "").split(/[،,;\s]+/).map((s) => s.trim())
-            .filter(Boolean);
-        } catch { /* الإعدادُ اختياري */ }
-        if (!phones.length) {
-          const empIds = users.map((u) => u.employee_id?.[0]).filter(Boolean);
-          if (empIds.length) {
-            const emps = await odoo.searchRead("hr.employee",
-              [["id", "in", empIds]], ["mobile_phone", "work_phone"], { limit: 20 });
-            phones = emps.map((e) => e.mobile_phone || e.work_phone)
-              .filter(Boolean).map(String);
-          }
-        }
         return {
           logins: users.map((u) => (u.login || "").trim()).filter(Boolean),
-          phones,
+          phones: await actions._itWhatsappNumbers(),
         };
       },
       async () => ({ logins: [], phones: [] }),
@@ -4290,19 +4303,20 @@ const actions = {
 
       // ⚠️ رقمٌ يُعاد للصفحة لتفتح به واتساب بعد الإرسال.
       //
-      // الإرسالُ الآليُّ يحتاج بوّابةً باشتراك، وقد لا تكون مشتراةً بعد.
-      // وفتحُ واتساب في جهاز المبلِّغ برسالةٍ جاهزةٍ يعمل الآن بلا حسابٍ
-      // ولا تكلفة: ضغطةٌ واحدةٌ منه فتصل الرسالةُ فعلًا — وهو واقفٌ أمام
-      // الشاشة في اللحظة نفسها.
+      // الإرسالُ الآليُّ يحتاج بوّابةً باشتراك. وفتحُ واتساب في جهاز
+      // المبلِّغ برسالةٍ جاهزةٍ يعمل بلا حسابٍ ولا تكلفة: ضغطةٌ واحدةٌ منه
+      // فتصل الرسالةُ فعلًا — وهو واقفٌ أمام الشاشة في اللحظة نفسها.
+      //
+      // وبصيغةٍ دولية: wa.me يرفض «05…» ويفتح محادثةً فارغةً بلا خطأ ظاهر،
+      // فيظنّ المبلِّغ أنه أرسل ولم يُرسل.
       let waTo = "";
       try {
-        const raw = await odoo.execKw("ir.config_parameter", "get_param",
-          ["sharqia_portal.it_whatsapp"]);
-        // ⚠️ بصيغةٍ دولية: wa.me يرفض «05…» ويفتح محادثةً فارغة بلا خطأ
-        //    ظاهر — فيظنّ المبلِّغ أنه أرسل ولم يُرسل.
-        waTo = waNumber(String(raw || "").split(/[،,;\s]+/)
-          .map((v) => v.trim()).filter(Boolean)[0] || "");
-      } catch { /* الإعدادُ اختياري */ }
+        const nums = await actions._itWhatsappNumbers();
+        waTo = waNumber(nums[0] || "");
+        if (!waTo) console.warn(
+          "⚠️ لا رقمَ لفريق الدعم الفني — زرُّ الواتساب لن يظهر. "
+          + "اكتبه في: الإعدادات ← بوابة الموظفين ← أرقام واتساب الدعم الفني.");
+      } catch { /* لا يُبطل البلاغ */ }
       return { ok: true, id, ref, waTo };
     }, async () => ({ ok: true, id: 0, ref: "TEST" }), { forceLiveErrors: true });
   },
