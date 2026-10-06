@@ -4180,15 +4180,24 @@ const actions = {
             portal_user_id: u.id, ntype: "system", title, body,
           }).catch(() => {});
         }
-        // جوّالاتُهم من ملفّاتهم في أودو — لا تُكتب ثانيةً في مكانٍ آخر
-        // يُنسى تحديثُه حين يُبدّل أحدُهم رقمه.
-        const empIds = users.map((u) => u.employee_id?.[0]).filter(Boolean);
+        // ⚠️ أرقامُ الإعدادات أوّلًا: قد لا يكون الرقمُ لموظفٍ أصلًا —
+        //    مجموعةُ واتساب للفريق، أو جوّالُ مناوبةٍ يُسلَّم بين الفنيّين.
+        //    وإن تُركت فارغةً رجعنا إلى جوّالات من دورُهم «تقنية المعلومات».
         let phones = [];
-        if (empIds.length) {
-          const emps = await odoo.searchRead("hr.employee",
-            [["id", "in", empIds]], ["mobile_phone", "work_phone"], { limit: 20 });
-          phones = emps.map((e) => e.mobile_phone || e.work_phone)
-            .filter(Boolean).map(String);
+        try {
+          const raw = await odoo.execKw("ir.config_parameter", "get_param",
+            ["sharqia_portal.it_whatsapp"]);
+          phones = String(raw || "").split(/[،,;\s]+/).map((s) => s.trim())
+            .filter(Boolean);
+        } catch { /* الإعدادُ اختياري */ }
+        if (!phones.length) {
+          const empIds = users.map((u) => u.employee_id?.[0]).filter(Boolean);
+          if (empIds.length) {
+            const emps = await odoo.searchRead("hr.employee",
+              [["id", "in", empIds]], ["mobile_phone", "work_phone"], { limit: 20 });
+            phones = emps.map((e) => e.mobile_phone || e.work_phone)
+              .filter(Boolean).map(String);
+          }
         }
         return {
           logins: users.map((u) => (u.login || "").trim()).filter(Boolean),
