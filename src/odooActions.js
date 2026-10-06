@@ -4286,7 +4286,21 @@ const actions = {
           ["ticket_ref"], { limit: 1 });
         if (t && t.ticket_ref) ref = t.ticket_ref;
       } catch { /* الرقمُ الداخلي يكفي مرجعًا */ }
-      return { ok: true, id, ref };
+
+      // ⚠️ رقمٌ يُعاد للصفحة لتفتح به واتساب بعد الإرسال.
+      //
+      // الإرسالُ الآليُّ يحتاج بوّابةً باشتراك، وقد لا تكون مشتراةً بعد.
+      // وفتحُ واتساب في جهاز المبلِّغ برسالةٍ جاهزةٍ يعمل الآن بلا حسابٍ
+      // ولا تكلفة: ضغطةٌ واحدةٌ منه فتصل الرسالةُ فعلًا — وهو واقفٌ أمام
+      // الشاشة في اللحظة نفسها.
+      let waTo = "";
+      try {
+        const raw = await odoo.execKw("ir.config_parameter", "get_param",
+          ["sharqia_portal.it_whatsapp"]);
+        waTo = String(raw || "").split(/[،,;\s]+/).map((v) => v.trim())
+          .filter(Boolean)[0] || "";
+      } catch { /* الإعدادُ اختياري */ }
+      return { ok: true, id, ref, waTo };
     }, async () => ({ ok: true, id: 0, ref: "TEST" }), { forceLiveErrors: true });
   },
 

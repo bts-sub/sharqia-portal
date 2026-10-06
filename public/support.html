@@ -72,7 +72,7 @@
      أعلاها، فكان العنوانُ يقع فوقه فيختلط الحرفُ بالحرف ولا يُقرأ
      واحدٌ منهما. وقيمةٌ ثابتةٌ بالبكسل تُصلحه في الشاشة الكبيرة وتدفعه
      خارجَ الجوّال، فتُقاس بارتفاع النافذة. */
-  header { text-align: center; padding: clamp(104px, 23vh, 240px) 0 30px; }
+  header { text-align: center; padding: clamp(168px, 34vh, 360px) 0 30px; }
   h1 {
     color: #fff; font-size: 30px; font-weight: 900; letter-spacing: -.3px;
     margin: 0; line-height: 1.5;
@@ -229,6 +229,11 @@
   }
   .ticket .lb { display: block; font-size: 12px; color: var(--gold-2); font-weight: 600; letter-spacing: .4px; }
   .ticket .no { display: block; font-size: 27px; font-weight: 900; letter-spacing: 2px; direction: ltr; margin-top: 2px; }
+  .wa { display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    margin-top: 20px; background: #25D366; color: #fff; text-decoration: none;
+    border-radius: 13px; padding: 15px 28px; font-weight: 700; font-size: 15.5px;
+    box-shadow: 0 8px 22px rgba(37,211,102,.32); transition: transform .12s; }
+  .wa:hover { transform: translateY(-1px); }
   .again { margin-top: 24px; background: none; border: 1.5px solid var(--line);
     border-radius: 12px; padding: 12px 24px; font-family: inherit; font-size: 14px;
     font-weight: 600; color: var(--ink-2); cursor: pointer; }
@@ -414,6 +419,15 @@
       <span class="lb">رقم الطلب</span>
       <span class="no" id="ref">—</span>
     </div>
+    <!-- ⚠️ زرُّ واتساب بعد النجاح لا قبله: البلاغُ مسجَّلٌ في النظام
+         أصلًا، وهذه إضافةُ تنبيهٍ فوريّ — فمن أغلق الصفحة قبل أن يضغطه
+         لم يضع بلاغُه. -->
+    <a class="wa" id="waBtn" href="#" target="_blank" rel="noopener" style="display:none">
+      <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor" aria-hidden="true">
+        <path d="M17.5 14.4c-.3-.2-1.8-.9-2-1s-.5-.2-.7.1-.8 1-1 1.2-.4.2-.7 0a8.2 8.2 0 0 1-2.4-1.5 9 9 0 0 1-1.7-2.1c-.2-.3 0-.5.1-.6l.5-.6.3-.5v-.5l-.9-2.2c-.3-.6-.5-.5-.7-.5h-.6a1.2 1.2 0 0 0-.8.4 3.4 3.4 0 0 0-1.1 2.6 6 6 0 0 0 1.2 3.1 13.4 13.4 0 0 0 5.2 4.6c2 .8 2.4.7 2.9.6a3 3 0 0 0 2-1.4 2.5 2.5 0 0 0 .2-1.4zM12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2z"/>
+      </svg>
+      <span>أبلغ الدعم الفني بالواتساب</span>
+    </a>
     <p style="margin-top:18px;font-size:13.5px">احتفظ بالرقم — تُراجَع به بلاغُك.</p>
     <button class="again" id="again" type="button">إرسال بلاغٍ آخر</button>
   </section>
@@ -592,6 +606,23 @@
       $("form").style.display = "none";
       $("done").classList.add("on");
       $("ref").textContent = j.ref || "—";
+      // رسالةُ واتساب جاهزةٌ إلى الدعم الفني — ضغطةٌ واحدةٌ فتصل فعلًا
+      if (j.waTo) {
+        var msg = [
+          "🛠️ بلاغ دعم فني — " + kind,
+          "رقم الطلب: " + (j.ref || "—"),
+          "الاسم: " + $("name").value.trim(),
+          "الجوال: " + $("phone").value.trim(),
+          "المكان: " + [$("location").value, $("spot").value.trim()].filter(Boolean).join(" — "),
+          "",
+          $("problem").value.trim()
+        ].join("\n");
+        $("waBtn").href = "https://wa.me/" + encodeURIComponent(j.waTo)
+          + "?text=" + encodeURIComponent(msg);
+        $("waBtn").style.display = "inline-flex";
+      } else {
+        $("waBtn").style.display = "none";
+      }
       window.scrollTo({ top: 0, behavior: "smooth" });
     }).catch(function (err) {
       var b = $("banner");
