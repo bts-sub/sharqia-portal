@@ -38,32 +38,29 @@
     -webkit-font-smoothing: antialiased;
     background: var(--navy);
   }
-  /* الخلفيةُ كحليّةٌ بتدرّجٍ هادئ، وفوقها شبكةُ نقاطٍ وخطوطِ اتصالٍ خفيفة.
-     رسمٌ متّجهٌ داخل الصفحة لا صورةٌ تُحمَّل: لا طلبَ شبكةٍ إضافيًّا على
-     من شبكتُه هي العطل. */
+  /* ⚠️ التدرّجُ تحت الصورة لا بدلًا منها: الصورةُ ١٤٠ كيلوبايت، ومن
+     يفتح هذه الصفحة شبكتُه هي العطلُ أحيانًا — فإن تأخّرت أو لم تصل
+     بقيت الخلفيةُ كحليّةً كما هي، لا بيضاءَ تبتلع النصَّ الأبيض. */
   body::before {
     content: ""; position: fixed; inset: 0; z-index: -2;
     background:
       radial-gradient(1100px 620px at 85% -8%, rgba(201,162,39,.16), transparent 62%),
-      radial-gradient(900px 540px at 8% 4%, rgba(22,50,94,.85), transparent 58%),
       linear-gradient(170deg, #0C1F3C 0%, #0A1A33 46%, #091628 100%);
   }
+  /* الصورةُ ثابتةٌ تملأ الشاشة، وفوقها حجابٌ كحليٌّ يتدرّج: خفيفٌ أعلى
+     الصفحة حيث المشهدُ يُرى، وكثيفٌ تحتها حيث تقف البطاقاتُ البيضاء —
+     فلا يُزاحم المشهدُ ما يُكتب فيها. */
   body::after {
-    content: ""; position: fixed; inset: 0; z-index: -1; opacity: .5;
-    background-image: url("data:image/svg+xml;utf8,\
-<svg xmlns='http://www.w3.org/2000/svg' width='360' height='360' viewBox='0 0 360 360'>\
-<g fill='none' stroke='%23C9A227' stroke-width='.9' stroke-opacity='.30'>\
-<path d='M40 60 L150 24 L268 76 L330 40'/><path d='M22 190 L120 140 L240 186 L336 150'/>\
-<path d='M46 318 L144 268 L262 316 L344 272'/><path d='M150 24 L120 140 L144 268'/>\
-<path d='M268 76 L240 186 L262 316'/><path d='M40 60 L22 190 L46 318'/>\
-<path d='M330 40 L336 150 L344 272'/></g>\
-<g fill='%23C9A227' fill-opacity='.46'>\
-<circle cx='40' cy='60' r='2.6'/><circle cx='150' cy='24' r='2.6'/><circle cx='268' cy='76' r='2.6'/>\
-<circle cx='330' cy='40' r='2.6'/><circle cx='22' cy='190' r='2.6'/><circle cx='120' cy='140' r='2.6'/>\
-<circle cx='240' cy='186' r='2.6'/><circle cx='336' cy='150' r='2.6'/><circle cx='46' cy='318' r='2.6'/>\
-<circle cx='144' cy='268' r='2.6'/><circle cx='262' cy='316' r='2.6'/><circle cx='344' cy='272' r='2.6'/>\
-</g></svg>");
-    background-size: 360px 360px;
+    content: ""; position: fixed; inset: 0; z-index: -1;
+    background:
+      linear-gradient(180deg, rgba(10,26,51,.50) 0%, rgba(10,26,51,.72) 34%,
+                              rgba(9,22,40,.90) 72%, rgba(9,22,40,.96) 100%),
+      url("/support-bg.jpg") center center / cover no-repeat;
+  }
+  /* وعلى الجوّال يُقصّ العرضُ قصًّا شديدًا، فيُثبَّت المشهدُ على يمين
+     الصورة حيث المكتبُ والمدينة، لا على وسطٍ يصير حافّةَ طاولة. */
+  @media (max-width: 760px) {
+    body::after { background-position: center, 72% center; }
   }
 
   .wrap { max-width: 880px; margin: 0 auto; padding: 0 18px 72px; }
