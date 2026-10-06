@@ -276,9 +276,35 @@
     });
     document.documentElement.lang = L;
     document.documentElement.dir = L === "ar" ? "rtl" : "ltr";
-    // الزرُّ يحمل اسمَ اللغة التالية لا الحالية: من يقرأ «العربية» يفهم
-    // أنّ ضغطَها تنقله إليها.
-    $("#lang").textContent = LANG_NAME[LANGS[(LANGS.indexOf(L) + 1) % LANGS.length]];
+    // الزرُّ يحمل اسمَ اللغة الحالية، والقائمةُ تحته تعرض الثلاث.
+    var now = $("#langNow");
+    if (now) now.textContent = LANG_NAME[L];
+    var menu = $("#langMenu");
+    if (menu) {
+      menu.innerHTML = "";
+      LANGS.forEach(function (code) {
+        var b = el("button", { type: "button", role: "menuitem", text: LANG_NAME[code] });
+        if (code === L) b.setAttribute("aria-current", "true");
+        b.addEventListener("click", function () { setLang(code); });
+        menu.appendChild(b);
+      });
+    }
+  }
+
+  function langMenu(open) {
+    var m = $("#langMenu"), b = $("#lang");
+    if (!m || !b) return;
+    m.classList.toggle("on", !!open);
+    b.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  function setLang(code) {
+    langMenu(false);
+    if (code === L) return;
+    L = code;
+    try { localStorage.setItem("sq.intake.lang", L); } catch (e) {}
+    paintStatic();
+    if (!$("#wiz").hidden) render();
   }
 
   // ─────────────────────── وصف الأقسام ───────────────────────
@@ -1467,12 +1493,17 @@
     document.body.classList.add("landing");
     state = { data: {}, files: {}, step: 0, ack: false };
   });
-  $("#lang").addEventListener("click", function () {
-    L = LANGS[(LANGS.indexOf(L) + 1) % LANGS.length];
-    try { localStorage.setItem("sq.intake.lang", L); } catch (e) {}
-    paintStatic();
-    if (!$("#wiz").hidden) render();
+  $("#lang").addEventListener("click", function (e) {
+    e.stopPropagation();
+    langMenu(!$("#langMenu").classList.contains("on"));
   });
+  // ⚠️ تُغلق بالضغط خارجها وبمفتاح Escape: قائمةٌ تبقى مفتوحةً تحجب ما
+  //   تحتها، ومن فتحها بالخطأ لا يعرف كيف يُغلقها.
+  document.addEventListener("click", function () { langMenu(false); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") langMenu(false);
+  });
+  $("#langMenu").addEventListener("click", function (e) { e.stopPropagation(); });
 
   // خروجٌ قبل الإرسال: التنبيه يقع مرّةً واحدة — والمتصفّح يملك نصَّه
   window.addEventListener("beforeunload", function (e) {

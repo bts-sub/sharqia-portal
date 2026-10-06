@@ -64,9 +64,27 @@
   .brand .txt b { display: block; font-size: 13.5px; font-weight: 700; line-height: 1.4; }
   .brand .txt span { display: block; font-size: 11px; color: var(--mut); line-height: 1.4; }
   .bar .sp { flex: 1; }
+  /* ⚠️ قائمةٌ لا زرٌّ يدور: ثلاثُ لغاتٍ بزرٍّ واحدٍ تعني أنّ الهنديَّ
+     يضغط مرّتين ولا يرى اسمَ لغته حتى يبلغها — ومن أخطأ الضغطة دار
+     دورةً كاملة. والقائمةُ تُظهر الثلاثَ معًا فيختار مرّةً. */
+  .langwrap { position: relative; }
   .lang { background: transparent; border: 1px solid var(--line); color: var(--ink-2);
-    border-radius: 9px; padding: 6px 12px; font-size: 12.5px; font-weight: 600; }
-  .lang:hover { border-color: var(--gold); color: var(--gold); }
+    border-radius: 9px; padding: 6px 12px; font-size: 12.5px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 7px; }
+  .lang:hover, .lang[aria-expanded="true"] { border-color: var(--gold); color: var(--gold); }
+  .lang svg { width: 10px; height: 10px; flex: none; transition: transform .15s; }
+  .lang[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .langmenu { position: absolute; top: calc(100% + 6px); inset-inline-end: 0; z-index: 60;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 5px;
+    box-shadow: 0 10px 30px rgba(23,21,15,.14); min-width: 150px; display: none; }
+  .langmenu.on { display: block; }
+  .langmenu button { display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; width: 100%; background: transparent; border: 0; border-radius: 8px;
+    padding: 9px 11px; font-size: 13.5px; font-weight: 600; color: var(--ink-2);
+    text-align: start; cursor: pointer; }
+  .langmenu button:hover { background: var(--gold-tint); color: var(--ink); }
+  .langmenu button[aria-current="true"] { color: var(--gold); }
+  .langmenu button[aria-current="true"]::after { content: "✓"; font-size: 12px; }
 
   /* ───────── الصفحة الافتتاحية ───────── */
   .land { max-width: 940px; margin: 0 auto; padding: 72px 20px 90px; position: relative; }
@@ -353,7 +371,13 @@
       <span class="txt"><b data-t="brand">بيت العباءة الشرقية</b><span data-t="brandSub">بوابة بيانات الموظفين</span></span>
     </div>
     <span class="sp"></span>
-    <button class="lang" id="lang" type="button">English</button>
+    <div class="langwrap">
+      <button class="lang" id="lang" type="button" aria-haspopup="true" aria-expanded="false">
+        <span id="langNow">العربية</span>
+        <svg viewBox="0 0 12 8" fill="none" aria-hidden="true"><path d="M1 1l5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+      <div class="langmenu" id="langMenu" role="menu"></div>
+    </div>
   </div>
 </div>
 
