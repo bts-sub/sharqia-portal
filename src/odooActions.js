@@ -5,6 +5,7 @@
 //   ملاحظة الأمان: ctx.user يأتي من الجلسة (JWT) ويحدّد الموظف المرتبط في Odoo.
 // ===========================================================================
 import * as odoo from "./lib/odooClient.js";
+import { waNumber } from "./lib/whatsapp.js";
 import { userPerms, rankOf, isoDate } from "./lib/permissions.js";
 import { isTestMode, profileGateMode } from "./lib/settings.js";
 import { nearestLocation } from "./lib/geo.js";
@@ -4297,8 +4298,10 @@ const actions = {
       try {
         const raw = await odoo.execKw("ir.config_parameter", "get_param",
           ["sharqia_portal.it_whatsapp"]);
-        waTo = String(raw || "").split(/[،,;\s]+/).map((v) => v.trim())
-          .filter(Boolean)[0] || "";
+        // ⚠️ بصيغةٍ دولية: wa.me يرفض «05…» ويفتح محادثةً فارغة بلا خطأ
+        //    ظاهر — فيظنّ المبلِّغ أنه أرسل ولم يُرسل.
+        waTo = waNumber(String(raw || "").split(/[،,;\s]+/)
+          .map((v) => v.trim()).filter(Boolean)[0] || "");
       } catch { /* الإعدادُ اختياري */ }
       return { ok: true, id, ref, waTo };
     }, async () => ({ ok: true, id: 0, ref: "TEST" }), { forceLiveErrors: true });
