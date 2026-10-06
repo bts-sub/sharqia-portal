@@ -53,11 +53,12 @@ router.get("/support/status", async (req, res, next) => {
   try {
     const ip = req.ip || req.headers["x-forwarded-for"] || "—";
     if (!lookupOk(ip)) throw tooMany("محاولاتٌ كثيرة — انتظر قليلًا ثمّ أعد.");
+    // ⚠️ أحدُهما يكفي: من نسي رقم طلبه يملك جوّاله، ومن سُجّل بلاغُه بلا
+    //    جوّال يملك رقمَ الطلب. واشتراطُ الاثنين كان يمنع الصنفين معًا.
     const ref = String(req.query.ref || "").trim().slice(0, 32);
     const phone = String(req.query.phone || "").trim().slice(0, 20);
-    if (!ref) throw badRequest("اكتب رقم الطلب");
-    if (phone.replace(/\D/g, "").length < 9)
-      throw badRequest("اكتب رقم الجوال الذي قدّمت به البلاغ");
+    if (!ref && phone.replace(/\D/g, "").length < 9)
+      throw badRequest("اكتب رقم الطلب أو رقم الجوال — أحدُهما يكفي");
     const { data } = await runAction("support.status", { ref, phone }, { user: null });
     res.set("Cache-Control", "no-store");
     res.json(data || { found: false });

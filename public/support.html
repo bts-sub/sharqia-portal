@@ -672,26 +672,33 @@
       .then(function (r) { return r.json().then(function (j) {
         if (!r.ok) throw new Error(j.error || "تعذّر الاستعلام"); return j; }); })
       .then(function (j) {
-        if (!j.found) {
-          setErr("q", "لا بلاغ بهذا الرقم مع هذا الجوال — تأكّد من الرقمين كما أرسلتهما.");
+        // الجوّالُ وحدَه يردّ بلاغاتِ صاحبه كلَّها، فالعرضُ قائمةٌ لا بطاقة
+        var list = j.tickets || (j.found ? [j] : []);
+        if (!list.length) {
+          setErr("q", "لا بلاغ بهذا الرقم — تأكّد منه كما أرسلته، أو جرّب جوالك.");
           return;
         }
         var row = function (k, v) { return v ? "<dt>" + k + "</dt><dd>" + esc(v) + "</dd>" : ""; };
         $("qres").innerHTML =
-          '<div class="stat"><div class="hd">'
-          + '<span class="no">' + esc(j.ref) + '</span>'
-          + '<span class="pill ' + (j.closed ? "done" : "open") + '">' + esc(j.stage || "—") + "</span>"
-          + "</div><dl>"
-          + row("البلاغ", j.subject)
-          + row("أُرسل في", j.created)
-          + row("الفنيّ المسؤول", j.assignee)
-          + "</dl>"
-          + (j.visit_at
-              ? '<div class="visit">🕑 موعد زيارة الفنيّ: ' + esc(j.visit_at)
-                + (j.visit_note ? "<br/><span style='font-weight:600;font-size:13px'>" + esc(j.visit_note) + "</span>" : "")
-                + "</div>"
-              : '<div class="hint" style="margin-top:11px">لم يُحدَّد موعدُ زيارةٍ بعد — يصلك حين يُحدَّد.</div>')
-          + "</div>";
+          (list.length > 1
+            ? '<div class="hint" style="margin-top:14px">' + list.length + " بلاغًا بهذا الجوال:</div>"
+            : "")
+          + list.map(function (t) {
+            return '<div class="stat"><div class="hd">'
+              + '<span class="no">' + esc(t.ref) + "</span>"
+              + '<span class="pill ' + (t.closed ? "done" : "open") + '">' + esc(t.stage || "—") + "</span>"
+              + "</div><dl>"
+              + row("البلاغ", t.subject)
+              + row("أُرسل في", t.created)
+              + row("الفنيّ المسؤول", t.assignee)
+              + "</dl>"
+              + (t.visit_at
+                  ? '<div class="visit">🕑 موعد زيارة الفنيّ: ' + esc(t.visit_at)
+                    + (t.visit_note ? "<br/><span style='font-weight:600;font-size:13px'>" + esc(t.visit_note) + "</span>" : "")
+                    + "</div>"
+                  : '<div class="hint" style="margin-top:11px">لم يُحدَّد موعدُ زيارةٍ بعد — يصلك حين يُحدَّد.</div>')
+              + "</div>";
+          }).join("");
       })
       .catch(function (e) { setErr("q", (e && e.message) || "تعذّر الاستعلام"); })
       .then(function () {
