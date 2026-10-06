@@ -209,8 +209,14 @@
     "”. Tap the card to pick it again.": "”. दोबारा चुनने के लिए कार्ड दबाएँ।",
     "” was shrunk from ": "” छोटी की गई ",
     "; the limit is 6 MB.": "; सीमा ६ एमबी है।",
-    " MB; the limit is 40 MB.": " एमबी; सीमा ४० एमबी है।"
+    " MB; the limit is 40 MB.": " एमबी; सीमा ४० एमबी है।",
+    "” is ": "” का आकार ", " KB": " केबी", " MB": " एमबी"
   };
+
+  // ⚠️ الأطولُ أوّلًا: «IBAN» تقع داخل «IBAN letter»، فلو استُبدلت قبلها
+  //   خرجت «आईबैन letter» — نصفُها مترجَمٌ ونصفُها إنجليزيّ. والترتيبُ
+  //   يُحسب مرّةً لا مع كلّ نصٍّ يُعرض.
+  var HI_KEYS = Object.keys(HI).sort(function (a, b) { return b.length - a.length; });
 
   // يترجم نصًّا إلى الهندية: مطابقةً تامّةً أوّلًا، ثمّ استبدالًا داخل
   // النصوص المركَّبة (نصٌّ فيه اسمُ ملفٍّ أو رقمٌ بين عباراتٍ ثابتة).
@@ -219,8 +225,8 @@
     var v = String(s);
     if (HI[v]) return HI[v];
     if (!/[A-Za-z]/.test(v)) return v;
-    Object.keys(HI).forEach(function (k) {
-      if (k.length > 3 && v.indexOf(k) >= 0) v = v.split(k).join(HI[k]);
+    HI_KEYS.forEach(function (k) {
+      if (k.length > 2 && v.indexOf(k) >= 0) v = v.split(k).join(HI[k]);
     });
     return v;
   }
