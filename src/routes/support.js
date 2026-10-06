@@ -11,6 +11,8 @@
 import { Router } from "express";
 import { runAction } from "../odooActions.js";
 import { badRequest, tooMany } from "../lib/errors.js";
+import { findByLogin } from "../lib/users.js";
+import { sendToUser } from "../lib/push.js";
 
 const router = Router();
 
@@ -55,9 +57,10 @@ function rateOk(ip) {
   return true;
 }
 
+// ⚠️ بنصّها كما في الصفحة حرفًا بحرف: ما خرج عنها يُسجَّل «أخرى» بلا أن
+//    يدري المبلِّغ، فيصل الفنيَّ بلاغٌ بلا باب.
 const KINDS = [
-  "حاسب آلي", "شبكة وإنترنت", "طابعة أو ماسح", "برنامج أو نظام",
-  "جوال أو تابلت", "بريد إلكتروني", "جهاز البصمة", "كاميرات", "أخرى",
+  "حاسب آلي", "شبكة وإنترنت", "طابعة أو ماسح", "برنامج أو نظام", "أخرى",
 ];
 
 router.post("/support", async (req, res, next) => {
@@ -94,8 +97,32 @@ router.post("/support", async (req, res, next) => {
       } : null,
     }, { user: null });
 
+    // ⚠️ التنبيهُ بعد الردّ لا قبله: البلاغُ وصل هيلب ديسك فعلًا، وتعذُّرُ
+    //    إيقاظِ فنيٍّ لا يُبطله ولا يُقال لصاحبه «لم يُرسل».
     res.json(data);
+    notifyIt(data, { name, kind: s(b.kind, 40), location: s(b.location, 60), spot })
+      .catch((e) => console.warn("⚠️ تعذّر تنبيه فريق التقنية:", e.message));
   } catch (e) { next(e); }
 });
+
+/** يوقظ فريقَ التقنية ببلاغٍ جديد: إشعارٌ في شاشة التطبيق ودفعٌ إلى جهازه. */
+async function notifyIt(data, info) {
+  const title = `بلاغ دعم جديد — ${info.kind || "أخرى"}`;
+  const body = [
+    `${info.name || "موظف"}${info.location ? " · " + info.location : ""}`,
+    info.spot || "",
+    data?.ref ? `رقم الطلب: ${data.ref}` : "",
+  ].filter(Boolean).join(" — ");
+
+  const { data: res } = await runAction("support.notify",
+    { title, body }, { user: null });
+  // الدفعُ إلى الجهاز من هنا لا من أودو: اشتراكاتُ الأجهزة في خادم البوابة.
+  for (const login of res?.logins || []) {
+    const u = findByLogin(login);
+    if (!u) continue;
+    sendToUser(u.id, { title, body, tag: "support", url: "/" })
+      .catch(() => {});
+  }
+}
 
 export default router;

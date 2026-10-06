@@ -4164,6 +4164,29 @@ const actions = {
     );
   },
 
+  // ⚠️ بلاغٌ يصل هيلب ديسك ولا يوقظ أحدًا يجلس حتى يفتح فنيٌّ الموديولَ
+  //    بنفسه. وصاحبُ البلاغ معطَّلٌ عن عمله ينتظر — فيُنبَّه فريقُ التقنية
+  //    في شاشة إشعاراته وعلى جهازه ساعةَ يصل.
+  async "support.notify"(params) {
+    const title = String(params?.title || "بلاغ دعم فني جديد").slice(0, 120);
+    const body = String(params?.body || "").slice(0, 400);
+    return withOdoo(
+      async () => {
+        const users = await odoo.searchRead("sharqia.portal.user",
+          [["role", "in", ["it", "admin"]], ["status", "=", "active"]],
+          ["id", "login"], { limit: 20 });
+        for (const u of users) {
+          await odoo.create("sharqia.portal.notification", {
+            portal_user_id: u.id, ntype: "system", title, body,
+          }).catch(() => {});
+        }
+        return { logins: users.map((u) => (u.login || "").trim()).filter(Boolean) };
+      },
+      async () => ({ logins: [] }),
+      { emptyOnError: () => ({ logins: [] }) }
+    );
+  },
+
   async "support.create"(params) {
     const p = params || {};
     const cut = (v, n) => String(v ?? "").trim().slice(0, n);
