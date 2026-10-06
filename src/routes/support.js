@@ -105,9 +105,14 @@ router.post("/support", async (req, res, next) => {
 
     const name = s(b.name, 80);
     if (name.length < 3) throw badRequest("اكتب اسمك الثلاثي");
-    const phone = s(b.phone, 20);
-    if (phone.replace(/\D/g, "").length < 9)
-      throw badRequest("رقم الجوال مطلوب — يُتّصل به عند متابعة البلاغ");
+    // ⚠️ بالقاعدة نفسِها التي في بوابة البيانات، وفي الخادم لا الشاشة
+    //    وحدها: الشاشةُ تُتجاوَز بإرسالٍ من غيرها. وتسعةُ أرقامٍ كيفما
+    //    كانت كانت تُمرّر هاتفًا أرضيًّا أو رقمًا ناقصًا، فيبقى البلاغُ
+    //    بلا من يُتّصل به — وهو الحقلُ الوحيد الذي يُوصَل به صاحبُه.
+    const phone = s(b.phone, 20).replace(/[^0-9+]/g, "");
+    const phoneOk = /^05\d{8}$/.test(phone) || /^\+\d{8,15}$/.test(phone);
+    if (!phoneOk) throw badRequest(
+      "الرقم السعودي يبدأ بـ05 ويتكوّن من عشرة أرقام — أو اكتبه دوليًّا بعلامة + وكود دولته");
     const problem = s(b.problem, 4000);
     if (problem.length < 10) throw badRequest("صف المشكلة في جملةٍ على الأقل");
     const spot = s(b.spot, 80);

@@ -326,7 +326,9 @@
         </div>
         <div class="f">
           <label for="phone">رقم الجوال <span class="star">*</span></label>
-          <input id="phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="05XXXXXXXX"/>
+          <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel"
+                 maxlength="16" placeholder="05XXXXXXXX"/>
+          <div class="hint">سعوديٌّ يبدأ بـ05، أو دوليٌّ بعلامة + وكود دولته.</div>
           <div class="err" id="e_phone"></div>
         </div>
         <div class="f">
@@ -559,12 +561,22 @@
     $(id).addEventListener("input", function () { clearErr(id); });
   });
 
+  function okPhone(v) {
+    var s = String(v || "").trim();
+    if (/^\+\d{8,15}$/.test(s.replace(/[\s-]/g, ""))) return true;
+    return /^05\d{8}$/.test(s.replace(/\D/g, ""));
+  }
+
   function validate() {
     ["name", "phone", "spot", "problem"].forEach(clearErr);
     var ok = true;
     if ($("name").value.trim().length < 3) ok = setErr("name", "اكتب اسمك الثلاثي كما هو في الهوية.");
-    if ($("phone").value.replace(/[^0-9]/g, "").length < 9)
-      ok = setErr("phone", "اكتب رقم جوالٍ صحيحًا — يُتّصل به عند متابعة بلاغك.");
+    // ⚠️ القاعدةُ نفسُها التي في بوابة البيانات حرفًا بحرف: السعوديُّ
+    //    بصيغته المحلية «05» بعشرة أرقام، وغيرُه دوليٌّ بكوده. وكان
+    //    يكتفي بتسعة أرقامٍ كيفما كانت — فيمرّ رقمٌ ناقصٌ أو مكرَّرٌ أو
+    //    هاتفٌ أرضيّ، ويبقى البلاغُ بلا من يُتّصل به.
+    if (!okPhone($("phone").value))
+      ok = setErr("phone", "الرقم السعودي يبدأ بـ05 ويتكوّن من عشرة أرقام — أو اكتبه دوليًّا بعلامة + وكود دولته.");
     if (!$("spot").value.trim())
       ok = setErr("spot", "حدّد مكانك: الدور أو رقم المكتب أو خط الإنتاج.");
     if ($("problem").value.trim().length < 10)
@@ -653,8 +665,8 @@
     clearErr("q"); $("qres").innerHTML = "";
     var ref = $("qref").value.trim(), ph = $("qphone").value.trim();
     if (!ref) return setErr("q", "اكتب رقم الطلب الذي ظهر لك عند الإرسال.");
-    if (ph.replace(/[^0-9]/g, "").length < 9)
-      return setErr("q", "اكتب رقم الجوال الذي قدّمت به البلاغ.");
+    if (!okPhone(ph))
+      return setErr("q", "اكتب رقم الجوال الذي قدّمت به البلاغ — كما كتبته وقتها.");
     qbusy = true; $("qgo").disabled = true; $("qTxt").textContent = "جارٍ البحث…";
     fetch("/api/support/status?ref=" + encodeURIComponent(ref) + "&phone=" + encodeURIComponent(ph))
       .then(function (r) { return r.json().then(function (j) {
