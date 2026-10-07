@@ -321,6 +321,12 @@
     });
     document.documentElement.lang = L;
     document.documentElement.dir = L === "ar" ? "rtl" : "ltr";
+    // ⚠️ وبطاقةُ «تصحيح بياناتك» تُعاد بناؤها مع كلّ تبديل: بطاقاتُ
+    //   الافتتاحية تُترجَم بـdata-t، وهذه وحدَها تُبنى بجافاسكربت وتُلصق
+    //   مرّةً — فكانت تبقى باللغة التي بُنيت بها، فتُقرأ هنديّةً في صفحةٍ
+    //   عربية.
+    var rec = $("#recCard");
+    if (rec && rec.parentNode) rec.parentNode.replaceChild(recoverCard(), rec);
     // الزرُّ يحمل اسمَ اللغة الحالية، والقائمةُ تحته تعرض الثلاث.
     var now = $("#langNow");
     if (now) now.textContent = LANG_NAME[L];
@@ -1475,7 +1481,7 @@
   // ويفتحها فتسأله رقمًا واحدًا — أيَّ رقمٍ يحفظه.
   function recoverCard() {
     // سطرٌ واحدٌ يكفي: البطاقةُ نداءٌ لا شرح، وما تحتَه يُطيلها بلا فائدة
-    return el("button", { class: "fact rec", type: "button", onclick: recoverModal }, [
+    return el("button", { class: "fact rec", id: "recCard", type: "button", onclick: recoverModal }, [
       el("b", { text: "لتصحيح بياناتك اضغط هنا" }),
     ]);
   }
