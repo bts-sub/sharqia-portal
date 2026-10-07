@@ -218,10 +218,55 @@
   //   يُحسب مرّةً لا مع كلّ نصٍّ يُعرض.
   var HI_KEYS = Object.keys(HI).sort(function (a, b) { return b.length - a.length; });
 
-  // يترجم نصًّا إلى الهندية: مطابقةً تامّةً أوّلًا، ثمّ استبدالًا داخل
-  // النصوص المركَّبة (نصٌّ فيه اسمُ ملفٍّ أو رقمٌ بين عباراتٍ ثابتة).
+  // ⚠️ نصوصٌ كُتبت بالعربية وحدَها بلا مقابلٍ إنجليزيّ — بطاقةُ
+  // «لتصحيح بياناتك» ونافذتُها ورسائلُها. كانت تبقى عربيةً مهما غُيّرت
+  // اللغة، فيقف الهنديُّ أمام بطاقةٍ لا يفكّ حرفَها في صفحةٍ كلُّها
+  // بلغته. وهي هنا لا عند كلّ موضعٍ: كلُّها يمرّ بـ hx().
+  var AR = {
+    "لتصحيح بياناتك اضغط هنا": {
+      en: "Tap here to correct your data", hi: "अपना डेटा ठीक करने के लिए यहाँ दबाएँ" },
+    "تصحيح بياناتك": { en: "Correct your data", hi: "अपना डेटा ठीक करें" },
+    "إن أعادت الموارد البشرية ملفَّك للتصحيح، استعِد ما كتبتَه بدل كتابته من جديد.": {
+      en: "If HR returned your file for correction, restore what you wrote instead of typing it again.",
+      hi: "यदि मानव संसाधन ने आपकी फ़ाइल सुधार के लिए लौटाई है, तो दोबारा लिखने के बजाय अपना लिखा हुआ वापस लाएँ।" },
+    "رقم الهوية أو الجوال أو رقم الطلب": {
+      en: "ID number, mobile, or reference number",
+      hi: "पहचान संख्या, मोबाइल, या अनुरोध संख्या" },
+    "اكتب واحدًا منها: رقم هويتك/إقامتك، أو جوالك، أو رقم طلبك (HR-JOIN-…).": {
+      en: "Enter any one: your ID/Iqama number, your mobile, or your reference (HR-JOIN-…).",
+      hi: "इनमें से कोई एक लिखें: आपकी पहचान/इक़ामा संख्या, आपका मोबाइल, या आपकी अनुरोध संख्या (HR-JOIN-…)।" },
+    "استعادة بياناتي": { en: "Restore my data", hi: "मेरा डेटा वापस लाएँ" },
+    "إغلاق": { en: "Close", hi: "बंद करें" },
+    "اكتب رقمًا صحيحًا.": { en: "Enter a valid number.", hi: "सही संख्या लिखें।" },
+    "جارٍ البحث…": { en: "Searching…", hi: "खोजा जा रहा है…" },
+    "تعذّر الاتصال — حاول مرّةً أخرى.": {
+      en: "Connection failed — please try again.", hi: "कनेक्शन विफल — फिर कोशिश करें।" },
+    "تعذّر جلب بياناتك — أعد فتح الصفحة.": {
+      en: "Could not load your data — reopen the page.",
+      hi: "आपका डेटा नहीं मिला — पृष्ठ फिर खोलें।" },
+    "افتح الصفحة من داخل التطبيق بعد تسجيل الدخول.": {
+      en: "Open this page from inside the app after signing in.",
+      hi: "साइन इन करने के बाद इस पृष्ठ को ऐप के भीतर से खोलें।" },
+    "ابدأ من جديد": { en: "Start over", hi: "फिर से शुरू करें" },
+    "تحديث ملفّي الوظيفي": { en: "Update my employment file", hi: "मेरी रोज़गार फ़ाइल अपडेट करें" },
+    "لك ملفٌّ قيد المراجعة": { en: "You have a file under review", hi: "आपकी एक फ़ाइल समीक्षाधीन है" },
+    "انتظر البتّ فيه قبل إرسال تصحيحٍ جديد.": {
+      en: "Wait for a decision before sending another correction.",
+      hi: "दूसरा सुधार भेजने से पहले निर्णय की प्रतीक्षा करें।" },
+    "الكود": { en: "Code", hi: "कोड" },
+    "دولةٌ أخرى": { en: "Another country", hi: "अन्य देश" }
+  };
+
+  // يترجم نصًّا إلى اللغة المختارة: العربيُّ المكتوبُ وحدَه من AR،
+  // والإنجليزيُّ إلى الهندية من HI — مطابقةً تامّةً أوّلًا، ثمّ استبدالًا
+  // داخل النصوص المركَّبة (نصٌّ فيه اسمُ ملفٍّ أو رقمٌ بين عباراتٍ ثابتة).
   function hx(s) {
-    if (L !== "hi" || s == null) return s;
+    if (s == null) return s;
+    if (L !== "ar") {
+      var a = AR[String(s)];
+      if (a) return a[L] || a.en;
+    }
+    if (L !== "hi") return s;
     var v = String(s);
     if (HI[v]) return HI[v];
     if (!/[A-Za-z]/.test(v)) return v;
@@ -1179,7 +1224,7 @@
   function msg(kind, text) {
     var m = $("#msg");
     m.className = "msg" + (kind ? " " + kind : "");
-    m.textContent = text || "";
+    m.textContent = hx(text || "");
     if (kind) window.scrollTo({ top: 0, behavior: "smooth" });
   }
   function paintProgress() {
@@ -1455,8 +1500,8 @@
     ]);
     go.addEventListener("click", async function () {
       var v = String(inp.value || "").trim();
-      if (v.length < 5) { out.textContent = "اكتب رقمًا صحيحًا."; return; }
-      go.disabled = true; out.textContent = "جارٍ البحث…";
+      if (v.length < 5) { out.textContent = hx("اكتب رقمًا صحيحًا."); return; }
+      go.disabled = true; out.textContent = hx("جارٍ البحث…");
       try {
         var res = await fetch("/api/join/resume", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -1465,7 +1510,7 @@
         var j = await res.json().catch(function () { return {}; });
         if (j && j.ok) { m.remove(); fillFromServer(j); return; }
         out.textContent = (j && j.error) || "لم نجد ملفًّا بهذا الرقم.";
-      } catch (e) { out.textContent = "تعذّر الاتصال — حاول مرّةً أخرى."; }
+      } catch (e) { out.textContent = hx("تعذّر الاتصال — حاول مرّةً أخرى."); }
       go.disabled = false;
     });
     inp.addEventListener("keydown", function (e) { if (e.key === "Enter") go.click(); });
@@ -1527,7 +1572,7 @@
     .catch(function () { /* تبقى الحقول كتابةً حرّة */ });
 
   if (MINE) {
-    document.querySelector("[data-t='h1']").textContent = "تحديث ملفّي الوظيفي";
+    document.querySelector("[data-t='h1']").textContent = hx("تحديث ملفّي الوظيفي");
     fetch("/api/me/intake", { credentials: "include" })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
@@ -1535,8 +1580,8 @@
         if (j.pending) {
           $("#land").hidden = true; $("#succ").hidden = false;
           document.body.classList.remove("landing");
-          $("#succT").textContent = "لك ملفٌّ قيد المراجعة";
-          $("#succP").textContent = "انتظر البتّ فيه قبل إرسال تصحيحٍ جديد.";
+          $("#succT").textContent = hx("لك ملفٌّ قيد المراجعة");
+          $("#succP").textContent = hx("انتظر البتّ فيه قبل إرسال تصحيحٍ جديد.");
           $("#succRef").textContent = j.pending.ref;
           $("#succDate").textContent = "—";
           return;
