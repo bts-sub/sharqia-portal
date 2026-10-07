@@ -159,6 +159,8 @@
     "Please check the highlighted fields.": "कृपया चिह्नित फ़ील्ड जाँचें।",
     "Complete this section first.": "पहले यह अनुभाग पूरा करें।",
     "Please sign before continuing.": "आगे बढ़ने से पहले हस्ताक्षर करें।",
+    "Attach a photo of your signature before continuing.":
+      "आगे बढ़ने से पहले अपने हस्ताक्षर की फ़ोटो संलग्न करें।",
 
     // القوائمُ والمرفقات
     "Select…": "चुनें…", "Other — type it yourself": "अन्य — स्वयं लिखें",
@@ -1287,6 +1289,9 @@
     save(); render();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+  // التوقيعُ موجود: صورةٌ مرفقةٌ الآن، أو رسمٌ قديمٌ لمن بدأ قبل التبديل
+  function signed() { return !!(state.files && state.files.signature) || !!state.sign; }
+
   function validateStep() {
     var s = SEC[state.step], bad = null;
     if (s.fields) {
@@ -1295,8 +1300,12 @@
         if (w && !checkOne(f, w) && !bad) bad = w;
       });
     }
-    if (s.sign && !state.sign) {
-      msg("bad", L === "ar" ? "وقّع في المربّع قبل المتابعة." : "Please sign before continuing.");
+    // ⚠️ التوقيعُ صار صورةً تُرفَق لا رسمًا في مربّع، والحارسُ بقي يسأل عن
+    //   `state.sign` — وهو مخزَنُ الرسم القديم لا يُملأ أبدًا. فكان من
+    //   يُرفق توقيعَه يُردّ بـ«وقّع في المربّع» ولا مربّعَ في الشاشة.
+    if (s.sign && !signed()) {
+      msg("bad", L === "ar" ? "أرفق صورة توقيعك قبل المتابعة."
+                            : "Attach a photo of your signature before continuing.");
       return false;
     }
     if (s.files) {
@@ -1345,7 +1354,7 @@
       if (s.review) continue;
       var bad = fieldsOf(s).filter(function (f) { return fieldError(f); });
       var noFile = (s.files || []).filter(function (f) { return f.req && !state.files[f.k]; });
-      if (bad.length || noFile.length || (s.sign && !state.sign)) {
+      if (bad.length || noFile.length || (s.sign && !signed())) {
         go(i);
         msg("bad", L === "ar" ? "أكمل هذا القسم قبل الإرسال." : "Complete this section first.");
         return;
