@@ -43,7 +43,11 @@ const DIR = (() => {
 // والمساحةُ تُحاسب على ما شُغل فعلًا.
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_FILE = 10 * 1024 * 1024;       // لكلّ ملف
-const MAX_DISK = 400 * 1024 * 1024;      // سقفُ ما يُحتجز على القرص
+// ⚠️ سقفُ القرص يُقاس بما يحتاجه الذروةُ لا بما يبدو «معقولًا»: مئتا
+// موظفٍ بأربعة مرفقاتٍ خفيفةٍ (٩٠٠ك) = نحو سبعمئة ميجابايت. وأربعمئةٌ
+// تعني أنّ مرفقات النصف الأوّل تُحذف وهم ما زالوا يُعبّئون — فيُردّون
+// بـ«انتهت مهلةُ الحفظ» عند الإرسال.
+const MAX_DISK = 1200 * 1024 * 1024;     // سقفُ ما يُحتجز على القرص
 
 function ensureDir() {
   try { fs.mkdirSync(DIR, { recursive: true }); } catch { /* موجودٌ أصلًا */ }
@@ -77,7 +81,7 @@ setInterval(clean, 10 * 60 * 1000).unref?.();
 clean();
 
 /** يحفظ مرفقًا واحدًا ويُعيد معرّفَه. */
-export function putFile({ base64, name }) {
+export async function putFile({ base64, name }) {
   const data = String(base64 || "");
   const raw = data.includes(",") ? data.slice(data.indexOf(",") + 1) : data;
   const bytes = Math.round(raw.length * 0.75);
@@ -86,7 +90,11 @@ export function putFile({ base64, name }) {
   if (!/^[A-Za-z0-9+/=\s]+$/.test(raw.slice(0, 200))) throw new Error("ترميزُ الملف غير صالح");
   ensureDir();
   const fid = crypto.randomBytes(16).toString("hex");
-  fs.writeFileSync(path.join(DIR, fid), raw, "utf8");
+  // ⚠️ كتابةٌ متزامنة: المرفقُ ميجابايتٌ على نواةٍ واحدة، فكلُّ رفعةٍ
+  //   تُجمّد حلقةَ الأحداث حتى تُكتب — وعشرون رفعةً متزامنةً تُجمّد
+  //   الخادمَ لمن يقرأ الصفحةَ في اللحظة نفسها. والكتابةُ غيرُ المتزامنة
+  //   تُطلق الحلقةَ بين البايتات.
+  await fs.promises.writeFile(path.join(DIR, fid), raw, "utf8");
   return { fid, bytes, name: String(name || "").slice(0, 120) };
 }
 

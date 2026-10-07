@@ -78,7 +78,9 @@ const UP_RATE = new Map();
 function upOk(ip) {
   const now = Date.now();
   const hits = (UP_RATE.get(ip) || []).filter((t) => now - t < 60 * 60 * 1000);
-  if (hits.length >= 60) return false;            // ستّون مرفقًا في الساعة
+  // ⚠️ ومثلُه حدُّ المرفقات: مئتا موظفٍ بأربعة مرفقاتٍ لكلٍّ = ثمانمئة
+  //   رفعة، وستّون منها تُوقف الرابطَ عند الموظف الخامس عشر.
+  if (hits.length >= 1500) return false;          // ألفٌ وخمسمئة مرفقٍ في الساعة
   hits.push(now); UP_RATE.set(ip, hits);
   if (UP_RATE.size > 3000) {
     for (const [k, v] of UP_RATE) if (!v.some((t) => now - t < 36e5)) UP_RATE.delete(k);
@@ -91,7 +93,7 @@ router.post("/join/:token/file", async (req, res, next) => {
     const ip = req.ip || req.headers["x-forwarded-for"] || "—";
     if (!upOk(ip)) throw tooMany("مرفقاتٌ كثيرة من هذا الجهاز خلال ساعة.");
     const { base64, name } = req.body || {};
-    const saved = putFile({ base64, name });
+    const saved = await putFile({ base64, name });
     res.json({ ok: true, fid: saved.fid, bytes: saved.bytes });
   } catch (e) {
     // ⚠️ يُكتب في السجلّ باسمه وحجمه: مرفقٌ يُردّ ولا أثرَ له في الخادم
@@ -105,9 +107,16 @@ router.post("/join/:token/file", async (req, res, next) => {
 
 // ذاكرةُ المعدّل: عنوان → أوقات الإرسال. تُنظَّف من القديم في كل نداء،
 // فلا تنمو بلا حدّ ولا تحتاج مهمّةً مجدولة.
+// ⚠️ الحدُّ على العنوان يفترض أنّ وراءه رجلًا واحدًا — وهذا يسقط في
+// المنشأة: مئتا موظفٍ على شبكة المصنع يخرجون كلُّهم بعنوانٍ واحد، فيمرّ
+// الأوّلُ والثاني ويُردّ الباقون بـ«أُرسل ملفّان من هذا الجهاز خلال
+// ساعة» — وهم لم يُرسلوا شيئًا.
+//
+// فرُفع إلى مئتين في الساعة: يسع قسمًا كاملًا يُعبّئ في جلسةٍ واحدة،
+// ويبقى سدًّا أمام نصٍّ آليٍّ يُغرق البوابة بآلاف الطلبات.
 const RATE = new Map();
 const WINDOW_MS = 60 * 60 * 1000;
-const MAX_PER_WINDOW = 2;
+const MAX_PER_WINDOW = 200;
 
 function rateOk(ip) {
   const now = Date.now();
