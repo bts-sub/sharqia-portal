@@ -25,9 +25,21 @@ router.get("/me/intake", requireAuth, async (req, res, next) => {
   } catch (e) { next(e?.status ? e : badRequest(e?.message || "تعذّرت القراءة")); }
 });
 
+// ⚠️ مرفقٌ معرّفُه أُرسل وملفُّه مفقود: لا يُبطل الإرسالَ ولا يُبتلع في
+//   صمت. يُردّ اسمُه للصفحة قبل أن يُكتب شيءٌ في أودو، فتُعيد رفعَه من
+//   بايتاتها المحفوظة وتُرسل ثانيةً — ولا يرى الموظفُ شيئًا.
+function missingFiles(vals, res) {
+  const missing = vals.__missing || [];
+  delete vals.__missing;
+  if (!missing.length) return false;
+  res.status(409).json({ needFiles: missing });
+  return true;
+}
+
 router.post("/me/intake", requireAuth, async (req, res, next) => {
   try {
     const vals = buildIntakeVals(req.body || {});
+    if (missingFiles(vals, res)) return;
     const { data } = await runAction("intake.submitMine", { vals }, { user: req.user });
     res.json(data);
   } catch (e) { next(e?.status ? e : badRequest(e?.message || "تعذّر إرسال الملف")); }
@@ -228,6 +240,7 @@ function buildIntakeVals(b) {
 
   // المرفقات: base64 بلا ترويسة، بسقفٍ لكلٍّ منها وللمجموع
   let total = 0;
+  const missing = [];
   // أسماءُ المستندات كما يراها الموظف — لتُذكر في الخطأ باسمها لا برمزها
   const DOC_AR = {
     photo: "الصورة الشخصية", id_copy: "صورة الهوية / الإقامة",
@@ -249,9 +262,13 @@ function buildIntakeVals(b) {
       // بلا مرفقه، فتصل الموارد البشرية خانةٌ فارغةٌ تظنّ صاحبها لم يرفع —
       // وهو رفع ورأى «رُفع ✓». يُقال له أيُّ مستندٍ يُعيده، لا أن يُسكت
       // عنه ويُكتشف بعد أسبوع.
+      // ⚠️ لا يُرمى خطأٌ يُبطل الإرسالَ كلَّه: الصفحةُ تحتفظ ببايتات ما
+      //   رفعَته، فتُعيد رفعَ المفقود وتُرسل ثانيةً بلا أن يُزعج الموظف.
+      //   وكان الطلبُ يُردّ كلُّه فيقف صاحبُه أمام نموذجٍ ملأه في عشر
+      //   دقائق يُطلب منه أن يُعيد إرفاق ما أرفقه.
       if (fid && !raw) {
-        throw badRequest(
-          `انتهت مهلةُ حفظ «${DOC_AR[key] || key}» قبل الإرسال — أعد إرفاقه ثمّ أرسل.`);
+        missing.push(key);
+        continue;
       }
       if (!raw) continue;
       data = raw.includes(",") ? raw.slice(raw.indexOf(",") + 1) : raw;
@@ -264,6 +281,8 @@ function buildIntakeVals(b) {
     vals[key] = data;
     if (key !== "photo") vals[`${key}_name`] = clean(b[`${key}_name`], 80) || `${key}.bin`;
   }
+  // ما فُقد يُعلَّق على القيم ليُقرأ في المسار، ولا يُكتب في أودو
+  if (missing.length) vals.__missing = missing;
   return vals;
 }
 
@@ -308,6 +327,7 @@ router.post("/join/:token", async (req, res, next) => {
         + "إن كنت تُصحّح ملفًّا أرسلته فاتصل بالموارد البشرية.");
     }
     const vals = buildIntakeVals(req.body || {});
+    if (missingFiles(vals, res)) return;
     // ⚠️ رمزُ الرابط العامّ لا يُحفظ: الصفحةُ تأخذ آخرَ جزءٍ من العنوان،
     // فمن فتح /join وصل رمزُه «join» — كلمةٌ واحدةٌ لكلّ الملفّات. ورمزُ
     // الاستعادة يولّده أودو عند الإعادة للتصحيح وحده.

@@ -1157,7 +1157,11 @@
           if (!out || !out.fid) throw new Error(why || "تعذّر الرفع");
           var cur = state.files[f.k];
           if (cur && cur.name === file.name) {
-            cur.fid = out.fid; cur.up = "ok"; cur.data = "";   // البايتات لم تعد لازمة
+            // ⚠️ البايتاتُ تبقى في الذاكرة: لو ضاع الملفُّ من الخادم قبل
+            //   الإرسال (مهلةٌ أو تنظيفُ مساحة) أُعيد رفعُه بلا أن يُطلب من
+            //   الموظف إرفاقُه ثانية. ولا تُحفظ في التخزين المحلّي — ذاك
+            //   يحفظ البياناتِ وحدَها، فلا يمتلئ.
+            cur.fid = out.fid; cur.up = "ok";
             render(); paintProgress();
           }
         } catch (e) {
@@ -1500,6 +1504,33 @@
         signal: ctrl ? ctrl.signal : undefined,
       });
       if (timer) clearTimeout(timer);
+
+      // ⚠️ مرفقٌ ضاع من الخادم: يُعاد رفعُه ثمّ يُرسل ثانيةً بلا أن يُزعج
+      //   الموظف. وكان يُردّ بـ«انتهت مهلةُ الحفظ — أعد إرفاقه»، فيقف أمام
+      //   نموذجٍ ملأه في عشر دقائق يُطلب منه أن يُعيد ما أرفقه.
+      if (res.status === 409) {
+        var need = (await res.json().catch(function () { return {}; })).needFiles || [];
+        var fixed = 0;
+        await Promise.all(need.map(function (nk) {
+          var g = state.files[nk];
+          if (!g || !g.data) return Promise.resolve();
+          return fetch("/api/join/" + encodeURIComponent(token) + "/file", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ base64: g.data, name: g.name }),
+          }).then(function (r2) { return r2.json().catch(function () { return {}; }); })
+            .then(function (o2) {
+              if (o2 && o2.fid) { g.fid = o2.fid; body[nk + "_fid"] = o2.fid; fixed++; }
+            })
+            .catch(function () {});
+        }));
+        if (fixed) {
+          res = await fetch(MINE ? "/api/me/intake" : "/api/join/" + encodeURIComponent(token), {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+        }
+      }
       var out = await res.json().catch(function () { return {}; });
       if (res.status === 413) throw new Error(L === "ar"
         ? "المرفقات أكبر ممّا يقبله الخادم — احذف أو صغّر بعضها ثمّ أعد الإرسال."
