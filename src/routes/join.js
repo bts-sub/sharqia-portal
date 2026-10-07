@@ -94,6 +94,11 @@ router.post("/join/:token/file", async (req, res, next) => {
     const saved = putFile({ base64, name });
     res.json({ ok: true, fid: saved.fid, bytes: saved.bytes });
   } catch (e) {
+    // ⚠️ يُكتب في السجلّ باسمه وحجمه: مرفقٌ يُردّ ولا أثرَ له في الخادم
+    //   يُبحث عن سببه في جهاز الموظف — وهو هنا.
+    console.warn("⚠️ تعذّر رفع مرفق «%s» (%s بايت): %s",
+      String(req.body?.name || "—").slice(0, 80),
+      String(req.body?.base64 || "").length, e?.message || e);
     next(e?.status ? e : badRequest(e?.message || "تعذّر رفع المرفق"));
   }
 });

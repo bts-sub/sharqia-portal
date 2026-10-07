@@ -1118,12 +1118,29 @@
         // ينقطع في منتصفه على شبكةٍ متوسّطة فيسقط كلُّ شيء. وهنا يُرفع كلُّ
         // ملفٍّ وحده، فما وصل بقي وما انقطع يُعاد وحده.
         try {
-          var res = await fetch("/api/join/" + encodeURIComponent(token) + "/file", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ base64: b64, name: file.name }),
-          });
-          var out = await res.json().catch(function () { return {}; });
-          if (!res.ok || !out.fid) throw new Error(out.error || "تعذّر الرفع");
+          // ⚠️ محاولتان لا واحدة: رأينا طلباتٍ تُردّ بـ400 بلا جسمٍ أصلًا —
+          //   وذاك انقطاعُ اتّصالٍ في منتصف الرفع لا رفضٌ من الخادم. ومن
+          //   أُرجع إليه ملفُّه بلا سببٍ يظنّ النظامَ لا يقبله، فيُعيد
+          //   الاختيار مرّةً بعد مرّة. والإعادةُ هنا أرخصُ من يأسه.
+          var out = null, res = null, why = "";
+          for (var att = 0; att < 2; att++) {
+            try {
+              res = await fetch("/api/join/" + encodeURIComponent(token) + "/file", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ base64: b64, name: file.name }),
+              });
+              out = await res.json().catch(function () { return {}; });
+              if (res.ok && out && out.fid) break;
+              // خطأٌ مفهومٌ من الخادم لا يُعاد: الإعادةُ تردّ الجوابَ نفسه
+              why = (out && out.error) || ("HTTP " + res.status);
+              if (out && out.error) break;
+            } catch (netErr) {
+              why = L === "ar" ? "انقطع الاتصال" : "connection dropped";
+            }
+            out = null;
+            if (att === 0) await new Promise(function (ok) { setTimeout(ok, 1200); });
+          }
+          if (!out || !out.fid) throw new Error(why || "تعذّر الرفع");
           var cur = state.files[f.k];
           if (cur && cur.name === file.name) {
             cur.fid = out.fid; cur.up = "ok"; cur.data = "";   // البايتات لم تعد لازمة
@@ -1132,9 +1149,11 @@
         } catch (e) {
           var c2 = state.files[f.k];
           if (c2 && c2.name === file.name) { c2.up = "fail"; render(); }
-          msg("bad", L === "ar"
-            ? "تعذّر رفع «" + file.name + "» — اضغط البطاقة لإعادة اختياره، أو تحقّق من الشبكة."
-            : "Could not upload “" + file.name + "”. Tap the card to pick it again.");
+          // السببُ يُقال لا يُخفى: «تحقّق من الشبكة» وحدَها لا تدلّ على شيء
+          msg("bad", (L === "ar"
+            ? "تعذّر رفع «" + file.name + "» — اضغط البطاقة لإعادة اختياره."
+            : "Could not upload “" + file.name + "”. Tap the card to pick it again.")
+            + ((e && e.message) ? " (" + e.message + ")" : ""));
         }
       };
       r.readAsDataURL(file);
