@@ -229,11 +229,15 @@
   }
   .ticket .lb { display: block; font-size: 12px; color: var(--gold-2); font-weight: 600; letter-spacing: .4px; }
   .ticket .no { display: block; font-size: 27px; font-weight: 900; letter-spacing: 2px; direction: ltr; margin-top: 2px; }
-  .wa { display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-    margin-top: 20px; background: #25D366; color: #fff; text-decoration: none;
-    border-radius: 13px; padding: 15px 28px; font-weight: 700; font-size: 15.5px;
-    box-shadow: 0 8px 22px rgba(37,211,102,.32); transition: transform .12s; }
-  .wa:hover { transform: translateY(-1px); }
+  .agent { margin: 20px 0 0; font-size: 14.5px; color: var(--ink-2); font-weight: 600; }
+  .agent b { color: var(--navy); }
+  .acts2 { display: flex; gap: 11px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
+  .wa, .call { display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    text-decoration: none; border-radius: 13px; padding: 15px 26px;
+    font-weight: 700; font-size: 15.5px; transition: transform .12s; }
+  .wa { background: #25D366; color: #fff; box-shadow: 0 8px 22px rgba(37,211,102,.32); }
+  .call { background: var(--navy); color: #fff; box-shadow: 0 8px 22px rgba(10,26,51,.28); }
+  .wa:hover, .call:hover { transform: translateY(-1px); }
   .again { margin-top: 24px; background: none; border: 1.5px solid var(--line);
     border-radius: 12px; padding: 12px 24px; font-family: inherit; font-size: 14px;
     font-weight: 600; color: var(--ink-2); cursor: pointer; }
@@ -424,12 +428,24 @@
     <!-- ⚠️ زرُّ واتساب بعد النجاح لا قبله: البلاغُ مسجَّلٌ في النظام
          أصلًا، وهذه إضافةُ تنبيهٍ فوريّ — فمن أغلق الصفحة قبل أن يضغطه
          لم يضع بلاغُه. -->
-    <a class="wa" id="waBtn" href="#" target="_blank" rel="noopener" style="display:none">
-      <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor" aria-hidden="true">
-        <path d="M17.5 14.4c-.3-.2-1.8-.9-2-1s-.5-.2-.7.1-.8 1-1 1.2-.4.2-.7 0a8.2 8.2 0 0 1-2.4-1.5 9 9 0 0 1-1.7-2.1c-.2-.3 0-.5.1-.6l.5-.6.3-.5v-.5l-.9-2.2c-.3-.6-.5-.5-.7-.5h-.6a1.2 1.2 0 0 0-.8.4 3.4 3.4 0 0 0-1.1 2.6 6 6 0 0 0 1.2 3.1 13.4 13.4 0 0 0 5.2 4.6c2 .8 2.4.7 2.9.6a3 3 0 0 0 2-1.4 2.5 2.5 0 0 0 .2-1.4zM12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2z"/>
-      </svg>
-      <span>أبلغ الدعم الفني بالواتساب</span>
-    </a>
+    <!-- ⚠️ اسمُ المندوب فوق الأزرار: من يبلّغ عن عطلٍ يطمئنّ حين يعرف
+         أنّ لبلاغه صاحبًا بعينه، ويسأل عنه باسمه إن طال الانتظار. -->
+    <p class="agent" id="agentLine" style="display:none"></p>
+    <div class="acts2" id="contactRow" style="display:none">
+      <a class="wa" id="waBtn" href="#" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor" aria-hidden="true">
+          <path d="M17.5 14.4c-.3-.2-1.8-.9-2-1s-.5-.2-.7.1-.8 1-1 1.2-.4.2-.7 0a8.2 8.2 0 0 1-2.4-1.5 9 9 0 0 1-1.7-2.1c-.2-.3 0-.5.1-.6l.5-.6.3-.5v-.5l-.9-2.2c-.3-.6-.5-.5-.7-.5h-.6a1.2 1.2 0 0 0-.8.4 3.4 3.4 0 0 0-1.1 2.6 6 6 0 0 0 1.2 3.1 13.4 13.4 0 0 0 5.2 4.6c2 .8 2.4.7 2.9.6a3 3 0 0 0 2-1.4 2.5 2.5 0 0 0 .2-1.4zM12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2z"/>
+        </svg>
+        <span id="waTxt">واتساب</span>
+      </a>
+      <a class="call" id="callBtn" href="#">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+             stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.7a2 2 0 0 1-.4 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.5 2.7.6a2 2 0 0 1 1.7 2z"/>
+        </svg>
+        <span id="callTxt">اتصال</span>
+      </a>
+    </div>
     <p style="margin-top:18px;font-size:13.5px">احتفظ بالرقم — تُراجَع به بلاغُك.</p>
     <button class="again" id="again" type="button">إرسال بلاغٍ آخر</button>
   </section>
@@ -618,7 +634,16 @@
       $("form").style.display = "none";
       $("done").classList.add("on");
       $("ref").textContent = j.ref || "—";
-      // رسالةُ واتساب جاهزةٌ إلى الدعم الفني — ضغطةٌ واحدةٌ فتصل فعلًا
+      // اسمُ المندوب ثمّ طريقا التواصل: واتسابٌ برسالةٍ جاهزة، واتّصالٌ
+      // مباشر لمن لا يكتب. والرقمُ رقمُ المندوب إن أُسند، وإلا رقمُ الدعم.
+      var who = j.agent && j.agent.name ? j.agent.name : "";
+      if (who) {
+        $("agentLine").innerHTML = "بلاغُك لدى <b></b>";
+        $("agentLine").querySelector("b").textContent = who;
+        $("agentLine").style.display = "block";
+      } else {
+        $("agentLine").style.display = "none";
+      }
       if (j.waTo) {
         var msg = [
           "🛠️ بلاغ دعم فني — " + kind,
@@ -629,11 +654,15 @@
           "",
           $("problem").value.trim()
         ].join("\n");
+        var own = j.agent && j.agent.own;
+        $("waTxt").textContent = own && who ? "واتساب " + who : "واتساب الدعم الفني";
+        $("callTxt").textContent = own && who ? "اتصال بـ" + who : "اتصال بالدعم الفني";
         $("waBtn").href = "https://wa.me/" + encodeURIComponent(j.waTo)
           + "?text=" + encodeURIComponent(msg);
-        $("waBtn").style.display = "inline-flex";
+        $("callBtn").href = "tel:+" + j.waTo;
+        $("contactRow").style.display = "flex";
       } else {
-        $("waBtn").style.display = "none";
+        $("contactRow").style.display = "none";
       }
       window.scrollTo({ top: 0, behavior: "smooth" });
     }).catch(function (err) {

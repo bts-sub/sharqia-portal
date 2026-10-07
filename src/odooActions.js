@@ -4295,10 +4295,27 @@ const actions = {
         }
       }
       let ref = String(id);
+      // ⚠️ المندوبُ يُقرأ بعد الإنشاء لا قبله: الإسنادُ التلقائيّ في
+      //    فريق هيلب ديسك يقع لحظةَ إنشاء التذكرة، فلا يُعرف صاحبُها إلا
+      //    بعدها. ومن يبلّغ عن عطلٍ يريد اسمًا يسأل عنه لا صندوقًا عامًّا.
+      let agent = null;
       try {
         const [t] = await odoo.searchRead("helpdesk.ticket", [["id", "=", id]],
-          ["ticket_ref"], { limit: 1 });
+          ["ticket_ref", "user_id"], { limit: 1 });
         if (t && t.ticket_ref) ref = t.ticket_ref;
+        const uid = t?.user_id?.[0];
+        if (uid) {
+          const [u] = await odoo.searchRead("res.users", [["id", "=", uid]],
+            ["name", "employee_ids"], { limit: 1 });
+          let num = "";
+          const eid = u?.employee_ids?.[0];
+          if (eid) {
+            const [e] = await odoo.searchRead("hr.employee", [["id", "=", eid]],
+              ["mobile_phone", "work_phone"], { limit: 1 });
+            num = e?.mobile_phone || e?.work_phone || "";
+          }
+          if (u?.name) agent = { name: u.name, phone: String(num || "") };
+        }
       } catch { /* الرقمُ الداخلي يكفي مرجعًا */ }
 
       // ⚠️ رقمٌ يُعاد للصفحة لتفتح به واتساب بعد الإرسال.
@@ -4309,15 +4326,25 @@ const actions = {
       //
       // وبصيغةٍ دولية: wa.me يرفض «05…» ويفتح محادثةً فارغةً بلا خطأ ظاهر،
       // فيظنّ المبلِّغ أنه أرسل ولم يُرسل.
+      // ورقمُ المندوب أوّلًا، ثمّ رقمُ الدعم العامّ: من أُسند إليه البلاغُ
+      // هو من يعرف حالَه، ومن لم يُسند بعدُ يُسأل عنه الصندوقُ العامّ.
       let waTo = "";
       try {
-        const nums = await actions._itWhatsappNumbers();
-        waTo = waNumber(nums[0] || "");
+        const own = waNumber(agent?.phone || "");
+        if (own) waTo = own;
+        else {
+          const nums = await actions._itWhatsappNumbers();
+          waTo = waNumber(nums[0] || "");
+        }
         if (!waTo) console.warn(
-          "⚠️ لا رقمَ لفريق الدعم الفني — زرُّ الواتساب لن يظهر. "
-          + "اكتبه في: الإعدادات ← بوابة الموظفين ← أرقام واتساب الدعم الفني.");
+          "⚠️ لا رقمَ للمندوب ولا لفريق الدعم — زرُّ التواصل لن يظهر. "
+          + "اكتبه في: الإعدادات ← بوابة الموظفين ← أرقام واتساب الدعم الفني، "
+          + "أو في جوّال بطاقة الفنيّ.");
       } catch { /* لا يُبطل البلاغ */ }
-      return { ok: true, id, ref, waTo };
+      return {
+        ok: true, id, ref, waTo,
+        agent: agent ? { name: agent.name, own: !!waNumber(agent.phone) } : null,
+      };
     }, async () => ({ ok: true, id: 0, ref: "TEST" }), { forceLiveErrors: true });
   },
 
