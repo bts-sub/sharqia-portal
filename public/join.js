@@ -1211,31 +1211,51 @@
       if (s.review) return;
       var rows = el("dl", {});
       if (s.sign) {
+        var sg = state.files.signature;
+        var sdd = el("dd", { class: sg ? "" : "empty",
+          text: sg ? (sg.name + " · " + human(sg.size))
+                   : (L === "ar" ? "— لم يُرفَق" : "— not attached") });
+        if (sg) {
+          sdd.appendChild(el("button", { class: "seeR", type: "button",
+            text: L === "ar" ? "عرض" : "View",
+            onclick: function () { openStored(sg); } }));
+        }
         rows.appendChild(el("div", { class: "r" }, [
-          el("dt", { text: L === "ar" ? "التوقيع" : "Signature" }),
-          el("dd", { class: state.files.signature ? "" : "empty",
-            text: state.files.signature ? (L === "ar" ? "موقَّع ومرفَق" : "Signed and attached")
-                             : (L === "ar" ? "— لم يُرفَق" : "— not attached") }),
+          el("dt", { text: L === "ar" ? "صورة التوقيع" : "Signature photo" }), sdd,
         ]));
       }
-      fieldsOf(s).forEach(function (f) {
-        var v = (state.data[f.k] || "").toString().trim();
+      // ⚠️ كلُّ حقلٍ يُعرض، حتى ما لا ينطبق عليه.
+      //
+      // كانت الحقولُ المشروطة تُحذف من المراجعة حذفًا — فمن لم يُسأل عن
+      // «عدد الأبناء» لأنه أعزب لا يرى للحقل أثرًا، ولا يدري أسقط سهوًا
+      // أم لم يُطلب منه. والمراجعةُ موضعُ التأكّد، والتأكّدُ لا يكون من
+      // غائب. فيُعرض مكتوبًا عليه «لا ينطبق».
+      (s.fields || []).forEach(function (f) {
+        var on = shown(f);
+        var v = on ? (state.data[f.k] || "").toString().trim() : "";
         if (f.opts && v) {
           var o = f.opts.filter(function (x) { return x.v === v; })[0];
           if (o) v = lk(o);
         }
+        var txt = !on ? (L === "ar" ? "— لا ينطبق" : "— not applicable")
+                      : (v || (L === "ar" ? "— لم يُملأ" : "— empty"));
         rows.appendChild(el("div", { class: "r" }, [
           el("dt", { text: lk(f) }),
-          el("dd", { class: v ? "" : "empty", text: v || (L === "ar" ? "— لم يُملأ" : "— empty") }),
+          el("dd", { class: v ? "" : "empty", text: txt }),
         ]));
       });
+      // والمرفقُ يُفتح من المراجعة: اسمُ ملفٍّ وحجمُه لا يقولان أصُوِّرت
+      // الصفحةُ الصحيحة أم ظهرت مقلوبةً أو مقطوعة.
       (s.files || []).forEach(function (f) {
         var g = state.files[f.k];
-        rows.appendChild(el("div", { class: "r" }, [
-          el("dt", { text: lk(f) }),
-          el("dd", { class: g ? "" : "empty",
-            text: g ? g.name + " · " + human(g.size) : (L === "ar" ? "— لم يُرفَق" : "— none") }),
-        ]));
+        var dd = el("dd", { class: g ? "" : "empty",
+          text: g ? g.name + " · " + human(g.size) : (L === "ar" ? "— لم يُرفَق" : "— none") });
+        if (g) {
+          dd.appendChild(el("button", { class: "seeR", type: "button",
+            text: L === "ar" ? "عرض" : "View",
+            onclick: function () { openStored(g); } }));
+        }
+        rows.appendChild(el("div", { class: "r" }, [el("dt", { text: lk(f) }), dd]));
       });
       frag.appendChild(el("section", { class: "rev" }, [
         el("h3", {}, [
