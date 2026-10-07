@@ -994,7 +994,14 @@
   // ورفعُها على شبكةٍ متوسّطة يطول حتى ينقطع في منتصفه — وهو ما كان يقع:
   // طلباتٌ تموت قبل أن تصل الخادم. وشهادةُ الآيبان تُقرأ في صورةٍ عرضُها
   // ١٨٠٠ بكسل قراءةً تامّة، وحجمُها بعدها نحو ثلث ميجابايت.
-  var SHRINK_OVER = 500 * 1024;      // ما دونها لا يستحقّ إعادة الترميز
+  // ⚠️ ما يُرفع يجب أن يكون خفيفًا، لا أن يُصغَّر «قليلًا».
+  //
+  // كانت الصورُ تُرفع في مليونين ونصفِ بايت، فتسقط في الشبكة المتقطّعة
+  // وتتراكم إلى لحظة الإرسال. والحدُّ على الناتج لا على المصدر: يُعاد
+  // الترميزُ بجودةٍ أدنى حتى ينزل تحت الحدّ، فالشبكةُ لا تُسأل عن أبعاد
+  // الصورة بل عن بايتاتها.
+  var SHRINK_OVER = 400 * 1024;      // ما دونها لا يستحقّ إعادة الترميز
+  var WANT_MAX = 900 * 1024;         // الهدف: أقلُّ من تسعِ مئة كيلوبايت
   // ١٤٠٠ بكسل: الشهادةُ والهويةُ تُقرآن كلمةً كلمة، والحجمُ نحو ١٥٠ كيلوبايت
   var MAX_SIDE = 1400;
 
@@ -1012,12 +1019,19 @@
           var cv = document.createElement("canvas");
           cv.width = cw; cv.height = ch;
           cv.getContext("2d").drawImage(img, 0, 0, cw, ch);
-          cv.toBlob(function (blob) {
+          // ثلاثُ محاولاتٍ بجودةٍ نازلة حتى تنزل تحت الحدّ
+          var qs = [0.72, 0.58, 0.45], qi = 0;
+          var done = function (blob) {
+            if (blob && blob.size > WANT_MAX && qi < qs.length - 1) {
+              qi++;
+              return cv.toBlob(done, "image/jpeg", qs[qi]);
+            }
             URL.revokeObjectURL(url);
             if (!blob || blob.size >= file.size) return resolve(null);
             resolve(new File([blob], file.name.replace(/\.(png|webp)$/i, ".jpg"),
               { type: "image/jpeg" }));
-          }, "image/jpeg", 0.74);
+          };
+          cv.toBlob(done, "image/jpeg", qs[0]);
         } catch (e) { URL.revokeObjectURL(url); resolve(null); }
       };
       img.onerror = function () { URL.revokeObjectURL(url); resolve(null); };
@@ -1123,7 +1137,7 @@
           //   أُرجع إليه ملفُّه بلا سببٍ يظنّ النظامَ لا يقبله، فيُعيد
           //   الاختيار مرّةً بعد مرّة. والإعادةُ هنا أرخصُ من يأسه.
           var out = null, res = null, why = "";
-          for (var att = 0; att < 2; att++) {
+          for (var att = 0; att < 3; att++) {
             try {
               res = await fetch("/api/join/" + encodeURIComponent(token) + "/file", {
                 method: "POST", headers: { "Content-Type": "application/json" },
@@ -1138,7 +1152,7 @@
               why = L === "ar" ? "انقطع الاتصال" : "connection dropped";
             }
             out = null;
-            if (att === 0) await new Promise(function (ok) { setTimeout(ok, 1200); });
+            if (att < 2) await new Promise(function (ok) { setTimeout(ok, 900 * (att + 1)); });
           }
           if (!out || !out.fid) throw new Error(why || "تعذّر الرفع");
           var cur = state.files[f.k];
@@ -1424,22 +1438,26 @@
     var pend = Object.keys(state.files).filter(function (k) {
       return !state.files[k].fid && state.files[k].data;
     });
-    for (var pi = 0; pi < pend.length; pi++) {
-      var pk = pend[pi], pg = state.files[pk];
+    if (pend.length) {
+      // ⚠️ معًا لا واحدًا بعد واحد: ثلاثةٌ متتابعةٌ تُضاعف الانتظارَ ثلاثًا
+      //   والموظفُ واقفٌ أمام زرٍّ يعدّ. وهي طلباتٌ مستقلّةٌ لا يحتاج
+      //   أحدُها جوابَ سابقه.
       btn.textContent = L === "ar"
-        ? "جارٍ رفع المرفقات… (" + (pi + 1) + "/" + pend.length + ")"
-        : "Uploading attachments… (" + (pi + 1) + "/" + pend.length + ")";
-      try {
-        var pr = await fetch("/api/join/" + encodeURIComponent(token) + "/file", {
+        ? "جارٍ رفع المرفقات…" : "Uploading attachments…";
+      await Promise.all(pend.map(function (pk) {
+        var pg = state.files[pk];
+        return fetch("/api/join/" + encodeURIComponent(token) + "/file", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ base64: pg.data, name: pg.name }),
-        });
-        var po = await pr.json().catch(function () { return {}; });
-        if (pr.ok && po.fid) { pg.fid = po.fid; pg.data = ""; pg.up = "ok"; }
-      } catch (e) { /* تبقى بايتاتُه فتُرسل معه — خيرٌ من ألّا يصل */ }
+        }).then(function (pr) { return pr.json().catch(function () { return {}; }); })
+          .then(function (po) {
+            if (po && po.fid) { pg.fid = po.fid; pg.data = ""; pg.up = "ok"; }
+          })
+          .catch(function () { /* تبقى بايتاتُه فتُرسل معه — خيرٌ من ألّا يصل */ });
+      }));
+      btn.textContent = t("sending");
+      save();
     }
-    btn.textContent = t("sending");
-    save();
 
     // التوقيعُ مرفقٌ كبقيّة المرفقات: يمضي في الحلقة أدناه بمعرّفه
     Object.keys(state.files).forEach(function (k) {
