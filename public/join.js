@@ -1411,6 +1411,36 @@
       return;
     }
     body.ack = true;
+
+    // ⚠️ ما لم يُرفع يُرفع الآن، واحدًا واحدًا، قبل بناء الحمولة.
+    //
+    // كان المرفقُ الذي أخفق رفعُه تُحشَر بايتاتُه في طلب الإرسال نفسِه —
+    // فيصير الطلبُ الأخيرُ عشرةَ أضعافه، وينقطع في منتصفه على الشبكة
+    // نفسِها التي أسقطت الرفعَ أوّلًا. فيقف الزرُّ على «جارٍ الإرسال»
+    // ويعيد الموظفُ الكرّة فينقطع ثانيةً — وهو ما وقع فعلًا: في سجلّ
+    // الخادم طلبا إرسالٍ رُدّا بـ400 بلا جسمِ ردّ.
+    //
+    // ورفعُها مفردةً يُبقي كلَّ طلبٍ صغيرًا، وهو ما ينجح في الشبكة نفسها.
+    var pend = Object.keys(state.files).filter(function (k) {
+      return !state.files[k].fid && state.files[k].data;
+    });
+    for (var pi = 0; pi < pend.length; pi++) {
+      var pk = pend[pi], pg = state.files[pk];
+      btn.textContent = L === "ar"
+        ? "جارٍ رفع المرفقات… (" + (pi + 1) + "/" + pend.length + ")"
+        : "Uploading attachments… (" + (pi + 1) + "/" + pend.length + ")";
+      try {
+        var pr = await fetch("/api/join/" + encodeURIComponent(token) + "/file", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ base64: pg.data, name: pg.name }),
+        });
+        var po = await pr.json().catch(function () { return {}; });
+        if (pr.ok && po.fid) { pg.fid = po.fid; pg.data = ""; pg.up = "ok"; }
+      } catch (e) { /* تبقى بايتاتُه فتُرسل معه — خيرٌ من ألّا يصل */ }
+    }
+    btn.textContent = t("sending");
+    save();
+
     // التوقيعُ مرفقٌ كبقيّة المرفقات: يمضي في الحلقة أدناه بمعرّفه
     Object.keys(state.files).forEach(function (k) {
       var g = state.files[k];
