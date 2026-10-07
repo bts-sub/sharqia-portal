@@ -224,11 +224,12 @@
   .done h2 { font-size: 23px; font-weight: 700; margin: 0 0 10px; }
   .done p { color: var(--mut); font-size: 14.5px; margin: 0 auto; max-width: 440px; line-height: 1.95; }
   .ticket {
-    display: inline-block; margin-top: 22px; background: var(--navy);
+    display: inline-block; background: var(--navy);
     border-radius: 14px; padding: 16px 30px; color: #fff;
   }
   .ticket .lb { display: block; font-size: 12px; color: var(--gold-2); font-weight: 600; letter-spacing: .4px; }
   .ticket .no { display: block; font-size: 27px; font-weight: 900; letter-spacing: 2px; direction: ltr; margin-top: 2px; }
+  .ticketrow { display: block; margin-top: 22px; }
   .agent { margin: 20px 0 0; font-size: 14.5px; color: var(--ink-2); font-weight: 600; }
   .agent b { color: var(--navy); }
   .acts2 { display: flex; gap: 11px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
@@ -331,7 +332,7 @@
         <div class="f">
           <label for="phone">رقم الجوال <span class="star">*</span></label>
           <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel"
-                 maxlength="16" placeholder="05XXXXXXXX"/>
+                 maxlength="16" placeholder="05XXXXXXXX" dir="ltr" style="text-align:start"/>
           <div class="hint">سعوديٌّ يبدأ بـ05، أو دوليٌّ بعلامة + وكود دولته.</div>
           <div class="err" id="e_phone"></div>
         </div>
@@ -421,9 +422,13 @@
     <div class="ok"><svg viewBox="0 0 24 24"><path d="M4 12.5l5.2 5.2L20 7"/></svg></div>
     <h2>وصل بلاغُك</h2>
     <p>سجَّلناه لدى فريق تقنية المعلومات، ويُتّصل بك على الرقم الذي كتبته.</p>
-    <div class="ticket">
-      <span class="lb">رقم الطلب</span>
-      <span class="no" id="ref">—</span>
+    <!-- ⚠️ رقمُ الطلب وحدَه في سطره، وطرقُ التواصل تحته: كانا يقعان جنبًا
+         إلى جنبٍ فيُقرأ الرقمُ زرًّا ثالثًا، وهو ما يُحفظ لا ما يُضغط. -->
+    <div class="ticketrow">
+      <div class="ticket">
+        <span class="lb">رقم الطلب</span>
+        <span class="no" id="ref">—</span>
+      </div>
     </div>
     <!-- ⚠️ زرُّ واتساب بعد النجاح لا قبله: البلاغُ مسجَّلٌ في النظام
          أصلًا، وهذه إضافةُ تنبيهٍ فوريّ — فمن أغلق الصفحة قبل أن يضغطه
@@ -582,6 +587,26 @@
     if (/^\+\d{8,15}$/.test(s.replace(/[\s-]/g, ""))) return true;
     return /^05\d{8}$/.test(s.replace(/\D/g, ""));
   }
+
+  // ⚠️ الطولُ يُقطع وقتَ الكتابة لا عند الإرسال: من كتب أحدَ عشرَ رقمًا
+  //   ثمّ رُدَّ بعد ملء النموذج كلِّه يبحث عن خطئه في أحد عشر حقلًا. والحدُّ
+  //   عشرةٌ للسعوديّ وخمسةَ عشرَ للدوليّ — وعلامةُ الزائد تُقبل في أوّله
+  //   وحدَه، فـ«05+» ليس رقمًا.
+  function capPhone(inp) {
+    inp.addEventListener("input", function () {
+      var v = String(inp.value || "");
+      var plus = v.charAt(0) === "+";
+      var d = v.replace(/[^0-9]/g, "").slice(0, plus ? 15 : 10);
+      var out = (plus ? "+" : "") + d;
+      if (v !== out) {
+        var at = inp.selectionStart;
+        inp.value = out;
+        try { inp.setSelectionRange(at - (v.length - out.length), at - (v.length - out.length)); } catch (e) {}
+      }
+    });
+  }
+  capPhone($("phone"));
+  capPhone($("qphone"));
 
   function validate() {
     ["name", "phone", "spot", "problem"].forEach(clearErr);
