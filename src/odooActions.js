@@ -4223,7 +4223,19 @@ const actions = {
     );
   },
 
-  /** حالةُ بلاغٍ لصاحبه — بالرقم والجوّال معًا. */
+  /** رقمُ الدعم الفني بصيغةٍ دولية — تعرضه شاشةُ الاستعلام. */
+  async "support.contact"() {
+    return withOdoo(
+      async () => {
+        const nums = await actions._itWhatsappNumbers();
+        return { waTo: waNumber(nums[0] || "") };
+      },
+      async () => ({ waTo: "" }),
+      { emptyOnError: () => ({ waTo: "" }) }
+    );
+  },
+
+  /** حالةُ بلاغٍ لصاحبه — برقم الطلب أو الجوّال. */
   async "support.status"(params) {
     return withOdoo(
       async () => await odoo.execKw("helpdesk.ticket", "sharqia_support_status",

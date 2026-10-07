@@ -264,6 +264,10 @@
   .stat dd { margin: 0; color: var(--ink); font-weight: 600; }
   .stat .visit { margin-top: 13px; background: var(--gold-tint); border: 1px solid #EADFBE;
     border-radius: 11px; padding: 12px 14px; font-size: 14px; font-weight: 700; color: #7A5E12; }
+  .askwa { display: flex; align-items: center; justify-content: center; gap: 10px;
+    flex-wrap: wrap; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .askwa span { font-size: 13.5px; color: var(--mut); font-weight: 600; }
+  .askwa .wa, .askwa .call { padding: 11px 20px; font-size: 14px; }
   footer { text-align: center; color: rgba(255,255,255,.52); font-size: 12.5px;
     margin-top: 26px; line-height: 1.9; }
   footer b { color: rgba(255,255,255,.72); font-weight: 600; }
@@ -288,7 +292,7 @@
       <div class="n">؟</div>
       <div class="t">
         <h2>حالة بلاغك</h2>
-        <p class="d">اكتب رقم الطلب والجوال الذي قدّمت به البلاغ.</p>
+        <p class="d">اكتب رقم الطلب، أو الجوال الذي قدّمت به البلاغ — أحدُهما يكفي.</p>
       </div>
     </div>
     <div class="grid">
@@ -297,8 +301,9 @@
         <input id="qref" placeholder="00006"/>
       </div>
       <div class="f">
-        <label for="qphone">رقم الجوال</label>
-        <input id="qphone" type="tel" inputmode="numeric" placeholder="05XXXXXXXX"/>
+        <label for="qphone">أو رقم الجوال</label>
+        <input id="qphone" type="tel" inputmode="tel" maxlength="16" placeholder="05XXXXXXXX"/>
+        <div class="hint">يكفي أحدُ الرقمين — والجوّالُ يعرض بلاغاتك كلَّها.</div>
       </div>
     </div>
     <div class="err" id="e_q" style="margin-bottom:10px"></div>
@@ -481,6 +486,10 @@
     ["3", "متوقّف تمامًا", "لا أستطيع إكمال عملي"]
   ];
   var kind = "أخرى", prio = "1", att = null;
+  // رقمُ الدعم يُقرأ مرّةً عند فتح الصفحة، فتملكه شاشةُ الاستعلام أيضًا
+  var WA_TO = "";
+  fetch("/api/support/contact").then(function (r) { return r.json(); })
+    .then(function (o) { WA_TO = (o && o.waTo) || ""; }).catch(function () {});
 
   function svg(paths) {
     return "<svg viewBox='0 0 24 24'>" + paths + "</svg>";
@@ -726,9 +735,12 @@
     if (qbusy) return;
     clearErr("q"); $("qres").innerHTML = "";
     var ref = $("qref").value.trim(), ph = $("qphone").value.trim();
-    if (!ref) return setErr("q", "اكتب رقم الطلب الذي ظهر لك عند الإرسال.");
-    if (!okPhone(ph))
-      return setErr("q", "اكتب رقم الجوال الذي قدّمت به البلاغ — كما كتبته وقتها.");
+    // ⚠️ أحدُهما يكفي: من نسي رقم طلبه يملك جوّاله، ومن سُجّل بلاغُه بلا
+    //   جوّال يملك رقمَ الطلب — واشتراطُ الاثنين كان يمنع الصنفين معًا.
+    if (!ref && !ph)
+      return setErr("q", "اكتب رقم الطلب أو رقم الجوال — أحدُهما يكفي.");
+    if (!ref && !okPhone(ph))
+      return setErr("q", "الرقم السعودي يبدأ بـ05 ويتكوّن من عشرة أرقام — أو اكتب رقم الطلب بدلًا منه.");
     qbusy = true; $("qgo").disabled = true; $("qTxt").textContent = "جارٍ البحث…";
     fetch("/api/support/status?ref=" + encodeURIComponent(ref) + "&phone=" + encodeURIComponent(ph))
       .then(function (r) { return r.json().then(function (j) {
@@ -760,7 +772,19 @@
                     + "</div>"
                   : '<div class="hint" style="margin-top:11px">لم يُحدَّد موعدُ زيارةٍ بعد — يصلك حين يُحدَّد.</div>')
               + "</div>";
-          }).join("");
+          }).join("")
+          // ⚠️ وبابُ التواصل في شاشة الاستعلام أيضًا: من يستعلم إنّما
+          //   يستعلم لأنّ الانتظارَ طال — فلا يُترك أمام حالةٍ جامدةٍ
+          //   يبحث عن رقمٍ يتّصل به في ورقةٍ أخرى.
+          + (WA_TO
+              ? '<div class="askwa"><span>تريد متابعةً أسرع؟</span>'
+                + '<a class="wa" href="https://wa.me/' + encodeURIComponent(WA_TO)
+                + "?text=" + encodeURIComponent(
+                    "السلام عليكم، أستفسر عن بلاغي رقم " + esc(list[0].ref)
+                    + " لدى الدعم الفني.\n\nوشكرًا لكم.")
+                + '" target="_blank" rel="noopener">واتساب الدعم الفني</a>'
+                + '<a class="call" href="tel:+' + WA_TO + '">اتصال</a></div>'
+              : "");
       })
       .catch(function (e) { setErr("q", (e && e.message) || "تعذّر الاستعلام"); })
       .then(function () {

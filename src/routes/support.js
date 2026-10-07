@@ -65,6 +65,15 @@ router.get("/support/status", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// رقمُ الدعم وحدَه — تحتاجه شاشةُ الاستعلام لتعرض زرَّ التواصل.
+router.get("/support/contact", async (req, res) => {
+  try {
+    const { data } = await runAction("support.contact", {}, { user: null });
+    res.set("Cache-Control", "public, max-age=120");
+    res.json(data || { waTo: "" });
+  } catch { res.json({ waTo: "" }); }
+});
+
 router.get("/support/options", async (req, res) => {
   const empty = !OPTS.data || !(OPTS.data.departments || []).length;
   if (empty) await refresh();
