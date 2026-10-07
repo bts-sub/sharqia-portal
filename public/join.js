@@ -51,7 +51,7 @@
       "आपका स्वागत है। कृपया अपना विवरण अपडेट करें ताकि आपका रोज़गार रिकॉर्ड सही बना रहे।",
     "Takes about 5 minutes to complete.": "पूरा करने में लगभग ५ मिनट लगते हैं।",
     "Start now": "अभी शुरू करें",
-    "Seven clear steps": "सात स्पष्ट चरण",
+    "Six clear steps": "छह स्पष्ट चरण",
     "Move between them and return to any one.": "इनके बीच आ-जा सकते हैं और किसी भी चरण पर लौट सकते हैं।",
     "Saved automatically": "अपने आप सहेजा गया",
     "Finish later on the same device — nothing is lost.":
@@ -290,7 +290,7 @@
       eyebrow: "بيت العباءة الشرقية", h1: "بوابة بيانات الموظفين",
       lede: "مرحبًا بك، يرجى تحديث بياناتك لضمان دقة معلوماتك الوظيفية.",
       note: "يستغرق إكمال البيانات حوالي ٥ دقائق.", startBtn: "ابدأ الآن",
-      f1t: "سبع خطوات مرتّبة", f1s: "تنتقل بينها وتعود لأيّها متى شئت.",
+      f1t: "ستُّ خطواتٍ مرتّبة", f1s: "تنتقل بينها وتعود لأيّها متى شئت.",
       f2t: "يُحفظ تلقائيًّا", f2s: "تُكمل لاحقًا من الجهاز نفسه بلا فقد.",
       f3t: "بياناتك محفوظة", f3s: "لا تُنشر ولا تُستعمل إلا في ملفّك الوظيفي.",
       progT: "اكتمال الملف", prevBtn: "السابق", nextBtn: "التالي",
@@ -304,7 +304,7 @@
       eyebrow: "Abaya Sharqiaa", h1: "Employee Data Portal",
       lede: "Welcome. Please update your details so your employment record stays accurate.",
       note: "Takes about 5 minutes to complete.", startBtn: "Start now",
-      f1t: "Seven clear steps", f1s: "Move between them and return to any one.",
+      f1t: "Six clear steps", f1s: "Move between them and return to any one.",
       f2t: "Saved automatically", f2s: "Finish later on the same device — nothing is lost.",
       f3t: "Your data is protected", f3s: "Never published; used only in your employment file.",
       progT: "Profile completion", prevBtn: "Back", nextBtn: "Next",
@@ -507,15 +507,12 @@
         { k: "other_copy", ar: "مرفقات أخرى", en: "Other attachments" },
       ],
     },
+    // ⚠️ رُفعت خطوةُ التوقيع من هذه البوابة بقرار الإدارة: التوقيعُ
+    //   المعتمَد يُرفق مرّةً في التطبيق ويُختم به كلُّ ما يُوقّعه الموظف،
+    //   فطلبُه هنا مرّةً ثانيةً تكرارٌ يُطيل النموذجَ ويُربك من وقّع سلفًا.
+    //   وخانةُ الإقرار في المراجعة تبقى — وهي ما يُلزمه بما كتب.
     {
-      id: "sign", n: "٠٧", nEn: "07",
-      title: { ar: "التوقيع", en: "Signature" },
-      sub: { ar: "وقّع بقلمٍ أزرق على ورقةٍ بيضاء، وصوّرها وأرفقها — توقيعُك إقرارٌ بما كتبت.",
-             en: "Sign with a blue pen on white paper, photograph it and attach — your signature confirms what you entered." },
-      sign: true,
-    },
-    {
-      id: "review", n: "٠٨", nEn: "08",
+      id: "review", n: "٠٧", nEn: "07",
       title: { ar: "المراجعة والتأكيد", en: "Review & confirm" },
       sub: { ar: "راجع ما كتبت قبل الإرسال — بعده يُراجَع في الموارد البشرية.", en: "Check everything before sending — HR reviews it next." },
       review: true,
@@ -1347,7 +1344,7 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   // التوقيعُ موجود: صورةٌ مرفقةٌ الآن، أو رسمٌ قديمٌ لمن بدأ قبل التبديل
-  function signed() { return !!(state.files && state.files.signature) || !!state.sign; }
+  function signed() { return true; }   // لا خطوةَ توقيعٍ في هذه البوابة
 
   function validateStep() {
     var s = SEC[state.step], bad = null;
