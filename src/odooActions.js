@@ -4213,10 +4213,32 @@ const actions = {
             portal_user_id: u.id, ntype: "system", title, body,
           }).catch(() => {});
         }
-        return {
-          logins: users.map((u) => (u.login || "").trim()).filter(Boolean),
-          phones: await actions._itWhatsappNumbers(),
-        };
+        // ⚠️ والمُسنَد إليه ولو لم يحمل دورَ التقنية: البلاغُ يُسنَد
+        //   تلقائيًّا إلى عضوٍ في فريق هيلب ديسك، وقد يكون دورُه في
+        //   البوابة «مدير» أو «موظف» — فيصل الإشعارُ من لا يملك البلاغ
+        //   ولا يصل من يملكه.
+        const logins = users.map((u) => (u.login || "").trim()).filter(Boolean);
+        try {
+          const uid = Number(params?.assignee_uid || 0);
+          if (uid) {
+            const [u] = await odoo.searchRead("res.users", [["id", "=", uid]],
+              ["employee_ids"], { limit: 1 });
+            const eid = u?.employee_ids?.[0];
+            if (eid) {
+              const [pu] = await odoo.searchRead("sharqia.portal.user",
+                [["employee_id", "=", eid], ["status", "=", "active"]],
+                ["id", "login"], { limit: 1 });
+              if (pu) {
+                const lg = (pu.login || "").trim();
+                if (lg && !logins.includes(lg)) logins.push(lg);
+                await odoo.create("sharqia.portal.notification", {
+                  portal_user_id: pu.id, ntype: "system", title, body,
+                }).catch(() => {});
+              }
+            }
+          }
+        } catch (e) { console.warn("⚠️ تعذّر إشعار المُسنَد إليه:", e.message); }
+        return { logins, phones: await actions._itWhatsappNumbers() };
       },
       async () => ({ logins: [], phones: [] }),
       { emptyOnError: () => ({ logins: [], phones: [] }) }
@@ -4326,7 +4348,7 @@ const actions = {
               ["mobile_phone", "work_phone"], { limit: 1 });
             num = e?.mobile_phone || e?.work_phone || "";
           }
-          if (u?.name) agent = { name: u.name, phone: String(num || "") };
+          if (u?.name) agent = { name: u.name, phone: String(num || ""), uid };
         }
       } catch { /* الرقمُ الداخلي يكفي مرجعًا */ }
 
@@ -4355,6 +4377,7 @@ const actions = {
       } catch { /* لا يُبطل البلاغ */ }
       return {
         ok: true, id, ref, waTo,
+        assigneeUid: agent?.uid || 0,
         agent: agent ? { name: agent.name, own: !!waNumber(agent.phone) } : null,
       };
     }, async () => ({ ok: true, id: 0, ref: "TEST" }), { forceLiveErrors: true });
