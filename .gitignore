@@ -8,3 +8,9 @@ npm-debug.log*
 data/odoo_creds.json
 secrets/
 data/fcm-sa.json
+bot/node_modules/
+bot/data/*.json
+bot/.env
+# ملفات معرفة البوت تحوي أسماء/بيانات شركة سرّية — لا تُرفع إلى GitHub إطلاقًا.
+# تُوضَع مباشرةً على السيرفر (يلتقطها Docker build من نسخة السيرفر).
+bot/knowledge/*.md

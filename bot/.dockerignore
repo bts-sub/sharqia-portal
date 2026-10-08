@@ -1,0 +1,8 @@
+# لا تخبز هذه داخل الصورة. مهم: لا نستثني *.md لأن knowledge/*.md تُحمَّل وقت التشغيل.
+node_modules
+.env
+.env.*
+!.env.example
+data
+npm-debug.log*
+.DS_Store

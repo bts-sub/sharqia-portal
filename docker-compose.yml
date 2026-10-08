@@ -24,3 +24,23 @@ services:
     logging:              # بلا سقف تنمو سجلات Docker حتى يمتلئ القرص فيسقط التطبيقان
       driver: "json-file"
       options: { max-size: "10m", max-file: "3" }
+
+  # بوت تيليجرام (مساعد Claude) — long-polling، لا يعرض أي بورت.
+  # يقرأ متغيّراته (TELEGRAM_BOT_TOKEN/ANTHROPIC_API_KEY/...) من نفس .env.
+  bot:
+    build: ./bot
+    container_name: sharqia-bot
+    restart: unless-stopped
+    # خلف profile: لا يبدأ مع `docker compose up -d` العادي (حماية من crash-loop
+    # قبل توفّر التوكن). يُشغَّل صراحةً: docker compose --profile bot up -d --build bot
+    profiles: ["bot"]
+    env_file: .env
+    volumes:
+      - ./bot/data:/app/data        # محادثات المستخدمين بشكل دائم
+    mem_limit: 160m                 # السيرفر 512MB ويستضيف تطبيقين آخرين
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=128"
+    init: true
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
