@@ -147,7 +147,8 @@ router.post("/support", async (req, res, next) => {
     res.json(data);
     notifyIt(data, { name, kind: s(b.kind, 40), location: s(b.location, 60),
                      spot, problem, phone, assigneeUid: data?.assigneeUid || 0,
-                     agentPortalId: data?.agentPortalId || 0 })
+                     agentPortalId: data?.agentPortalId || 0,
+                     agentPortalIds: data?.agentPortalIds || [] })
       .catch((e) => console.warn("⚠️ تعذّر تنبيه فريق التقنية:", e.message));
   } catch (e) { next(e); }
 });
@@ -163,7 +164,8 @@ async function notifyIt(data, info) {
 
   const { data: res } = await runAction("support.notify",
     { title, body, assignee_uid: info.assigneeUid || 0,
-      agent_portal_id: info.agentPortalId || 0 }, { user: null });
+      agent_portal_id: info.agentPortalId || 0,
+      agent_portal_ids: info.agentPortalIds || [] }, { user: null });
 
   // الدفعُ إلى الجهاز من هنا لا من أودو: اشتراكاتُ الأجهزة في خادم البوابة.
   for (const login of res?.logins || []) {

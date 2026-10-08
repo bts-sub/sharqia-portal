@@ -4218,16 +4218,26 @@ const actions = {
         //   البوابة «مدير» أو «موظف» — فيصل الإشعارُ من لا يملك البلاغ
         //   ولا يصل من يملكه.
         const logins = users.map((u) => (u.login || "").trim()).filter(Boolean);
-        // فنيُّ التطبيق المُسنَد إليه: يُنبَّه بالدفع إلى جهازه
+        // ⚠️ فنيّو الفريق كلُّهم يُدفع إليهم لا المُسنَد إليه وحده: أودو
+        //   أنشأ لهم إشعاراتِ التطبيق، وهذا يُوقظ جوّالاتهم. ويُقرأ الدورُ
+        //   «تقنية» أعلاه، وقد يكون الفنيُّ دورُه «موظف» — فلا يُغني أحدُهما
+        //   عن الآخر.
         try {
-          const pid = Number(params?.agent_portal_id || 0);
-          if (pid) {
-            const [pu] = await odoo.searchRead("sharqia.portal.user",
-              [["id", "=", pid]], ["login"], { limit: 1 });
-            const lg = (pu?.login || "").trim();
-            if (lg && !logins.includes(lg)) logins.push(lg);
+          const pids = Array.isArray(params?.agent_portal_ids)
+            ? params.agent_portal_ids.map(Number).filter(Boolean)
+            : [];
+          const one = Number(params?.agent_portal_id || 0);
+          if (one && !pids.includes(one)) pids.push(one);
+          if (pids.length) {
+            const ags = await odoo.searchRead("sharqia.portal.user",
+              [["id", "in", pids], ["status", "=", "active"]],
+              ["login"], { limit: 50 });
+            for (const a of ags) {
+              const lg = (a.login || "").trim();
+              if (lg && !logins.includes(lg)) logins.push(lg);
+            }
           }
-        } catch (e) { console.warn("⚠️ تعذّرت قراءةُ فنيّ التطبيق:", e.message); }
+        } catch (e) { console.warn("⚠️ تعذّرت قراءةُ فنيّي التطبيق:", e.message); }
         try {
           const uid = Number(params?.assignee_uid || 0);
           if (uid) {
@@ -4343,16 +4353,41 @@ const actions = {
       //    فريق هيلب ديسك يقع لحظةَ إنشاء التذكرة، فلا يُعرف صاحبُها إلا
       //    بعدها. ومن يبلّغ عن عطلٍ يريد اسمًا يسأل عنه لا صندوقًا عامًّا.
       let agent = null;
+      let agentIds = [];
       try {
         const [t] = await odoo.searchRead("helpdesk.ticket", [["id", "=", id]],
-          ["ticket_ref", "user_id", "sharqia_agent_id", "sharqia_agent_phone"],
-          { limit: 1 });
+          ["ticket_ref", "user_id", "team_id", "sharqia_agent_id",
+           "sharqia_agent_phone"], { limit: 1 });
         if (t && t.ticket_ref) ref = t.ticket_ref;
+        // ⚠️ البلاغُ يصل الفنيّين كلَّهم لا المُسنَد إليه وحده: من كان
+        //   قريبًا من الموقع يسبق، ومن كان جوّالُه مغلقًا لا يُوقف البلاغ.
+        //   والإسنادُ يبقى لواحدٍ ليُعرف من يُسأل.
+        if (t?.team_id?.[0]) {
+          try {
+            const [tm] = await odoo.searchRead("helpdesk.team",
+              [["id", "=", t.team_id[0]]], ["sharqia_agent_ids"], { limit: 1 });
+            agentIds = (tm?.sharqia_agent_ids || []).map(Number).filter(Boolean);
+          } catch (e) {
+            console.warn("⚠️ تعذّرت قراءةُ فنيّي الفريق:", e.message);
+          }
+        }
         // ⚠️ فنيُّ التطبيق أوّلًا: هو من يتابع البلاغ فعلًا، وحسابُ أودو
         //   قد يكون حسابَ خدمةٍ لا إنسانًا يُسأل.
-        if (t?.sharqia_agent_id?.[1]) {
+        if (t?.sharqia_agent_id?.[0]) {
+          if (!agentIds.includes(t.sharqia_agent_id[0])) {
+            agentIds.push(t.sharqia_agent_id[0]);
+          }
+          // ⚠️ الاسمُ يُقرأ من الحقل لا من العنوان: بطاقةُ مستخدم التطبيق
+          //   تُعرض باسم الدخول، فكان يُقال للموظف «بلاغُك لدى
+          //   mohammed@h.com» — بريدٌ لا يعرفه ولا يُطمئنه.
+          let nm = "";
+          try {
+            const [pu] = await odoo.searchRead("sharqia.portal.user",
+              [["id", "=", t.sharqia_agent_id[0]]], ["name"], { limit: 1 });
+            nm = String(pu?.name || "").trim();
+          } catch { /* اسمُ الدخول بديلٌ أخير */ }
           agent = {
-            name: t.sharqia_agent_id[1],
+            name: nm || t.sharqia_agent_id[1],
             phone: String(t.sharqia_agent_phone || ""),
             portalId: t.sharqia_agent_id[0],
           };
@@ -4399,6 +4434,7 @@ const actions = {
         ok: true, id, ref, waTo,
         assigneeUid: agent?.uid || 0,
         agentPortalId: agent?.portalId || 0,
+        agentPortalIds: agentIds,
         agent: agent ? { name: agent.name, own: !!waNumber(agent.phone) } : null,
       };
     }, async () => ({ ok: true, id: 0, ref: "TEST" }), { forceLiveErrors: true });
