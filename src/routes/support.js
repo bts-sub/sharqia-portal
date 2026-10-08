@@ -146,7 +146,8 @@ router.post("/support", async (req, res, next) => {
     //    إيقاظِ فنيٍّ لا يُبطله ولا يُقال لصاحبه «لم يُرسل».
     res.json(data);
     notifyIt(data, { name, kind: s(b.kind, 40), location: s(b.location, 60),
-                     spot, problem, phone, assigneeUid: data?.assigneeUid || 0 })
+                     spot, problem, phone, assigneeUid: data?.assigneeUid || 0,
+                     agentPortalId: data?.agentPortalId || 0 })
       .catch((e) => console.warn("⚠️ تعذّر تنبيه فريق التقنية:", e.message));
   } catch (e) { next(e); }
 });
@@ -161,7 +162,8 @@ async function notifyIt(data, info) {
   ].filter(Boolean).join(" — ");
 
   const { data: res } = await runAction("support.notify",
-    { title, body, assignee_uid: info.assigneeUid || 0 }, { user: null });
+    { title, body, assignee_uid: info.assigneeUid || 0,
+      agent_portal_id: info.agentPortalId || 0 }, { user: null });
 
   // الدفعُ إلى الجهاز من هنا لا من أودو: اشتراكاتُ الأجهزة في خادم البوابة.
   for (const login of res?.logins || []) {

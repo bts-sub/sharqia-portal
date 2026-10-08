@@ -4218,6 +4218,16 @@ const actions = {
         //   البوابة «مدير» أو «موظف» — فيصل الإشعارُ من لا يملك البلاغ
         //   ولا يصل من يملكه.
         const logins = users.map((u) => (u.login || "").trim()).filter(Boolean);
+        // فنيُّ التطبيق المُسنَد إليه: يُنبَّه بالدفع إلى جهازه
+        try {
+          const pid = Number(params?.agent_portal_id || 0);
+          if (pid) {
+            const [pu] = await odoo.searchRead("sharqia.portal.user",
+              [["id", "=", pid]], ["login"], { limit: 1 });
+            const lg = (pu?.login || "").trim();
+            if (lg && !logins.includes(lg)) logins.push(lg);
+          }
+        } catch (e) { console.warn("⚠️ تعذّرت قراءةُ فنيّ التطبيق:", e.message); }
         try {
           const uid = Number(params?.assignee_uid || 0);
           if (uid) {
@@ -4335,9 +4345,19 @@ const actions = {
       let agent = null;
       try {
         const [t] = await odoo.searchRead("helpdesk.ticket", [["id", "=", id]],
-          ["ticket_ref", "user_id"], { limit: 1 });
+          ["ticket_ref", "user_id", "sharqia_agent_id", "sharqia_agent_phone"],
+          { limit: 1 });
         if (t && t.ticket_ref) ref = t.ticket_ref;
-        const uid = t?.user_id?.[0];
+        // ⚠️ فنيُّ التطبيق أوّلًا: هو من يتابع البلاغ فعلًا، وحسابُ أودو
+        //   قد يكون حسابَ خدمةٍ لا إنسانًا يُسأل.
+        if (t?.sharqia_agent_id?.[1]) {
+          agent = {
+            name: t.sharqia_agent_id[1],
+            phone: String(t.sharqia_agent_phone || ""),
+            portalId: t.sharqia_agent_id[0],
+          };
+        }
+        const uid = !agent && t?.user_id?.[0];
         if (uid) {
           const [u] = await odoo.searchRead("res.users", [["id", "=", uid]],
             ["name", "employee_ids"], { limit: 1 });
@@ -4378,6 +4398,7 @@ const actions = {
       return {
         ok: true, id, ref, waTo,
         assigneeUid: agent?.uid || 0,
+        agentPortalId: agent?.portalId || 0,
         agent: agent ? { name: agent.name, own: !!waNumber(agent.phone) } : null,
       };
     }, async () => ({ ok: true, id: 0, ref: "TEST" }), { forceLiveErrors: true });
