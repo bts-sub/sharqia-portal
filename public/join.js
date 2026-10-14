@@ -1013,7 +1013,10 @@
       // رقمٌ تغيّر لا يحمل حكمَ سابقه: يُرفع المنعُ حتى يُفحص من جديد
       if (state.dupe) state.dupe[f.k] = "free";
       if (wrap.classList.contains("err")) checkOne(f, wrap);
-      dupeSoon(f, wrap);
+      // ⚠️ الجوّالُ وحدَه يُفحص من حقول الهاتف: هذه الأداةُ تبني جوّالَ
+      //   الطوارئ وهاتفَ المنزل كذلك، وفحصُها يَسِمُ رقمَ قريبه بـ«مسجَّلٌ
+      //   لغيرك» — وهو لغيره فعلًا، وليس في ذلك خطأ.
+      if (f.k === "mobile") dupeSoon(f, wrap);
       save(); paintProgress(); paintTabs();
     }
     sel.addEventListener("change", function () {
@@ -1022,7 +1025,9 @@
     });
     // ⚠️ والجوّالُ يُفحص كما تُفحص الهوية: هو مبنيٌّ بأداةٍ أخرى (كودُ
     //   الدولة بجانبه)، فلم يكن يصله فحصُ حقول النصّ أصلًا.
-    inp.addEventListener("blur", function () { dupeCheck(f, wrap); });
+    inp.addEventListener("blur", function () {
+      if (f.k === "mobile") dupeCheck(f, wrap);
+    });
     free.addEventListener("input", sync);
     inp.addEventListener("input", sync);
     inp.addEventListener("blur", function () { checkOne(f, wrap); });
