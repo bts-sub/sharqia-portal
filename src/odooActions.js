@@ -4542,8 +4542,11 @@ const actions = {
           ["name"], { limit: 1 });
         if (open) throw new Error(`لك ملفٌّ قيد المراجعة (${open.name}) — انتظر البتّ فيه.`);
         const vals = { ...(params?.vals || {}), employee_id: empId };
+        // ⚠️ بابُ التطبيق ليس بابَ المتقدّمين: صاحبُ الحساب موظفٌ معتمَدٌ
+        //   يُحدّث بياناته، فلا يُردّ بـ«هويتُك مسجَّلةٌ مسبقًا».
         const out = await odoo.execKw("sharqia.employee.intake",
-          "sharqia_intake_upsert", [vals], actorCtx(ctx));
+          "sharqia_intake_upsert", [vals],
+          { ...actorCtx(ctx), context: { ...(actorCtx(ctx).context || {}), sharqia_intake_from_app: true } });
         return { ok: true, ref: out?.ref || "", reused: !!out?.reused };
       },
       async () => { throw new Error("غير متاح في وضع الاختبار"); },
