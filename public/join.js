@@ -799,7 +799,14 @@
     if (!shown(f)) return "";
     var v = (state.data[f.k] || "").toString().trim();
     if (f.req && !v) return L === "ar" ? "هذا الحقل مطلوب." : "This field is required.";
-    if (f.rule && RULES[f.rule]) return RULES[f.rule](v);
+    // ⚠️ لا يُعاد إلا بخطأ: كان يُعاد بنتيجة القاعدة سواءٌ أصحّت أم لا،
+    //   والصحيحةُ تُعيد نصًّا فارغًا — فيقف الفحصُ عندها ولا يبلغ ما بعده.
+    //   ولهذا لم يكن تنبيهُ التكرار يظهر على رقم الهوية أبدًا: قاعدتُه
+    //   تمرّ، فتُعيد «» ويُقال «الحقلُ سليم».
+    if (f.rule && RULES[f.rule]) {
+      var r = RULES[f.rule](v);
+      if (r) return r;
+    }
     // ⚠️ المسجَّلُ مسبقًا خطأٌ يوقف الخطوة لا تنبيهًا يُقرأ ويُمضى عنه
     var d = (state.dupe || {})[f.k];
     if (d === "live" || d === "approved") return hx(dupeText(d, f.k));
