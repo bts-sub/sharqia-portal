@@ -735,44 +735,51 @@
       return wrap;
     }
     var cur = (state.data[f.k] || "").toString();
-    var known = cur && list.indexOf(cur) >= 0;
+    // ⚠️ «أخرى» تُحفظ اختيارًا لا تُستنتج من القيمة: كانت تُستنتج، فمن
+    //   اختارها والخانةُ بعدُ فارغةٌ تصير قيمتُه «» — فيُحسب أنّه لم يختر
+    //   شيئًا، وتُعاد القائمةُ إلى «اختر…» وتختفي الخانةُ قبل أن يكتب.
+    state.other = state.other || {};
+    var inList = !!cur && list.indexOf(cur) >= 0;
+    var otherMode = !lock && (state.other[f.k] === true || (!!cur && !inList));
+    var known = inList && !otherMode;
     var sel = el("select", { id: "fld-" + f.k });
     sel.appendChild(el("option", { value: "", text: L === "ar" ? "اختر…" : "Select…" }));
     list.forEach(function (v) { sel.appendChild(el("option", { value: v, text: v })); });
     if (!lock) sel.appendChild(el("option", { value: "__other", text: L === "ar" ? "أخرى — أكتبه بنفسك" : "Other — type it yourself" }));
-    sel.value = known ? cur : (cur ? "__other" : "");
+    sel.value = otherMode ? "__other" : (known ? cur : "");
     // خانةُ الكتابة تقول ما يُكتب فيها: «أخرى» بلا إرشادٍ تُترك فارغة
     var free = el("input", {
       type: "text", style: "margin-top:8px",
       placeholder: (f.ph && typeof f.ph === "object" ? (lk(f.ph)) : f.ph)
         || (L === "ar" ? "اكتب " + (f.ar || "") + " كما هو" : "Type it as it is"),
-      hidden: known || !cur ? true : false,
+      hidden: otherMode ? false : true,
     });
-    free.value = known ? "" : cur;
-    function sync() {
+    free.value = otherMode ? cur : "";
+    function sync(doRender) {
       var v = sel.value === "__other" ? free.value.trim() : sel.value;
       state.data[f.k] = v; dirty = true; save(); paintProgress(); paintTabs();
       // ⚠️ تبديلُ القسم يُعيد بناء الشاشة: قائمةُ المسمّيات تتبعه، فلو بقيت
-      // كما هي عُرضت على من اختار «التقني» مسمّياتُ المصنع.
-      if (f.k === "department_txt") {
-        if (state.data.job_title && !(OPTS.jobsByDept || {})[v]) { /* يبقى ما كُتب */ }
-        render();
-      }
+      // كما هي عُرضت على من اختار «التقني» مسمّياتُ المصنع. ولا يُعاد البناءُ
+      // مع كلّ حرفٍ يُكتب: الحقلُ يُهدم فتضيع نقطةُ الكتابة بعد كلّ حرف.
+      if (doRender && f.k === "department_txt") render();
     }
     sel.addEventListener("change", function () {
+      state.other[f.k] = sel.value === "__other";
       free.hidden = sel.value !== "__other";
       if (sel.value !== "__other") free.value = "";
       else setTimeout(function () { free.focus(); }, 30);
-      sync();
+      sync(true);
     });
-    free.addEventListener("input", sync);
+    free.addEventListener("input", function () { sync(false); });
+    // البناءُ يُعاد عند ترك الخانة لا في أثناء الكتابة
+    free.addEventListener("change", function () { sync(true); });
     wrap.appendChild(sel);
     wrap.appendChild(free);
     if (!list.length) {
       // القائمة لم تصل بعد (أو تعذّرت): الحقل يبقى صالحًا للكتابة
       free.hidden = false; sel.hidden = true;
     }
-    if (lock) { free.hidden = true; free.value = ""; }
+    if (lock) { free.hidden = true; free.value = ""; state.other[f.k] = false; }
     wrap.appendChild(el("div", { class: "hint" }));
     return wrap;
   }
