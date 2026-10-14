@@ -1013,6 +1013,7 @@
       // رقمٌ تغيّر لا يحمل حكمَ سابقه: يُرفع المنعُ حتى يُفحص من جديد
       if (state.dupe) state.dupe[f.k] = "free";
       if (wrap.classList.contains("err")) checkOne(f, wrap);
+      dupeSoon(f, wrap);
       save(); paintProgress(); paintTabs();
     }
     sel.addEventListener("change", function () {
@@ -1084,6 +1085,7 @@
       // رقمٌ تغيّر لا يحمل حكمَ سابقه: يُرفع المنعُ حتى يُفحص من جديد
       if (state.dupe && (f.k === "id_number" || f.k === "mobile")) state.dupe[f.k] = "free";
       if (wrap.classList.contains("err")) checkOne(f, wrap);
+      if (f.k === "id_number" || f.k === "mobile") dupeSoon(f, wrap);
       // حقولٌ يتغيّر بتغيّرها ما يُعرض: الحالةُ الاجتماعية تُظهر عدد
       // الأبناء، ونوعُ الهوية يُظهر رقمَ البلد الأم ويملأ الجنسية.
       if (f.k === "marital" || f.k === "id_type") { onPivot(f.k); return; }
@@ -1126,6 +1128,16 @@
         : "هذا الرقم مسجَّلٌ مسبقًا — راجع إدارة الموارد البشرية.";
     }
     return "";
+  }
+  // ⚠️ يُفحص وهو يكتب لا حين يترك الحقل.
+  //
+  //   كان الفحصُ عند الخروج من الحقل، ومن كتب رقمَه ثمّ ضغط «التالي»
+  //   مباشرةً لا يخرج منه — فيمضي بلا تنبيه. والمهلةُ القصيرةُ تمنع
+  //   نداءً بكلّ حرف: تُلغى مع كلّ ضغطة وتُعاد، فلا يُنادى إلا حين يسكت.
+  var DUPE_T = {};
+  function dupeSoon(f, wrap) {
+    if (DUPE_T[f.k]) clearTimeout(DUPE_T[f.k]);
+    DUPE_T[f.k] = setTimeout(function () { dupeCheck(f, wrap); }, 350);
   }
   function dupeCheck(f, wrap) {
     // ⚠️ يُنشأ عند الحاجة: الجوّالُ يُبنى بأداةٍ غير أداة حقول النصّ،
