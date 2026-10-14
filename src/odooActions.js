@@ -4094,10 +4094,13 @@ const actions = {
         for (const k of Object.keys(vals)) {
           if (vals[k] === "" || vals[k] == null) delete vals[k];
         }
-        let id = 0;
+        let out = null;
         try {
-          [id] = [].concat(await odoo.execKw("sharqia.employee.intake", "create", [[vals]]));
-          await odoo.execKw("sharqia.employee.intake", "action_submit", [[id]]);
+          // ⚠️ ملفٌّ واحدٌ لصاحب الهوية الواحدة: أودو يُحدِّث ما لم يُعتمد
+          //   بدل أن يفتح رقمًا جديدًا. فمن أُعيد ملفُّه ثمّ أرسله من الرابط
+          //   العامّ لا يُضاعف نفسَه في شاشة الموارد البشرية.
+          out = await odoo.execKw("sharqia.employee.intake",
+            "sharqia_intake_upsert", [vals]);
         } catch (e) {
           // ⚠️ رقمُ هويةٍ مسجَّل لم يعد رفضًا — يصير الملفُّ تحديثًا لصاحبه
           // في أودو. وما بقي من أخطاء يُسجَّل برمزٍ يُعطاه الزائر، فيُعرف
@@ -4105,12 +4108,12 @@ const actions = {
           const msg = String(e?.message || "");
           const code = "J" + Math.random().toString(36).slice(2, 6).toUpperCase();
           console.warn(`⚠️ رُدّ ملفُّ التحاق [${code}]: ${msg.split("\n")[0].slice(0, 200)}`);
-          if (/رقم الهوية|الجوال|تاريخ|هويةٌ منتهية/.test(msg)) throw e;
+          // ⚠️ «الجوّال» بالشدّة لا تُطابق «الجوال»: رسالةُ ازدواج الجوّال
+          //   كانت تُطمس خلف «راجع الموارد البشرية» فلا يعرف الزائرُ ما صنع.
+          if (/رقم الهوية|الجوال|الجوّال|تاريخ|هويةٌ منتهية|مسجَّل/.test(msg)) throw e;
           throw new Error(`تعذّر قبول الملف — راجع إدارة الموارد البشرية. (رمز ${code})`);
         }
-        const [rec] = await odoo.searchRead("sharqia.employee.intake",
-          [["id", "=", id]], ["name"], { limit: 1 });
-        return { ok: true, ref: rec?.name || "" };
+        return { ok: true, ref: out?.ref || "", reused: !!out?.reused };
       },
       async () => { throw new Error("غير متاح في وضع الاختبار"); },
       { forceLiveErrors: true }
@@ -4539,12 +4542,9 @@ const actions = {
           ["name"], { limit: 1 });
         if (open) throw new Error(`لك ملفٌّ قيد المراجعة (${open.name}) — انتظر البتّ فيه.`);
         const vals = { ...(params?.vals || {}), employee_id: empId };
-        const [id] = [].concat(await odoo.execKw("sharqia.employee.intake", "create", [[vals]]));
-        await odoo.execKw("sharqia.employee.intake", "action_submit", [[id]],
-          actorCtx(ctx));
-        const [rec] = await odoo.searchRead("sharqia.employee.intake",
-          [["id", "=", id]], ["name"], { limit: 1 });
-        return { ok: true, ref: rec?.name || "" };
+        const out = await odoo.execKw("sharqia.employee.intake",
+          "sharqia_intake_upsert", [vals], actorCtx(ctx));
+        return { ok: true, ref: out?.ref || "", reused: !!out?.reused };
       },
       async () => { throw new Error("غير متاح في وضع الاختبار"); },
       { forceLiveErrors: true }
