@@ -319,6 +319,37 @@ router.get("/join/options", async (req, res) => {
   res.json(OPTS.data || { departments: [], jobs: [], nationalities: [] });
 });
 
+// ⚠️ محاولاتُ الفحص تُحدّ وحدَها: المسارُ يقول «مشغول» أو «حرّ» عن رقمٍ
+//    يُرسَل، فمن جرّب أرقامًا متسلسلةً عرف أيُّها مسجَّل. والجوابُ لا يحمل
+//    اسمًا ولا رقمَ ملفّ، لكنّ المنعَ من التجريب أولى من الاتّكال على ذلك.
+const CHECK_HITS = new Map();
+function checkOk(ip) {
+  const now = Date.now();
+  const hits = (CHECK_HITS.get(ip) || []).filter((t) => now - t < 10 * 60 * 1000);
+  if (hits.length >= 40) return false;
+  hits.push(now);
+  CHECK_HITS.set(ip, hits);
+  return true;
+}
+
+/** هل رقمُ الهوية أو الجوال مسجَّلٌ مسبقًا؟ — يُسأل وهو يكتب. */
+router.get("/join/check", async (req, res) => {
+  const ip = req.ip || req.headers["x-forwarded-for"] || "—";
+  if (!checkOk(ip)) return res.json({ id: "free", mobile: "free" });
+  try {
+    const { data } = await runAction("intake.taken", {
+      id_number: clean(req.query.id_number, 10),
+      mobile: clean(req.query.mobile, 20),
+    }, { user: null });
+    res.set("Cache-Control", "no-store");
+    res.json(data || { id: "free", mobile: "free" });
+  } catch (e) {
+    // تعذّرُ الفحص لا يمنع الكتابة: الإرسالُ نفسُه يَردّ المكرَّر
+    console.warn("⚠️ تعذّر فحصُ التكرار:", e.message);
+    res.json({ id: "free", mobile: "free" });
+  }
+});
+
 router.post("/join/:token", async (req, res, next) => {
   try {
     const ip = req.ip || req.headers["x-forwarded-for"] || "—";

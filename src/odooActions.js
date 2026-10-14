@@ -4443,6 +4443,16 @@ const actions = {
     }, async () => ({ ok: true, id: 0, ref: "TEST" }), { forceLiveErrors: true });
   },
 
+  /** هل رقمُ الهوية أو الجوال مسجَّلٌ مسبقًا؟ — جوابٌ مجرَّدٌ بلا أسماء. */
+  async "intake.taken"(params) {
+    return withOdoo(
+      async () => odoo.execKw("sharqia.employee.intake", "sharqia_intake_taken",
+        [String(params?.id_number || ""), String(params?.mobile || "")]),
+      async () => ({ id: "free", mobile: "free" }),
+      { emptyOnError: () => ({ id: "free", mobile: "free" }) }
+    );
+  },
+
   async "intake.options"() {
     return withOdoo(
       async () => {

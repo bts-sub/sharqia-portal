@@ -361,6 +361,21 @@
       en: "Open this page from inside the app after signing in.",
       hi: "साइन इन करने के बाद इस पृष्ठ को ऐप के भीतर से खोलें।" },
     "ابدأ من جديد": { en: "Start over", hi: "फिर से शुरू करें" },
+    "لك ملفٌّ أُعيد للتصحيح — أكمل بياناتك وأرسل، فيُحدَّث ملفُّك نفسُه.": {
+      en: "You have a file returned for correction — complete it and send; the same file will be updated.",
+      hi: "आपकी एक फ़ाइल सुधार के लिए लौटाई गई है — उसे पूरा करके भेजें, वही फ़ाइल अपडेट होगी।" },
+    "رقمُ الهوية مسجَّلٌ مسبقًا وملفُّه معتمَد — راجع إدارة الموارد البشرية.": {
+      en: "This ID is already registered and its file is approved — please contact HR.",
+      hi: "यह पहचान संख्या पहले से दर्ज है और उसकी फ़ाइल स्वीकृत है — कृपया मानव संसाधन से संपर्क करें।" },
+    "رقمُ الهوية مسجَّلٌ مسبقًا وملفُّك قيد المراجعة — لا يُفتح له ملفٌّ ثانٍ.": {
+      en: "This ID is already registered and your file is under review — no second file is opened.",
+      hi: "यह पहचान संख्या पहले से दर्ज है और आपकी फ़ाइल समीक्षाधीन है — दूसरी फ़ाइल नहीं खुलेगी।" },
+    "رقمُ الجوال مسجَّلٌ مسبقًا لموظفٍ في المنشأة — اكتب جوّالَك أنت أو راجع الموارد البشرية.": {
+      en: "This mobile belongs to a current employee — enter your own number or contact HR.",
+      hi: "यह मोबाइल किसी मौजूदा कर्मचारी का है — अपना नंबर लिखें या मानव संसाधन से संपर्क करें।" },
+    "رقمُ الجوال مسجَّلٌ مسبقًا في ملفٍّ قيد المراجعة — اكتب جوّالَك أنت.": {
+      en: "This mobile is already on a file under review — enter your own number.",
+      hi: "यह मोबाइल समीक्षाधीन एक फ़ाइल पर दर्ज है — अपना नंबर लिखें।" },
     "تحديث ملفّي الوظيفي": { en: "Update my employment file", hi: "मेरी रोज़गार फ़ाइल अपडेट करें" },
     "لك ملفٌّ قيد المراجعة": { en: "You have a file under review", hi: "आपकी एक फ़ाइल समीक्षाधीन है" },
     "انتظر البتّ فيه قبل إرسال تصحيحٍ جديد.": {
@@ -1070,7 +1085,10 @@
       if (f.k === "marital" || f.k === "id_type") { onPivot(f.k); return; }
       save(); paintProgress(); paintTabs();
     });
-    input.addEventListener("blur", function () { checkOne(f, wrap); });
+    input.addEventListener("blur", function () {
+      checkOne(f, wrap);
+      if (f.k === "id_number" || f.k === "mobile") dupeCheck(f, wrap);
+    });
     if (f.prefix) {
       var row = el("div", { class: "pfxrow" });
       row.appendChild(el("span", { class: "pfx", text: f.prefix }));
@@ -1081,7 +1099,56 @@
     }
     if (f.help) wrap.appendChild(el("div", { class: "help", text: lk(f.help) }));
     wrap.appendChild(el("div", { class: "hint" }));
+    if (f.k === "id_number" || f.k === "mobile") {
+      wrap.appendChild(el("div", { class: "help dupe", style: "margin-top:4px" }));
+    }
     return wrap;
+  }
+  // ⚠️ يُسأل عن الرقم وهو يكتبه لا بعد أن يُرسل.
+  //
+  //   كان يملأ أربعين حقلًا ثمّ يُردّ عند الإرسال بـ«مسجَّلٌ مسبقًا» —
+  //   فيضيع عملُه ولا يدري أيُّ رقمٍ منهما. والسؤالُ تحت الحقل نفسِه
+  //   يُغنيه، ويقول له ما يفعل لا ما وقع فقط.
+  //
+  //   وتعذُّرُ الفحص لا يمنعه من الكتابة: الإرسالُ نفسُه يَردّ المكرَّر،
+  //   فهذا تيسيرٌ لا حارس.
+  function dupeText(st, which) {
+    if (st === "rejected") {
+      return "لك ملفٌّ أُعيد للتصحيح — أكمل بياناتك وأرسل، فيُحدَّث ملفُّك نفسُه.";
+    }
+    if (st === "approved") {
+      return which === "mobile"
+        ? "رقمُ الجوال مسجَّلٌ مسبقًا لموظفٍ في المنشأة — اكتب جوّالَك أنت أو راجع الموارد البشرية."
+        : "رقمُ الهوية مسجَّلٌ مسبقًا وملفُّه معتمَد — راجع إدارة الموارد البشرية.";
+    }
+    if (st === "live") {
+      return which === "mobile"
+        ? "رقمُ الجوال مسجَّلٌ مسبقًا في ملفٍّ قيد المراجعة — اكتب جوّالَك أنت."
+        : "رقمُ الهوية مسجَّلٌ مسبقًا وملفُّك قيد المراجعة — لا يُفتح له ملفٌّ ثانٍ.";
+    }
+    return "";
+  }
+  function dupeCheck(f, wrap) {
+    var box = wrap.querySelector(".dupe");
+    if (!box) return;
+    var q = "";
+    if (f.k === "id_number") {
+      var idv = (state.data.id_number || "").replace(/\D/g, "");
+      if (idv.length === 10) q = "id_number=" + encodeURIComponent(idv);
+    } else {
+      var mob = (state.data.mobile || "").trim();
+      if (mob.replace(/\D/g, "").length >= 9) q = "mobile=" + encodeURIComponent(mob);
+    }
+    if (!q) { box.textContent = ""; return; }
+    fetch("/api/join/check?" + q, { headers: { Accept: "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(function (o) {
+        var st = f.k === "id_number" ? (o && o.id) : (o && o.mobile);
+        var msg = dupeText(st, f.k);
+        box.textContent = msg ? hx(msg) : "";
+        box.style.color = msg && st !== "rejected" ? "#b4232a" : "#1f7a3d";
+      })
+      .catch(function () { box.textContent = ""; });
   }
   function checkOne(f, wrap) {
     var e = fieldError(f);
