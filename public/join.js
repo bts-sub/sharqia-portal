@@ -361,6 +361,14 @@
       en: "Open this page from inside the app after signing in.",
       hi: "साइन इन करने के बाद इस पृष्ठ को ऐप के भीतर से खोलें।" },
     "ابدأ من جديد": { en: "Start over", hi: "फिर से शुरू करें" },
+    " — نتحقّق من حاله…": {
+      en: " — checking its status…", hi: " — उसकी स्थिति जाँची जा रही है…" },
+    " — بياناتك محفوظةٌ للاطّلاع، ولا تُعدَّل حتى تطلب منك الموارد البشرية تصحيحًا.": {
+      en: " — your data is kept for viewing and cannot be edited until HR asks you for a correction.",
+      hi: " — आपका डेटा देखने के लिए रखा गया है और तब तक संपादित नहीं किया जा सकता जब तक मानव संसाधन सुधार न माँगे।" },
+    "أُعيد ملفُّك للتصحيح — عدّل ما ذُكر وأعد الإرسال، وسيُحدَّث ملفُّك نفسُه بالرقم ذاته.": {
+      en: "Your file was returned for correction — fix what was noted and send again; the same file will be updated.",
+      hi: "आपकी फ़ाइल सुधार के लिए लौटाई गई — बताई गई बात ठीक करके दोबारा भेजें; वही फ़ाइल अपडेट होगी।" },
     "لك ملفٌّ أُعيد للتصحيح — أكمل بياناتك وأرسل، فيُحدَّث ملفُّك نفسُه.": {
       en: "You have a file returned for correction — complete it and send; the same file will be updated.",
       hi: "आपकी एक फ़ाइल सुधार के लिए लौटाई गई है — उसे पूरा करके भेजें, वही फ़ाइल अपडेट होगी।" },
@@ -1565,6 +1573,52 @@
       pane.appendChild(grid);
     }
     paintTabs(); paintActions(); paintProgress();
+    applyLock();
+  }
+  // ⚠️ ما أُرسل لا يُعدَّل حتى تُعيده الموارد البشرية.
+  //
+  //   البياناتُ تبقى محفوظةً في الجهاز ليراها صاحبُها ويطمئنّ، لكنّ
+  //   الكتابةَ تُقفل: ملفٌّ يُراجَع الآن لا تُبدَّل بياناتُه تحت يد من
+  //   يراجعه — ولو بُدِّلت لصار ما اعتُمد غيرَ ما رُئي. وكان يُترك مفتوحًا
+  //   فيعدّل ويضغط «إرسال» ثمّ يُردّ، فيضيع عملُه ولا يفهم لماذا.
+  //
+  //   والقفلُ يُرفع وحدَه متى أعادته الموارد البشرية للتصحيح: الحالةُ
+  //   تُقرأ من الخادم لا من الجهاز، فمن مسح متصفّحَه أو بدّل جهازَه
+  //   يُقرأ حالُه الصحيح.
+  var LOCKED = false;
+  function applyLock() {
+    // ⚠️ لا يُعاد التفعيلُ هنا: في الشاشة حقولٌ مقفلةٌ عمدًا — المسمّى
+    //   الوظيفيُّ قبل اختيار القسم، والجنسيةُ لحامل الهوية الوطنية.
+    //   فلو رُفع القفلُ عنها جميعًا فُتح ما يجب أن يبقى مغلقًا. ورفعُ
+    //   القفل يكون بإعادة بناء الشاشة لا بتفعيل عقدها واحدةً واحدة.
+    if (!LOCKED) return;
+    var pane = $("#pane");
+    if (!pane) return;
+    Array.prototype.forEach.call(
+      pane.querySelectorAll("input, select, textarea, button"),
+      function (n) { n.disabled = true; });
+    var nx = $("#next"); if (nx) nx.disabled = true;
+  }
+  function refreshLock() {
+    var idv = (state.data.id_number || "").replace(/\D/g, "");
+    if (!SENT || idv.length !== 10) return;
+    fetch("/api/join/check?id_number=" + encodeURIComponent(idv),
+          { headers: { Accept: "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(function (o) {
+        var st = o && o.id;
+        var was = LOCKED;
+        LOCKED = (st === "live" || st === "approved");
+        if (was && !LOCKED) render();   // رُفع القفل: تُبنى الشاشةُ من جديد
+        var b = document.querySelector(".resume span");
+        if (b) {
+          b.textContent = hx(LOCKED
+            ? "أرسلتَ ملفَّك برقم " + SENT.ref + " — بياناتك محفوظةٌ للاطّلاع، ولا تُعدَّل حتى تطلب منك الموارد البشرية تصحيحًا."
+            : "أُعيد ملفُّك للتصحيح — عدّل ما ذُكر وأعد الإرسال، وسيُحدَّث ملفُّك نفسُه بالرقم ذاته.");
+        }
+        applyLock();
+      })
+      .catch(function () {});
   }
   function go(i) {
     if (i > state.step && !validateStep()) return;
@@ -1976,12 +2030,12 @@
     // يقع صامتًا فيظنّ من يفتح الرابط أنّ بياناته ضاعت أو أنّها بيانات
     // غيره.
     startWizard();
+    setTimeout(refreshLock, 60);
     var pc = percent();
     // من أرسل ملفَّه ثمّ عاد: يُذكَّر برقمه، ويُقال له إنّ ما يلزمه تصحيحُ
     // ما ذُكر وإعادةُ الإرسال — لا إعادةُ كتابة كلّ شيء.
     var note = SENT && SENT.ref
-      ? "أرسلتَ ملفَّك برقم " + SENT.ref + " — إن طُلب منك تصحيحٌ فعدّل ما ذُكر وأعد الإرسال. "
-        + "وأعِد إرفاق المستندات المطلوبة (لا تُحفظ المرفقاتُ في الجهاز)."
+      ? "أرسلتَ ملفَّك برقم " + SENT.ref + " — نتحقّق من حاله…"
       : "استأنفنا من حيث توقّفت — اكتمال ملفّك " + pc + "٪، وبياناتك محفوظةٌ على هذا الجهاز.";
     var bar = el("div", { class: "resume" }, [
       el("span", { text: note }),
