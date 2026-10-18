@@ -129,7 +129,12 @@ r.get("/api/sales/orders/:id/payment-link", async (req, res, next) => {
     const rel = await execKw("sale.order", "get_portal_url", [[id]]);
     const o = (await searchRead("sale.order", [["id", "=", id]], ["name", "amount_total", "state", "partner_id"]))[0];
     if (!o) return res.status(404).json({ error: "الطلب غير موجود" });
-    res.json({ url: ODOO_BASE + rel, amount_total: o.amount_total, name: o.name, state: o.state, partner: m2o(o.partner_id) });
+    let phone = "";
+    if (o.partner_id) {
+      const p = (await searchRead("res.partner", [["id", "=", o.partner_id[0]]], ["phone"]))[0];
+      phone = (p && p.phone) || "";
+    }
+    res.json({ url: ODOO_BASE + rel, amount_total: o.amount_total, name: o.name, state: o.state, partner: m2o(o.partner_id), phone });
   } catch (e) { next(e); }
 });
 

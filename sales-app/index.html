@@ -191,6 +191,20 @@
   }
 
   // ---------- ورقة لينك الدفع ----------
+  // تحويل رقم محلي (05..) إلى صيغة واتساب دولية بلا + ولا صفر بادئ (السعودية 966)
+  function waPhone(raw){
+    var d=String(raw||"").replace(/\D/g,"");
+    if(d.indexOf("00")===0) d=d.slice(2);
+    if(d.indexOf("0")===0) d="966"+d.slice(1);
+    else if(d && d.indexOf("966")!==0 && d.length<=9) d="966"+d;
+    return d;
+  }
+  function copyText(txt,okMsg){
+    function fb(){ var ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();
+      try{document.execCommand("copy");toast(okMsg);}catch(e){toast("انسخ يدويًا");} ta.remove(); }
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(function(){toast(okMsg);},fb); }
+    else fb();
+  }
   function openPayLink(o){
     var ov=document.createElement("div"); ov.className="overlay";
     ov.innerHTML='<div class="sheet"><div class="row"><b>لينك الدفع / المعاينة</b>'
@@ -199,25 +213,22 @@
     ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
     $("#x",ov).onclick=function(){ ov.remove(); };
     api("/orders/"+o.id+"/payment-link").then(function(d){
-      var phone=(o.partner&&o.partner.phone)||"";
+      var msg="طلبكم من بيت العباءة الشرقية "+d.name+"\nالإجمالي: "+money(d.amount_total)+"\nلمراجعة الطلب والدفع:\n"+d.url;
       $("#plBody",ov).innerHTML=
-        '<div class="muted" style="margin-bottom:8px">نفس رابط زرار «المعاينة» في أمر البيع — يفتح بوّابة العميل لمراجعة الطلب والدفع.</div>'
+        '<div class="muted" style="margin-bottom:8px">نفس رابط زرار «المعاينة» — يفتح بوّابة العميل للمراجعة والدفع (Sign & Pay).</div>'
         +'<div class="linkbox" id="lnk">'+esc(d.url)+'</div>'
-        +'<div class="fld"><div class="lbl">جوال العميل (لإرسال واتساب)</div><input id="phone" value="'+esc(phone)+'" placeholder="05xxxxxxxx"></div>'
+        +'<div class="fld"><div class="lbl">جوال العميل (من بياناته)</div><input id="phone" value="'+esc(d.phone||"")+'" placeholder="05xxxxxxxx"></div>'
         +'<div class="grid2"><button class="btn ghost" id="copy">📋 نسخ الرابط</button>'
-        +'<button class="btn primary" id="wa">📩 واتساب</button></div>';
-      $("#copy",ov).onclick=function(){
-        navigator.clipboard.writeText(d.url).then(function(){toast("نُسخ الرابط");},function(){
-          var ta=document.createElement("textarea");ta.value=d.url;document.body.appendChild(ta);ta.select();
-          try{document.execCommand("copy");toast("نُسخ الرابط");}catch(e){} ta.remove(); });
-      };
+        +'<button class="btn primary" id="wa">📩 إرسال واتساب</button></div>'
+        +'<button class="btn ghost" id="copymsg" style="margin-top:8px">📋 نسخ الرسالة كاملة</button>'
+        +(d.phone?'':'<div class="muted" style="margin-top:8px;color:var(--warn)">لا يوجد جوال محفوظ لهذا العميل — أدخله يدويًا.</div>');
+      $("#copy",ov).onclick=function(){ copyText(d.url,"نُسخ الرابط"); };
+      $("#copymsg",ov).onclick=function(){ copyText(msg,"نُسخت الرسالة"); };
+      // فتح واتساب مباشرةً عند الضغط (إيماءة مستخدم) — لا يُحجب كالنوافذ المتأخّرة
       $("#wa",ov).onclick=function(){
-        var ph=$("#phone",ov).value.trim();
-        $("#wa",ov).disabled=true;
-        api("/orders/"+o.id+"/send-link",{method:"POST",body:{phone:ph}}).then(function(res){
-          if(res.sent){ toast("أُرسل عبر بوّابة واتساب"); ov.remove(); }
-          else { window.open(res.waUrl,"_blank"); toast("افتح واتساب وأرسل الرسالة"); ov.remove(); }
-        }).catch(function(e){ toast("تعذّر: "+e.message); $("#wa",ov).disabled=false; });
+        var ph=waPhone($("#phone",ov).value);
+        if(!ph){ toast("أدخل جوال العميل أولًا"); return; }
+        window.open("https://wa.me/"+ph+"?text="+encodeURIComponent(msg),"_blank");
       };
     }).catch(function(e){ $("#plBody",ov).innerHTML='<div class="empty">تعذّر: '+esc(e.message)+'</div>'; });
   }
