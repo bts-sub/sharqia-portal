@@ -56,9 +56,9 @@ r.get("/api/sales/customers", async (req, res, next) => {
     const q = String(req.query.q || "").trim();
     const limit = Math.min(num(req.query.limit, 30), 100);
     const domain = [];
-    if (q) domain.push("|", "|", ["name", "ilike", q], ["phone", "ilike", q], ["mobile", "ilike", q]);
-    const rows = await searchRead("res.partner", domain, ["name", "phone", "mobile", "email", "city"], { limit, order: "name" });
-    res.json(rows.map((p) => ({ id: p.id, name: p.name, phone: p.phone || p.mobile || "", email: p.email || "", city: p.city || "" })));
+    if (q) domain.push("|", ["name", "ilike", q], ["phone", "ilike", q]);
+    const rows = await searchRead("res.partner", domain, ["name", "phone", "email", "city"], { limit, order: "name" });
+    res.json(rows.map((p) => ({ id: p.id, name: p.name, phone: p.phone || "", email: p.email || "", city: p.city || "" })));
   } catch (e) { next(e); }
 });
 
