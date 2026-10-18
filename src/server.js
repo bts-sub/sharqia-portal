@@ -41,6 +41,7 @@ import certRoutes from "./routes/certs.js";
 import iclockRoutes from "./routes/iclock.js";
 import joinRoutes from "./routes/join.js";
 import supportRoutes from "./routes/support.js";
+import salesRoutes from "./routes/sales.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -199,6 +200,19 @@ app.get("/api/health/odoo", async (req, res) => {
     return next();
   });
 
+  // ⚠️ ونطاقٌ رابعٌ لتطبيق المبيعات pos: لا يصله إلا واجهة المبيعات /api/sales/*
+  // (الواجهة نفسها تُخدَم من حاوية nginx مستقلّة؛ هنا الـAPI فقط). فبابُ
+  // المبيعات معزولٌ عن بوابة الموظفين: من فُتح له لا يبلغ auth ولا HR.
+  const POS_HOST = (process.env.POS_HOST || "pos.sharqiaa-tech.net").toLowerCase();
+  const onPosHost = (req) => String(req.hostname || "").toLowerCase() === POS_HOST;
+  app.use((req, res, next) => {
+    if (!onPosHost(req)) return next();
+    const p = req.path;
+    if (p === "/api/health" || p.startsWith("/api/sales/")) return next();
+    if (p.startsWith("/api/")) return res.status(404).json({ error: "غير متاح على هذا النطاق" });
+    return res.status(404).end();
+  });
+
 app.use("/api", joinRoutes);
 app.use("/api", supportRoutes);
 app.use("/api", integrationRoutes);
@@ -217,6 +231,8 @@ app.use("/api", letterRoutes);
 app.use("/api", learningRoutes);
 app.use("/api", disciplineRoutes);
 app.use("/api", pushRoutes);
+// واجهة المبيعات مع Odoo (/api/sales/*) — تعرّف مساراتها كاملةً فتُركَّب على الجذر.
+app.use(salesRoutes);
 app.use(certRoutes);
 // البطاقة المهنية: يحمل مساري /api/me/card و /c/:token — يُركّب قبل التقاط
 // الواجهة لكل المسارات (app.get("*")) وإلا ابتلعت الصفحةُ العامةَ الرابطَ.

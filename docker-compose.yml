@@ -35,7 +35,8 @@ services:
     ports:
       - "127.0.0.1:4100:80"   # لا يُعرَض مباشرة للإنترنت
     volumes:
-      - ./sales-app/index.html:/usr/share/nginx/html/index.html:ro
+      - ./sales-app/index.html:/usr/share/nginx/html/index.html:ro   # التطبيق الحقيقي (أودو)
+      - ./sales-app/demo.html:/usr/share/nginx/html/demo.html:ro      # نسخة العرض على /demo
       - ./sales-app/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     # nginx الثابت يستهلك أقل من ذلك فعليًا؛ السقف يحمي جارَيه على سيرفر 512MB
     mem_limit: 64m
