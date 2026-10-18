@@ -25,6 +25,25 @@ services:
       driver: "json-file"
       options: { max-size: "10m", max-file: "3" }
 
+  # تطبيق المبيعات (Sales/POS) — حاوية nginx ثابتة مستقلّة تمامًا عن البوابة.
+  # واجهة React مضمّنة في ملف واحد، بلا باك-إند. خلف Nginx الأمامي على
+  # pos.sharqiaa-tech.net. البورت 4100 (البوابة 4000، تطبيقك الآخر 3001).
+  sales:
+    image: nginx:alpine
+    container_name: sharqia-sales
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4100:80"   # لا يُعرَض مباشرة للإنترنت
+    volumes:
+      - ./sales-app/index.html:/usr/share/nginx/html/index.html:ro
+      - ./sales-app/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    # nginx الثابت يستهلك أقل من ذلك فعليًا؛ السقف يحمي جارَيه على سيرفر 512MB
+    mem_limit: 64m
+    init: true
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
+
   # بوت تيليجرام (مساعد Claude) — long-polling، لا يعرض أي بورت.
   # يقرأ متغيّراته (TELEGRAM_BOT_TOKEN/ANTHROPIC_API_KEY/...) من نفس .env.
   bot:
