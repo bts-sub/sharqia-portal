@@ -41,12 +41,28 @@ r.get("/api/sales/products", async (req, res, next) => {
       "product.product",
       domain,
       ["name", "default_code", "barcode", "list_price", "qty_available", "uom_id"],
-      { limit, offset, order: "name" }
+      { limit, offset, order: q ? "name" : "id desc" }   // بلا بحث: الأحدث أولًا (منتجات العميل المضافة حديثًا)
     );
     res.json(rows.map((p) => ({
       id: p.id, name: p.name, code: p.default_code || "", barcode: p.barcode || "",
       price: p.list_price, qty: p.qty_available, uom: m2o(p.uom_id)?.name || "",
     })));
+  } catch (e) { next(e); }
+});
+
+// صورة المنتج (بروكسي من Odoo — image_256) للعرض في القوائم
+r.get("/api/sales/products/:id/image", async (req, res, next) => {
+  try {
+    const id = num(req.params.id);
+    const rows = await searchRead("product.product", [["id", "=", id]], ["image_256"]);
+    const b64 = rows[0] && rows[0].image_256;
+    if (!b64) return res.status(404).end();
+    const ct = b64.startsWith("/9j/") ? "image/jpeg"
+      : b64.startsWith("R0lGOD") ? "image/gif"
+      : b64.startsWith("UklGR") ? "image/webp" : "image/png";
+    res.set("Content-Type", ct);
+    res.set("Cache-Control", "public, max-age=86400");
+    res.send(Buffer.from(b64, "base64"));
   } catch (e) { next(e); }
 });
 
