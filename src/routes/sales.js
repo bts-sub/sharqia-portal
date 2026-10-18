@@ -109,7 +109,7 @@ r.post("/api/sales/orders", async (req, res, next) => {
       if (l.price_unit != null && l.price_unit !== "") vals.price_unit = num(l.price_unit);
       return [0, 0, vals];
     });
-    const vals = { partner_id: num(partner_id), order_line };
+    const vals = { partner_id: num(partner_id), order_line, require_payment: true };
     if (note) vals.note = String(note);
     const id = await create("sale.order", vals);
     res.json({ id });
