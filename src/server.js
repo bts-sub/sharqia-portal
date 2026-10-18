@@ -213,6 +213,9 @@ app.get("/api/health/odoo", async (req, res) => {
     return res.status(404).end();
   });
 
+// واجهة المبيعات مع Odoo (/api/sales/*) — عامّة (محميّة بمفتاح X-Sales-Key + host-gate
+// لنطاق pos)، فتُركَّب قبل الراوترات المحميّة بتسجيل الدخول حتى لا تحجبها requireAuth.
+app.use(salesRoutes);
 app.use("/api", joinRoutes);
 app.use("/api", supportRoutes);
 app.use("/api", integrationRoutes);
@@ -231,8 +234,6 @@ app.use("/api", letterRoutes);
 app.use("/api", learningRoutes);
 app.use("/api", disciplineRoutes);
 app.use("/api", pushRoutes);
-// واجهة المبيعات مع Odoo (/api/sales/*) — تعرّف مساراتها كاملةً فتُركَّب على الجذر.
-app.use(salesRoutes);
 app.use(certRoutes);
 // البطاقة المهنية: يحمل مساري /api/me/card و /c/:token — يُركّب قبل التقاط
 // الواجهة لكل المسارات (app.get("*")) وإلا ابتلعت الصفحةُ العامةَ الرابطَ.
