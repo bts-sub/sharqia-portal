@@ -356,8 +356,11 @@ const toolLabel = (b) => {
   if (b.name === "search_folder") return `بحث في الملفات: ${i.query || ""}`;
   if (b.name === "read_folder_file") return `قراءة ملف: ${i.path || ""}`;
   if (b.name === "web_search") return `بحث في الإنترنت: ${i.query || ""}`;
-  return b.name;
+  if (b.name === "web_fetch") return `قراءة صفحة: ${i.url || ""}`;
+  return null; // أدوات داخلية (مثل تصفية نتائج البحث بالكود) لا تُعرض
 };
+
+const TOOLISH = (t) => t === "tool_use" || t === "server_tool_use" || t.endsWith("_tool_result");
 
 export function toDisplay(conv) {
   const items = [];
@@ -374,10 +377,17 @@ export function toDisplay(conv) {
         items.push(last);
       }
       for (const b of m.content) {
-        if (b.type === "text" && b.text) last.text += (last.text && !last.text.endsWith("\n") ? "\n\n" : "") + b.text;
-        else if (b.type === "tool_use" || b.type === "server_tool_use") last.tools.push(toolLabel(b));
-        else if (b.type === "compaction") last.tools.push("تلخيص بداية المحادثة لتوفير الذاكرة");
+        if (b.type === "tool_use" || b.type === "server_tool_use") {
+          const label = toolLabel(b);
+          if (label) last.tools.push(label);
+        } else if (b.type === "compaction") last.tools.push("تلخيص بداية المحادثة لتوفير الذاكرة");
       }
+      // النص بين استدعاءات الأدوات تمهيد/حديث داخلي؛ الجواب هو ما بعد آخر أداة.
+      // كتل النص المتجاورة (مع الاستشهادات) أجزاء من جملة واحدة فتُلصق بلا فاصل.
+      const lastTool = m.content.map((b) => TOOLISH(b.type)).lastIndexOf(true);
+      const seg = m.content.slice(lastTool + 1).filter((b) => b.type === "text").map((b) => b.text).join("");
+      if (lastTool !== -1) last.text = seg;
+      else if (seg) last.text = last.text ? `${last.text}\n\n${seg}` : seg;
       if (m.meta?.stopped) last.stopped = true;
     }
   }

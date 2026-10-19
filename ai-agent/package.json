@@ -1,6 +1,6 @@
 {
   "name": "sharqia-ai-agents",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "منصّة المساعدين الأذكياء لبيت العباءة الشرقية — وكيل Claude لكل موظف بدور وحدود وصلاحيات، وبيانات مشفّرة لا يقرؤها إلا صاحبها",
   "type": "module",

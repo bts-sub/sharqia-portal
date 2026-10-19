@@ -96,6 +96,11 @@ export default function Chat({ convId, onCreated, onChanged, onMenu }) {
           liveTextRef.current += data.text;
           flushLive();
         } else if (ev === "status") {
+          // ما كُتب قبل استخدام أداة تمهيد؛ الجواب يبدأ بعد آخر أداة (مثل العرض المحفوظ)
+          if (data.kind === "web_search" || data.kind === "tool") {
+            liveTextRef.current = "";
+            flushLive();
+          }
           setLive((l) => l && { ...l, status: data });
         } else if (ev === "round") {
           if (liveTextRef.current && !liveTextRef.current.endsWith("\n")) liveTextRef.current += "\n\n";
@@ -109,7 +114,8 @@ export default function Chat({ convId, onCreated, onChanged, onMenu }) {
         }
       });
       if (calls && !needBreak) {
-        if (liveTextRef.current && !liveTextRef.current.endsWith("\n")) liveTextRef.current += "\n\n";
+        liveTextRef.current = "";
+        flushLive();
         const results = await runFolderTools(calls, (c) =>
           setLive((l) => l && { ...l, status: { kind: "tool", name: c.name, label: toolProgress(c) } }));
         next = { path: `/conversations/${id}/tool-results`, body: { results } };

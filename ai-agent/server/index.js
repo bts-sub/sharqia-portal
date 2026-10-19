@@ -49,7 +49,7 @@ app.use((req, res, next) => {
 // لا ضغط لمسارات البثّ (SSE) — الضغط يحبس الأحداث حتى نهاية الرد
 app.use(compression({ filter: (req, res) => !/\/messages$|\/tool-results$/.test(req.path) && compression.filter(req, res) }));
 app.use(cookieParser());
-app.use("/api", express.json({ limit: "1mb" }));
+app.use("/api", express.json({ limit: "4mb" })); // نتائج قراءة ملفات الجهاز قد تكون نصوصًا طويلة
 
 // حماية CSRF: كل طلب يغيّر بيانات لازم يحمل ترويسة التطبيق (تفرض preflight
 // على أي موقع آخر) — إضافةً إلى كوكي SameSite=Strict.
