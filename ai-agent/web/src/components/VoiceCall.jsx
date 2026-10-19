@@ -1,25 +1,29 @@
-// وضع المكالمة: استماع ← تفكير ← تحدّث ← استماع… بلا لمس.
+// وضع المكالمة: تحيّة ← استماع ← تفكير ← تحدّث ← استماع… بلا لمس.
 // اضغط الدائرة أثناء حديث المساعد لمقاطعته والتحدث مباشرة.
+// إن لم يكن على الجهاز صوت عربي، يكمل المساعد ردوده كتابةً على نفس الشاشة.
 import { useEffect, useRef, useState } from "react";
 import Icon from "./Icon.jsx";
 import { AgentAvatar } from "./ui.jsx";
-import { hasBrowserSTT, listenOnce, speakable, speaker } from "../lib/speech.js";
+import { canRecord, hasBrowserSTT, listenOnce, speakable, speaker } from "../lib/speech.js";
 import { statusLabel } from "./Message.jsx";
 
 const LABEL = {
   starting: "جارٍ التجهيز…",
-  listening: "أستمع إليك…",
+  greeting: "",
+  listening: "أستمع إليك… تكلّم الآن",
   thinking: "لحظة…",
-  speaking: "اضغط للمقاطعة",
-  paused: "متوقف مؤقتًا — اضغط للمتابعة",
+  speaking: "اضغط الدائرة للمقاطعة",
+  paused: "متوقف مؤقتًا — اضغط الدائرة للمتابعة",
   error: "",
 };
 
-export default function VoiceCall({ agent, lang, cloudVoice, liveText, liveStatus, onSend, onClose }) {
+export default function VoiceCall({ agent, lang, cloudVoice, liveText, liveStatus, onSend, onClose, voiceHelp, userName }) {
   const [state, setState] = useState("starting");
   const [heard, setHeard] = useState("");
+  const [lastReply, setLastReply] = useState("");
   const [level, setLevel] = useState(0);
   const [error, setError] = useState("");
+  const [noVoice, setNoVoice] = useState(false);
   const openRef = useRef(true);
   const pausedRef = useRef(false);
   const listenCtrl = useRef(null);
@@ -27,6 +31,7 @@ export default function VoiceCall({ agent, lang, cloudVoice, liveText, liveStatu
   const wakeRef = useRef(null);
   sendRef.current = onSend;
 
+  const sttAvailable = hasBrowserSTT() || (cloudVoice && canRecord());
   const waitForWake = () => new Promise((ok) => { wakeRef.current = ok; });
 
   useEffect(() => {
@@ -35,7 +40,23 @@ export default function VoiceCall({ agent, lang, cloudVoice, liveText, liveStatu
     let wakeLock = null;
     navigator.wakeLock?.request("screen").then((l) => { wakeLock = l; }).catch(() => {});
 
+    const say = async (text) => {
+      setState("speaking");
+      const r = await speaker.speak(text);
+      if (!r.ok) setNoVoice(true);
+    };
+
     (async () => {
+      if (!sttAvailable) {
+        setError("هذا المتصفح لا يدعم التحدث بالصوت — استخدم Chrome أو Edge أو Safari.");
+        setState("error");
+        return;
+      }
+      // تحيّة قصيرة (بلا تكلفة) — تؤكد للمستخدم أن الصوت يعمل
+      const greeting = `أهلًا ${userName || ""}، أنا ${agent.name}. تفضّل، أنا أسمعك.`;
+      setLastReply(greeting);
+      await say(greeting);
+
       while (openRef.current) {
         if (pausedRef.current) {
           setState("paused");
@@ -74,8 +95,8 @@ export default function VoiceCall({ agent, lang, cloudVoice, liveText, liveStatu
         const reply = await sendRef.current(text);
         if (!openRef.current) break;
         if (reply) {
-          setState("speaking");
-          await speaker.speak(reply);
+          setLastReply(reply);
+          await say(reply);
         }
       }
     })();
@@ -87,13 +108,14 @@ export default function VoiceCall({ agent, lang, cloudVoice, liveText, liveStatu
       wakeRef.current?.();
       wakeLock?.release?.().catch(() => {});
     };
-  }, [lang, cloudVoice]);
+  }, [lang, cloudVoice]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tapOrb = () => {
     speaker.unlock();
     if (state === "speaking") {
       speaker.stop(); // يعود للاستماع
     } else if (state === "paused" || state === "error") {
+      if (!sttAvailable) return;
       setError("");
       pausedRef.current = false;
       wakeRef.current?.();
@@ -103,7 +125,11 @@ export default function VoiceCall({ agent, lang, cloudVoice, liveText, liveStatu
     }
   };
 
-  const shown = state === "thinking" || state === "speaking" ? speakable(liveText).slice(-280) : heard;
+  // ماذا نعرض تحت الدائرة: كلام المستخدم أثناء الاستماع، والرد أثناء التفكير/الحديث
+  let shown = heard;
+  if (state === "thinking") shown = speakable(liveText).slice(-320) || heard;
+  else if (state === "speaking") shown = speakable(lastReply).slice(0, 600);
+  else if (state === "listening" && !heard && noVoice) shown = speakable(lastReply).slice(0, 600);
   const sub = state === "thinking" && liveStatus ? statusLabel(liveStatus) : LABEL[state];
 
   return (
@@ -113,13 +139,19 @@ export default function VoiceCall({ agent, lang, cloudVoice, liveText, liveStatu
         <span className="call-sub">مكالمة صوتية</span>
       </div>
 
+      {noVoice && (
+        <div className="call-warn" role="alert">
+          <Icon name="alert" size={18} /> {voiceHelp} — الردود تظهر مكتوبة هنا.
+        </div>
+      )}
+
       <button className={`call-orb state-${state}`} onClick={tapOrb} aria-label={LABEL[state] || "متابعة"}>
         <span className="orb-ring" style={{ transform: `scale(${1 + level * 0.35})` }} />
         <AgentAvatar name={agent.name} gender={agent.gender} size={132} />
       </button>
 
       <div className="call-state">{error || sub}</div>
-      <div className="call-text" dir="auto">{shown}</div>
+      <div className={`call-text ${noVoice ? "is-long" : ""}`} dir="auto">{shown}</div>
 
       <div className="call-actions">
         <button

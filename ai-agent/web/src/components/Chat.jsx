@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMe } from "../App.jsx";
 import { api, stream } from "../lib/api.js";
-import { speaker } from "../lib/speech.js";
+import { NO_VOICE_MESSAGE, speaker } from "../lib/speech.js";
 import {
   canPickDirectory, canPickFolderInput, connectedFolder, disconnectFolder,
   loadFolderFromInput, onFolderChange, pickFolderWithApi, runFolderTools,
@@ -42,6 +42,7 @@ export default function Chat({ convId, onCreated, onChanged, onMenu }) {
   const [folder, setFolder] = useState(connectedFolder());
 
   const idRef = useRef(convId);
+  const createdRef = useRef(null);
   const busyRef = useRef(false);
   const listRef = useRef(null);
   const stickRef = useRef(true);
@@ -58,7 +59,8 @@ export default function Chat({ convId, onCreated, onChanged, onMenu }) {
   }, []);
 
   useEffect(() => {
-    if (!convId) return;
+    // محادثة أنشأناها للتو هنا: حالتها عندنا بالفعل، وإعادة تحميلها تمسح رسالة المستخدم المعروضة أثناء البثّ
+    if (!convId || createdRef.current === convId) return;
     setLoading(true);
     load(convId)
       .catch((err) => { setError(err.message); })
@@ -133,6 +135,7 @@ export default function Chat({ convId, onCreated, onChanged, onMenu }) {
     if (idRef.current) return idRef.current;
     const created = await api("/conversations", { method: "POST", body: { model } });
     idRef.current = created.id;
+    createdRef.current = created.id;
     setConv(created);
     onCreated(created.id);
     return created.id;
@@ -167,7 +170,9 @@ export default function Chat({ convId, onCreated, onChanged, onMenu }) {
     }
     if (reply && autoSpeak && !voice && features.voice !== false) {
       setSpeakingKey("last");
-      speaker.speak(reply).finally(() => setSpeakingKey((k) => (k === "last" ? null : k)));
+      speaker.speak(reply)
+        .then((r) => { if (!r.ok) toast(voiceHelp(), "error"); })
+        .finally(() => setSpeakingKey((k) => (k === "last" ? null : k)));
     }
     return reply;
   }
@@ -179,15 +184,21 @@ export default function Chat({ convId, onCreated, onChanged, onMenu }) {
   const toggleAutoSpeak = async () => {
     const v = !autoSpeak;
     setAutoSpeak(v);
-    if (v) speaker.unlock();
-    else speaker.stop();
+    if (v) {
+      speaker.unlock();
+      speaker.speak("تم تفعيل القراءة الصوتية.").then((r) => { if (!r.ok) toast(voiceHelp(), "error"); });
+    } else speaker.stop();
     api("/auth/profile", { method: "PATCH", body: { prefs: { autoSpeak: v } } }).catch(() => {});
   };
+
+  const voiceHelp = () => NO_VOICE_MESSAGE + (user.isAdmin ? " أو فعّل الصوت السحابي من لوحة الإدارة ← الإعدادات." : "");
 
   const speakItem = (key, text) => {
     speaker.unlock();
     setSpeakingKey(key);
-    speaker.speak(text).finally(() => setSpeakingKey((k) => (k === key ? null : k)));
+    speaker.speak(text)
+      .then((r) => { if (!r.ok) toast(voiceHelp(), "error"); })
+      .finally(() => setSpeakingKey((k) => (k === key ? null : k)));
   };
 
   const connectFolder = async () => {
@@ -349,6 +360,8 @@ export default function Chat({ convId, onCreated, onChanged, onMenu }) {
           cloudVoice={me.org.cloudVoice}
           liveText={live?.text || ""}
           liveStatus={live?.status}
+          voiceHelp={voiceHelp()}
+          userName={user.displayName.split(" ")[0]}
           onSend={(text) => send({ text, voice: true })}
           onClose={() => { speaker.stop(); setCallOpen(false); }}
         />

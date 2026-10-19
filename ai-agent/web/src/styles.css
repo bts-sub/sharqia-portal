@@ -447,3 +447,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   .conv-item { grid-template-columns: 1fr auto auto; }
   .conv-del { position: static; transform: none; background: none; padding: 4px; }
 }
+.call-warn { display: flex; gap: 8px; align-items: flex-start; max-width: 560px; background: rgba(242, 177, 74, 0.14); color: #f5d7a1;
+  border: 1px solid rgba(242, 177, 74, 0.35); border-radius: 12px; padding: 10px 14px; font-size: 13.5px; line-height: 1.6; }
+.call-warn .icon { margin-top: 2px; }
+.call-text.is-long { -webkit-line-clamp: 9; font-size: 16px; max-height: 40vh; overflow-y: auto; display: block; }

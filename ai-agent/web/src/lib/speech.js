@@ -109,9 +109,14 @@ async function pickVoice(lang, gender, preferredName) {
   const re = gender === "female" ? FEMALE : MALE;
   const hit = pool.find((v) => re.test(v.name)) || cands.find((v) => re.test(v.name));
   if (hit) return { voice: hit, pitch: 1 };
+  if (!pool.length) return null; // لا يوجد صوت لهذه اللغة إطلاقًا (مثل Chrome على ويندوز للعربية)
   // لا يوجد صوت بالجنس المطلوب على هذا الجهاز: نغيّر طبقة الصوت المتاح
-  return { voice: pool[0] || null, pitch: gender === "female" ? 1.2 : 0.8 };
+  return { voice: pool[0], pitch: gender === "female" ? 1.2 : 0.8 };
 }
+
+// رسالة واضحة عندما لا يملك الجهاز صوتًا عربيًا
+export const NO_VOICE_MESSAGE =
+  "هذا الجهاز لا يحتوي على صوت عربي، لذلك لا يُقرأ الرد بصوت. على الكمبيوتر افتح الموقع من متصفح Microsoft Edge (فيه أصوات عربية رجل وامرأة مجانًا)، أو استخدم الجوال.";
 
 // تحويل Markdown لنص يُقرأ بشكل طبيعي
 export function speakable(md) {
@@ -165,6 +170,7 @@ export function createSpeaker() {
   audio.preload = "auto";
   let token = 0;
   let cfg = { cloud: false, lang: "ar-SA", gender: "male", rate: 1, voiceName: "" };
+  const keep = new Set();
 
   const playBlob = (blob, my) =>
     new Promise((resolve) => {
@@ -185,8 +191,13 @@ export function createSpeaker() {
       if (v.voice) u.voice = v.voice;
       u.pitch = v.pitch;
       u.rate = cfg.rate;
-      u.onend = resolve;
-      u.onerror = resolve;
+      // Chrome أحيانًا لا يطلق onend: مهلة أمان حسب طول النص
+      const guard = setTimeout(resolve, 4000 + text.length * 120);
+      const done = () => { clearTimeout(guard); resolve(); };
+      u.onend = done;
+      u.onerror = done;
+      keep.add(u); // منع جمع القمامة للعبارة قبل انتهائها (خلل معروف في Chrome)
+      u.addEventListener("end", () => keep.delete(u));
       speechSynthesis.speak(u);
     });
 
@@ -207,11 +218,12 @@ export function createSpeaker() {
       audio.pause();
       if (hasBrowserTTS()) speechSynthesis.cancel();
     },
+    // يرجع {ok:true} أو {ok:false, reason:"no-voice"|"no-tts"}
     async speak(md, { onStart } = {}) {
       this.stop();
       const my = ++token;
       const text = speakable(md);
-      if (!text) return;
+      if (!text) return { ok: true };
       onStart?.();
       if (cfg.cloud) {
         try {
@@ -222,18 +234,20 @@ export function createSpeaker() {
             if (i + 1 < chunks.length) next = fetchTts(chunks[i + 1]);
             await playBlob(blob, my);
           }
-          return;
+          return { ok: true };
         } catch {
-          if (my !== token) return; // أُوقف
+          if (my !== token) return { ok: true }; // أُوقف
           // فشل الصوت السحابي: نكمل بصوت الجهاز
         }
       }
-      if (!hasBrowserTTS()) return;
+      if (!hasBrowserTTS()) return { ok: false, reason: "no-tts" };
       const v = await pickVoice(cfg.lang, cfg.gender, cfg.voiceName);
+      if (!v) return { ok: false, reason: "no-voice" };
       for (const c of chunkText(text, 200)) {
         if (my !== token) break;
         await say(c, v, my);
       }
+      return { ok: true };
     },
   };
 }

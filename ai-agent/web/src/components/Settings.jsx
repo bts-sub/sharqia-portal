@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMe } from "../App.jsx";
 import { api, fmtBytes, fmtUsd } from "../lib/api.js";
-import { deviceVoices, speaker } from "../lib/speech.js";
+import { deviceVoices, NO_VOICE_MESSAGE, speaker } from "../lib/speech.js";
 import Icon from "./Icon.jsx";
 import { AgentAvatar, Field, Meter, Switch, toast } from "./ui.jsx";
 import { PasswordForm } from "./ChangePassword.jsx";
@@ -25,7 +25,7 @@ export default function Settings({ onMenu }) {
   const [browserVoice, setBrowserVoice] = useState(u.prefs?.browserVoice || "");
   const [autoSpeak, setAutoSpeak] = useState(Boolean(u.prefs?.autoSpeak));
   const [notes, setNotes] = useState(u.prefs?.personalNotes || "");
-  const [voices, setVoices] = useState([]);
+  const [voices, setVoices] = useState(null); // null = لم تُحمّل بعد
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -54,7 +54,9 @@ export default function Settings({ onMenu }) {
   const preview = () => {
     speaker.unlock();
     speaker.configure({ gender, lang: speechLang, rate: voiceRate, voiceName: browserVoice, cloud: me.org.cloudVoice });
-    speaker.speak(speechLang === "en-US" ? `Hello, I'm ${agentName}. How can I help you today?` : `أهلًا، أنا ${agentName}. كيف أقدر أساعدك اليوم؟`);
+    speaker
+      .speak(speechLang === "en-US" ? `Hello, I'm ${agentName}. How can I help you today?` : `أهلًا، أنا ${agentName}. كيف أقدر أساعدك اليوم؟`)
+      .then((r) => { if (!r.ok) toast(NO_VOICE_MESSAGE, "error"); });
   };
 
   const limit = u.limits?.monthlyUsd || 0;
@@ -109,9 +111,12 @@ export default function Settings({ onMenu }) {
               <Field label="صوت الجهاز" hint="الأصوات المتاحة تختلف من جهاز لآخر. «تلقائي» يختار صوتًا يناسب جنس المساعد.">
                 <select value={browserVoice} onChange={(e) => setBrowserVoice(e.target.value)}>
                   <option value="">تلقائي</option>
-                  {voices.map((v) => <option key={v.name} value={v.name}>{v.name}</option>)}
+                  {(voices || []).map((v) => <option key={v.name} value={v.name}>{v.name}</option>)}
                 </select>
               </Field>
+            )}
+            {!me.org.cloudVoice && voices && voices.length === 0 && (
+              <div className="banner banner-warn"><Icon name="alert" size={18} /> {NO_VOICE_MESSAGE}</div>
             )}
             {me.org.cloudVoice && <p className="muted small">يُستخدم الصوت السحابي عالي الجودة (رجل/امرأة) الذي فعّلته الإدارة.</p>}
             <Switch checked={autoSpeak} onChange={setAutoSpeak} label="اقرأ الردود بصوت تلقائيًا" />
