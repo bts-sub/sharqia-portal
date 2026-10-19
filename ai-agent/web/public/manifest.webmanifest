@@ -1,0 +1,20 @@
+{
+  "name": "مساعدي الذكي — الشرقية",
+  "short_name": "مساعدي",
+  "description": "مساعد ذكي خاص لكل موظف: استشارات مالية وموارد بشرية وقانونية، بالصوت والملفات.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F7F6F3",
+  "theme_color": "#1B1B1B",
+  "lang": "ar",
+  "dir": "rtl",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

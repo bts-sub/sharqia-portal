@@ -16,3 +16,5 @@ npm-debug.log*
 docs
 bot
 .DS_Store
+# منصّة المساعدين لها صورتها الخاصة
+ai-agent

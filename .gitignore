@@ -14,3 +14,8 @@ bot/.env
 # ملفات معرفة البوت تحوي أسماء/بيانات شركة سرّية — لا تُرفع إلى GitHub إطلاقًا.
 # تُوضَع مباشرةً على السيرفر (يلتقطها Docker build من نسخة السيرفر).
 bot/knowledge/*.md
+# منصّة المساعدين: البيانات المشفّرة والأسرار لا تُرفع إطلاقًا (الواجهة المبنية web/dist تُرفع)
+ai-agent/node_modules/
+ai-agent/web/node_modules/
+ai-agent/data/
+ai-agent/.env

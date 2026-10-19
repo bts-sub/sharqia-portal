@@ -45,6 +45,34 @@ services:
       driver: "json-file"
       options: { max-size: "10m", max-file: "3" }
 
+  # منصّة المساعدين الأذكياء (ai.sharqiaa-tech.net) — وكيل Claude لكل موظف.
+  # مستقلّة تمامًا عن البوابة: ملف بيئة خاص، وبيانات مشفّرة لكل مستخدم في ai-agent/data.
+  ai:
+    build: ./ai-agent
+    container_name: sharqia-ai
+    restart: unless-stopped
+    env_file:
+      - path: ./ai-agent/.env
+        required: false
+    ports:
+      - "127.0.0.1:4200:4200"   # خلف Nginx فقط
+    volumes:
+      - ./ai-agent/data:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4200/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # السيرفر 512MB ويستضيف خدمات أخرى؛ مرفقات PDF الكبيرة تُفكّ في الذاكرة
+    mem_limit: 192m
+    environment:
+      NODE_ENV: production
+      NODE_OPTIONS: "--max-old-space-size=144"
+    init: true
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
+
   # بوت تيليجرام (مساعد Claude) — long-polling، لا يعرض أي بورت.
   # يقرأ متغيّراته (TELEGRAM_BOT_TOKEN/ANTHROPIC_API_KEY/...) من نفس .env.
   bot:
