@@ -166,7 +166,7 @@ async function runTurn(uid, taskId) {
     addCost(uid, cost);
     const msg = String(decision.message || "").trim();
     let sentOk = false;
-    if (msg && (decision.action === "reply" || decision.action === "done")) {
+    if (msg && decision.action !== "wait") {
       try {
         await waSession(uid).send(task.chatId, msg);
         sentOk = true;
