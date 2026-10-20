@@ -7,6 +7,12 @@ import { AgentAvatar } from "./ui.jsx";
 import { canRecord, hasBrowserSTT, listenOnce, speakable, speaker } from "../lib/speech.js";
 import { statusLabel } from "./Message.jsx";
 
+// تقسيم النص لجمل؛ الجملة الأخيرة قد تكون ناقصة أثناء البثّ
+function completeSentences(text, final) {
+  const parts = text.split(/(?<=[.!?؟؛\n])\s+/).filter((x) => x.trim());
+  return final || /[.!?؟؛\n]\s*$/.test(text) ? parts : parts.slice(0, -1);
+}
+
 const LABEL = {
   starting: "جارٍ التجهيز…",
   greeting: "",
@@ -29,7 +35,24 @@ export default function VoiceCall({ agent, lang, cloudVoice, liveText, liveStatu
   const listenCtrl = useRef(null);
   const sendRef = useRef(onSend);
   const wakeRef = useRef(null);
+  const streamRef = useRef(null); // بثّ صوتي للرد الجاري
+  const spokenRef = useRef(0); // عدد الجمل التي أُرسلت للنطق
+  const stateRef = useRef("starting");
   sendRef.current = onSend;
+  stateRef.current = state;
+
+  // أثناء كتابة الرد: انطق كل جملة تكتمل فورًا (لا ننتظر نهاية الرد)
+  useEffect(() => {
+    const stream = streamRef.current;
+    if (!stream) return;
+    const done = completeSentences(speakable(liveText), false);
+    if (done.length < spokenRef.current) spokenRef.current = 0; // بدأ نص جديد (بعد أداة مثلًا)
+    const fresh = done.slice(spokenRef.current);
+    if (!fresh.length) return;
+    fresh.forEach((x) => stream.push(x));
+    spokenRef.current = done.length;
+    if (stateRef.current === "thinking") setState("speaking");
+  }, [liveText]);
 
   const sttAvailable = hasBrowserSTT() || (cloudVoice && canRecord());
   const waitForWake = () => new Promise((ok) => { wakeRef.current = ok; });
@@ -92,11 +115,19 @@ export default function VoiceCall({ agent, lang, cloudVoice, liveText, liveStatu
         silentRounds = 0;
         setHeard(text);
         setState("thinking");
+        const stream = speaker.beginStream();
+        streamRef.current = stream;
+        spokenRef.current = 0;
         const reply = await sendRef.current(text);
+        streamRef.current = null;
         if (!openRef.current) break;
         if (reply) {
           setLastReply(reply);
-          await say(reply);
+          const all = completeSentences(speakable(reply), true);
+          all.slice(spokenRef.current).forEach((x) => stream.push(x));
+          setState("speaking");
+          const r = await stream.end();
+          if (!r.ok) setNoVoice(true);
         }
       }
     })();

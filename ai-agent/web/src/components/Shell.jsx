@@ -6,6 +6,7 @@ import { AgentAvatar, Meter, toast } from "./ui.jsx";
 import Chat from "./Chat.jsx";
 import Settings from "./Settings.jsx";
 import Admin from "./Admin.jsx";
+import Followups from "./Followups.jsx";
 
 function parseHash() {
   const h = window.location.hash.replace(/^#\/?/, "");
@@ -13,6 +14,7 @@ function parseHash() {
   if (view === "c" && id) return { view: "chat", id };
   if (view === "settings") return { view: "settings" };
   if (view === "admin") return { view: "admin" };
+  if (view === "followups") return { view: "followups" };
   return { view: "chat", id: null };
 }
 
@@ -121,6 +123,11 @@ export default function Shell() {
             {limit > 0 && <Meter value={used} max={limit} />}
           </div>
           <div className="side-links">
+            {u.limits?.features?.whatsapp && (
+              <button className={`side-link ${route.view === "followups" ? "is-active" : ""}`} onClick={() => go("#/followups")}>
+                <Icon name="sparkle" size={18} /> المتابعات
+              </button>
+            )}
             <button className={`side-link ${route.view === "settings" ? "is-active" : ""}`} onClick={() => go("#/settings")}>
               <Icon name="settings" size={18} /> الإعدادات
             </button>
@@ -138,6 +145,7 @@ export default function Shell() {
       <main className="main">
         {route.view === "settings" && <Settings onMenu={() => setDrawer(true)} />}
         {route.view === "admin" && u.isAdmin && <Admin onMenu={() => setDrawer(true)} />}
+        {route.view === "followups" && <Followups onMenu={() => setDrawer(true)} />}
         {route.view === "chat" && (
           <Chat
             key={chat.key}

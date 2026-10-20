@@ -13,7 +13,16 @@ import { vaultSize } from "../lib/vault.js";
 import { MODELS } from "../lib/models.js";
 import { ROLES } from "../lib/roles.js";
 import { testAzure } from "../lib/speech.js";
-import { getClient } from "../lib/agent.js";
+import { getClient } from "../lib/claude.js";
+import { waForget, waLogout, waSession } from "../lib/connectors/whatsapp.js";
+import { wipeConnectors } from "../lib/connectors/secure.js";
+
+// يُنهي ربط واتساب ويمسح بيانات الربط (عند الحذف أو إعادة التعيين)
+async function dropConnectors(uid) {
+  try { if (waSession(uid).meta.linked) await waLogout(uid); } catch {}
+  waForget(uid);
+  wipeConnectors(uid);
+}
 
 const r = Router();
 
@@ -45,21 +54,28 @@ r.patch("/users/:id", (req, res) => {
   if (target.id === req.user.id && (req.body?.isAdmin === false || req.body?.disabled === true)) {
     throw new AppError("لا يمكنك إيقاف حسابك أو سحب صلاحية الإدارة من نفسك", 400);
   }
-  res.json(row(updateUserByAdmin(req.params.id, req.body || {})));
+  const u = updateUserByAdmin(req.params.id, req.body || {});
+  // إيقاف الحساب أو سحب ميزة واتساب: نفصل الجلسة الحيّة (الربط يبقى ويعود عند إعادة التفعيل)
+  const wa = waSession(u.id);
+  if (u.disabled || !u.limits?.features?.whatsapp) wa.stop();
+  else if (wa.meta.linked && wa.status === "idle") wa.start().catch(() => {});
+  res.json(row(u));
 });
 
 r.post("/users/:id/reset-password", wrap(async (req, res) => {
   if (req.params.id === req.user.id) throw new AppError("غيّر كلمة مرورك من صفحة الإعدادات (تحفظ بياناتك)", 400);
+  await dropConnectors(req.params.id);
   const u = await adminResetPassword(req.params.id, req.body?.password);
   res.json(row(u));
 }));
 
-r.delete("/users/:id", (req, res) => {
+r.delete("/users/:id", wrap(async (req, res) => {
   if (req.params.id === req.user.id) throw new AppError("لا يمكنك حذف حسابك", 400);
   if (!getUser(req.params.id)) throw new AppError("المستخدم غير موجود", 404);
+  await dropConnectors(req.params.id);
   deleteUser(req.params.id);
   res.json({ ok: true });
-});
+}));
 
 r.put("/settings", (req, res) => {
   res.json(updateSettings(req.body || {}));

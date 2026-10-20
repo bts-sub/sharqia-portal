@@ -39,13 +39,13 @@ function sse(res) {
   };
 }
 
-async function runStreamed(req, res, conv) {
+async function runStreamed(req, res, conv, { effort } = {}) {
   const key = `${req.user.id}:${conv.id}`;
   const ctrl = new AbortController();
   active.set(key, ctrl);
   const out = sse(res);
   try {
-    await runAgent({ user: req.user, vault: req.vault, conv, emit: out.emit, signal: ctrl.signal });
+    await runAgent({ user: req.user, vault: req.vault, conv, emit: out.emit, signal: ctrl.signal, effort });
   } catch (err) {
     if (!(err instanceof AppError)) console.error("[chat]", err);
     out.emit("error", { message: err instanceof AppError ? err.message : "حدث خطأ غير متوقع" });
@@ -131,7 +131,8 @@ r.post("/:id/messages", wrap(async (req, res) => {
   }
   req.vault.saveConversation(conv);
   countMessage(req.user.id);
-  await runStreamed(req, res, conv);
+  // الرسائل الصوتية: تفكير أقل = رد أسرع (المحادثة نفسها والموديل نفسه)
+  await runStreamed(req, res, conv, { effort: voice ? "low" : undefined });
 }));
 
 r.post("/:id/tool-results", wrap(async (req, res) => {

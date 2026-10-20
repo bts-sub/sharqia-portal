@@ -63,11 +63,12 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-    # السيرفر 512MB ويستضيف خدمات أخرى؛ مرفقات PDF الكبيرة تُفكّ في الذاكرة
-    mem_limit: 192m
+    # السيرفر 512MB ويستضيف خدمات أخرى؛ مرفقات PDF الكبيرة تُفكّ في الذاكرة،
+    # وكل جلسة واتساب مربوطة تأخذ ~40-70MB (للمدير وقلّة من الموظفين؛ أكثر = سيرفر أكبر)
+    mem_limit: 288m
     environment:
       NODE_ENV: production
-      NODE_OPTIONS: "--max-old-space-size=144"
+      NODE_OPTIONS: "--max-old-space-size=224"
     init: true
     logging:
       driver: "json-file"

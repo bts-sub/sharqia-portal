@@ -218,36 +218,52 @@ export function createSpeaker() {
       audio.pause();
       if (hasBrowserTTS()) speechSynthesis.cancel();
     },
-    // يرجع {ok:true} أو {ok:false, reason:"no-voice"|"no-tts"}
-    async speak(md, { onStart } = {}) {
+    // بثّ صوتي: push(نص) يضيف جُملًا للطابور فتُنطق فور وصولها، end() ينتظر انتهاءها.
+    // يرجع end() {ok:true} أو {ok:false, reason:"no-voice"|"no-tts"}
+    beginStream() {
       this.stop();
       const my = ++token;
-      const text = speakable(md);
-      if (!text) return { ok: true };
-      onStart?.();
-      if (cfg.cloud) {
-        try {
-          const chunks = chunkText(text, 450);
-          let next = fetchTts(chunks[0]);
-          for (let i = 0; i < chunks.length && my === token; i++) {
-            const blob = await next;
-            if (i + 1 < chunks.length) next = fetchTts(chunks[i + 1]);
-            await playBlob(blob, my);
-          }
-          return { ok: true };
-        } catch {
-          if (my !== token) return { ok: true }; // أُوقف
-          // فشل الصوت السحابي: نكمل بصوت الجهاز
+      let chain = Promise.resolve();
+      let result = { ok: true };
+      let voiceP = null;
+      let cloud = cfg.cloud;
+      const browserSay = async (text) => {
+        if (!hasBrowserTTS()) return { ok: false, reason: "no-tts" };
+        voiceP ||= pickVoice(cfg.lang, cfg.gender, cfg.voiceName);
+        const v = await voiceP;
+        if (!v) return { ok: false, reason: "no-voice" };
+        for (const c of chunkText(text, 200)) {
+          if (my !== token) break;
+          await say(c, v, my);
         }
-      }
-      if (!hasBrowserTTS()) return { ok: false, reason: "no-tts" };
-      const v = await pickVoice(cfg.lang, cfg.gender, cfg.voiceName);
-      if (!v) return { ok: false, reason: "no-voice" };
-      for (const c of chunkText(text, 200)) {
-        if (my !== token) break;
-        await say(c, v, my);
-      }
-      return { ok: true };
+        return { ok: true };
+      };
+      return {
+        push(md) {
+          const text = speakable(md);
+          if (!text || my !== token) return;
+          for (const chunk of chunkText(text, 450)) {
+            // الصوت السحابي يُطلب فورًا (تحميل مسبق) ويُشغَّل بالترتيب
+            const pending = cloud ? fetchTts(chunk).catch(() => null) : null;
+            chain = chain.then(async () => {
+              if (my !== token) return;
+              if (pending) {
+                const blob = await pending;
+                if (blob) return playBlob(blob, my);
+                cloud = false; // فشل السحابي: نكمل بصوت الجهاز
+              }
+              const r = await browserSay(chunk);
+              if (!r.ok) result = r;
+            });
+          }
+        },
+        end: () => chain.then(() => result),
+      };
+    },
+    async speak(md) {
+      const s = this.beginStream();
+      s.push(md);
+      return s.end();
     },
   };
 }

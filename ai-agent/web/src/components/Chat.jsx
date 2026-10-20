@@ -214,6 +214,12 @@ export default function Chat({ convId, onCreated, onChanged, onMenu }) {
     }
   };
 
+  const reportAsk = features.whatsapp && features.gmail
+    ? "إيه اللي فاتني في الواتساب والإيميل؟ اعمل لي تقرير بالمهم"
+    : features.whatsapp ? "إيه اللي فاتني في الواتساب؟ اعمل لي تقرير بالمهم"
+    : features.gmail ? "لخّص لي البريد غير المقروء بالمهم" : null;
+  const suggestions = [...(reportAsk ? [reportAsk] : []), ...(SUGGESTIONS[user.agent?.role] || SUGGESTIONS.general)].slice(0, 4);
+
   const items = conv?.items || [];
   const lastAssistantIdx = items.map((i) => i.role).lastIndexOf("assistant");
   const empty = !loading && !items.length && !live;
@@ -261,7 +267,7 @@ export default function Chat({ convId, onCreated, onChanged, onMenu }) {
         <div className="chat-head-actions">
           {isNew && me.models.length > 1 ? (
             <select className="model-select" value={model} onChange={(e) => setModel(e.target.value)} aria-label="الموديل">
-              {me.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              {me.models.map((m) => <option key={m.id} value={m.id}>{m.label.replace("Claude ", "")}</option>)}
             </select>
           ) : (
             <span className="model-chip" title="الموديل ثابت لكل محادثة">{modelLabel}</span>
@@ -308,7 +314,7 @@ export default function Chat({ convId, onCreated, onChanged, onMenu }) {
               </h1>
               <p className="muted">{me.role.title} — {me.role.summary}</p>
               <div className="suggestions">
-                {(SUGGESTIONS[user.agent?.role] || SUGGESTIONS.general).map((s) => (
+                {suggestions.map((s) => (
                   <button key={s} className="suggestion" onClick={() => send({ text: s })} disabled={busy || !me.org.hasKey}>
                     {s}
                   </button>
@@ -318,6 +324,7 @@ export default function Chat({ convId, onCreated, onChanged, onMenu }) {
                 {features.files !== false && <li><Icon name="clip" size={15} /> أرفق PDF أو Word أو Excel أو صورة واسألني عنها</li>}
                 {features.voice !== false && <li><Icon name="phone" size={15} /> اضغط زر المكالمة لتتحدث معي صوتيًا</li>}
                 {folderAllowed && <li><Icon name="folder" size={15} /> اربط مجلدًا من جهازك لأقرأ ملفاته</li>}
+                {features.whatsapp && <li><Icon name="sparkle" size={15} /> قل «تابع مع فلان بخصوص كذا» وأنا أتابع وأرد وأبلغك</li>}
               </ul>
             </div>
           )}

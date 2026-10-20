@@ -5,6 +5,7 @@ import { deviceVoices, NO_VOICE_MESSAGE, speaker } from "../lib/speech.js";
 import Icon from "./Icon.jsx";
 import { AgentAvatar, Field, Meter, Switch, toast } from "./ui.jsx";
 import { PasswordForm } from "./ChangePassword.jsx";
+import Connections from "./Connections.jsx";
 
 const DIALECTS = [
   { id: "ar-SA", label: "العربية — سعودي" },
@@ -127,6 +128,8 @@ export default function Settings({ onMenu }) {
         <div className="save-row">
           <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? "جارٍ الحفظ…" : "حفظ الإعدادات"}</button>
         </div>
+
+        <Connections />
 
         <section className="card">
           <h2>استهلاكك</h2>

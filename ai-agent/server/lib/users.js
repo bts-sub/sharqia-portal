@@ -20,7 +20,7 @@ export const DEFAULT_LIMITS = {
   dailyMessages: 0, // 0 = بلا حد
   storageMb: 300,
   models: Object.keys(MODELS),
-  features: { voice: true, files: true, folder: true, web: false },
+  features: { voice: true, files: true, folder: true, web: false, whatsapp: false, gmail: false },
   allowCustomize: true, // يسمح للموظف بتغيير اسم المساعد وصوته
 };
 

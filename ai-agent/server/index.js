@@ -10,12 +10,16 @@ import { resolve } from "node:path";
 import { PORT, VERSION, WEB_DIST, IS_PROD } from "./config.js";
 import { AppError } from "./lib/errors.js";
 import { requireAdmin, requireAuth, requireReady } from "./lib/session.js";
-import { createUser, listUsers } from "./lib/users.js";
+import { createUser, getUser, listUsers } from "./lib/users.js";
+import { usersStore } from "./lib/store.js";
+import { flushAll, restoreWhatsApp } from "./lib/connectors/whatsapp.js";
+import "./lib/followups.js"; // يسجّل مستمعي رسائل واتساب للمتابعات
 import authRoutes from "./routes/auth.js";
 import chatRoutes from "./routes/chat.js";
 import fileRoutes from "./routes/files.js";
 import voiceRoutes from "./routes/voice.js";
 import adminRoutes from "./routes/admin.js";
+import connectorRoutes from "./routes/connectors.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -66,6 +70,7 @@ app.use("/api/conversations", requireAuth, requireReady, chatRoutes);
 app.use("/api/files", requireAuth, requireReady, fileRoutes);
 app.use("/api/voice", requireAuth, requireReady, voiceRoutes);
 app.use("/api/admin", requireAuth, requireReady, requireAdmin, adminRoutes);
+app.use("/api/connectors", requireAuth, requireReady, connectorRoutes);
 app.use("/api", (req, res, next) => next(new AppError("المسار غير موجود", 404)));
 
 // الواجهة (React مبنية مسبقًا)
@@ -110,7 +115,7 @@ async function bootstrapAdmin() {
       displayName: process.env.AI_ADMIN_NAME || "المدير العام",
       jobTitle: "المدير العام",
       agent: { name: "سند", gender: "male", role: "general" },
-      limits: { monthlyUsd: 0, features: { voice: true, files: true, folder: true, web: true } },
+      limits: { monthlyUsd: 0, features: { voice: true, files: true, folder: true, web: true, whatsapp: true, gmail: true } },
       mustChangePassword: true,
     },
     { isAdmin: true },
@@ -118,5 +123,29 @@ async function bootstrapAdmin() {
   console.log(`[boot] أُنشئ حساب المدير العام: ${username}`);
 }
 
+// ترقية: الحسابات الإدارية القديمة تحصل على ميزتي واتساب وGmail (للبقية تُفعّل من لوحة الإدارة)
+function migrateFeatures() {
+  usersStore.update((d) => {
+    for (const u of d.users) {
+      const f = (u.limits.features ||= {});
+      if (f.whatsapp === undefined) f.whatsapp = Boolean(u.isAdmin);
+      if (f.gmail === undefined) f.gmail = Boolean(u.isAdmin);
+    }
+  });
+}
+
 await bootstrapAdmin();
+migrateFeatures();
 app.listen(PORT, () => console.log(`[ai] v${VERSION} على المنفذ ${PORT}`));
+restoreWhatsApp((uid) => {
+  const u = getUser(uid);
+  return Boolean(u && !u.disabled && u.limits?.features?.whatsapp);
+});
+
+// إيقاف نظيف: حفظ مخزن رسائل واتساب قبل الخروج
+for (const sig of ["SIGTERM", "SIGINT"]) {
+  process.on(sig, async () => {
+    await flushAll();
+    process.exit(0);
+  });
+}

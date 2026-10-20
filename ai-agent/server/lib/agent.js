@@ -7,20 +7,16 @@
 // بنفس البايتات تمامًا.
 import Anthropic from "@anthropic-ai/sdk";
 import { LIMITS } from "../config.js";
-import { getAnthropicKey, getSettings } from "./settings.js";
+import { getSettings } from "./settings.js";
+import { getClient } from "./claude.js";
+import { GMAIL_TOOLS, runServerTool, SERVER_TOOL_LABELS, SERVER_TOOL_NAMES, WA_TOOLS } from "./tools.js";
 import { buildSystemPrompt } from "./roles.js";
 import { costOfUsage, modelInfo, MODELS } from "./models.js";
 import { addCost, overBudget } from "./usage.js";
 import { newId } from "./vault.js";
 import { AppError } from "./errors.js";
 
-let cached = { key: null, client: null };
-export function getClient() {
-  const key = getAnthropicKey();
-  if (!key) throw new AppError("لم تُضِف الإدارة مفتاح Claude بعد — من صفحة الإدارة ← الإعدادات", 503);
-  if (cached.key !== key) cached = { key, client: new Anthropic({ apiKey: key, maxRetries: 2 }) };
-  return cached.client;
-}
+export { getClient };
 
 // ===== أدوات مجلد الجهاز (تُنفَّذ في المتصفح، قراءة فقط) =====
 const FOLDER_TOOLS = [
@@ -80,7 +76,7 @@ export function createConversation(user, requestedModel) {
   let model = requestedModel || user.model || settings.defaultModel;
   if (!allowed.includes(model)) model = allowed[0];
   const f = user.limits?.features || {};
-  const tools = { folder: Boolean(f.folder), web: Boolean(f.web) };
+  const tools = { folder: Boolean(f.folder), web: Boolean(f.web), whatsapp: Boolean(f.whatsapp), gmail: Boolean(f.gmail) };
   return {
     id: newId(),
     title: "محادثة جديدة",
@@ -100,6 +96,9 @@ export function createConversation(user, requestedModel) {
 function toolsFor(conv) {
   const tools = [];
   if (conv.tools.folder) tools.push(...FOLDER_TOOLS);
+  // أدوات السيرفر: البثّ مع eager_input_streaming (نتحقق من المدخلات بأنفسنا قبل التنفيذ)
+  if (conv.tools.whatsapp) tools.push(...WA_TOOLS.map((t) => ({ ...t, eager_input_streaming: true })));
+  if (conv.tools.gmail) tools.push(...GMAIL_TOOLS.map((t) => ({ ...t, eager_input_streaming: true })));
   if (conv.tools.web) {
     tools.push({
       type: modelInfo(conv.model).webSearch,
@@ -142,7 +141,7 @@ function apiMessages(conv, vault) {
   }));
 }
 
-function buildParams(conv, vault) {
+function buildParams(conv, vault, effort) {
   const info = modelInfo(conv.model);
   const betas = ["compact-2026-01-12"];
   const params = {
@@ -151,7 +150,7 @@ function buildParams(conv, vault) {
     system: [{ type: "text", text: conv.system }],
     messages: apiMessages(conv, vault),
     thinking: { type: "adaptive" },
-    output_config: { effort: conv.effort || "medium" },
+    output_config: { effort: effort || conv.effort || "medium" },
     cache_control: { type: "ephemeral" },
     context_management: { edits: [{ type: "compact_20260112" }] },
   };
@@ -211,7 +210,8 @@ function statusFor(block) {
 
 // ===== تشغيل الدور =====
 // emit(event, data) يرسل أحداث SSE للمتصفح. يرجع عند انتهاء الرد أو طلب أداة.
-export async function runAgent({ user, vault, conv, emit, signal }) {
+// effort: تجاوز لهذا الدور فقط (المكالمة الصوتية تستخدم low لسرعة الرد)
+export async function runAgent({ user, vault, conv, emit, signal, effort }) {
   const client = getClient();
   for (let round = 0; round < LIMITS.maxToolRounds; round++) {
     if (round > 0 && overBudget(user)) {
@@ -221,7 +221,7 @@ export async function runAgent({ user, vault, conv, emit, signal }) {
     let partial = "";
     let msg;
     try {
-      const stream = client.beta.messages.stream(buildParams(conv, vault), { signal });
+      const stream = client.beta.messages.stream(buildParams(conv, vault, effort), { signal });
       for await (const ev of stream) {
         if (ev.type === "content_block_start") {
           const st = statusFor(ev.content_block);
@@ -271,8 +271,14 @@ export async function runAgent({ user, vault, conv, emit, signal }) {
       const calls = [];
       const preset = [];
       for (const t of toolUses) {
-        if (msg.stop_reason === "tool_use" && FOLDER_TOOL_NAMES.has(t.name) && validToolInput(t.name, t.input)) {
+        const ok = msg.stop_reason === "tool_use" && t.input && typeof t.input === "object";
+        if (ok && FOLDER_TOOL_NAMES.has(t.name) && validToolInput(t.name, t.input)) {
           calls.push({ id: t.id, name: t.name, input: t.input });
+        } else if (ok && SERVER_TOOL_NAMES.has(t.name)) {
+          // أدوات السيرفر (واتساب/Gmail/المتابعات) تُنفَّذ هنا مباشرة
+          emit("status", { kind: "tool", name: t.name, label: SERVER_TOOL_LABELS[t.name]?.(t.input) });
+          const r = await runServerTool(user, t.name, t.input);
+          preset.push({ type: "tool_result", tool_use_id: t.id, content: r.text.slice(0, 100_000), ...(r.isError ? { is_error: true } : {}) });
         } else {
           preset.push({ type: "tool_result", tool_use_id: t.id, is_error: true, content: "Invalid or truncated tool input — try again with a valid input." });
         }
@@ -357,6 +363,7 @@ const toolLabel = (b) => {
   if (b.name === "read_folder_file") return `قراءة ملف: ${i.path || ""}`;
   if (b.name === "web_search") return `بحث في الإنترنت: ${i.query || ""}`;
   if (b.name === "web_fetch") return `قراءة صفحة: ${i.url || ""}`;
+  if (SERVER_TOOL_LABELS[b.name]) return SERVER_TOOL_LABELS[b.name](i);
   return null; // أدوات داخلية (مثل تصفية نتائج البحث بالكود) لا تُعرض
 };
 

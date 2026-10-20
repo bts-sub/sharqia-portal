@@ -9,6 +9,8 @@ const FEATURES = [
   { key: "files", label: "رفع الملفات", hint: "PDF وWord وExcel والصور" },
   { key: "folder", label: "قراءة مجلد من الجهاز", hint: "الموظف يختار مجلدًا والمساعد يقرأ ملفاته" },
   { key: "web", label: "البحث في الإنترنت", hint: "للأنظمة واللوائح والأسعار الحديثة ($0.01 لكل بحث)" },
+  { key: "whatsapp", label: "ربط واتساب والمتابعات", hint: "يربط الموظف رقمه؛ المساعد يقرأ ويلخّص ويرسل ويتابع نيابةً عنه" },
+  { key: "gmail", label: "ربط Gmail", hint: "قراءة البريد وتلخيصه والرد عليه" },
 ];
 
 const randomPassword = () => {
@@ -38,7 +40,7 @@ function UserEditor({ data, user, onClose, onSaved }) {
       dailyMessages: user?.limits?.dailyMessages ?? 0,
       storageMb: user?.limits?.storageMb ?? 300,
       models: user?.limits?.models || data.models.map((m) => m.id),
-      features: { voice: true, files: true, folder: true, web: false, ...(user?.limits?.features || {}) },
+      features: { voice: true, files: true, folder: true, web: false, whatsapp: false, gmail: false, ...(user?.limits?.features || {}) },
       allowCustomize: user?.limits?.allowCustomize ?? true,
     },
   }));
