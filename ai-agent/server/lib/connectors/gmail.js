@@ -6,6 +6,7 @@ import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
 import { simpleParser } from "mailparser";
 import { readSecure, userDir, writeSecure } from "./secure.js";
+import { AppError } from "../errors.js";
 
 const file = (uid) => resolve(userDir(uid), "gmail.enc");
 const aad = (uid) => `gmail:${uid}`;
@@ -48,17 +49,34 @@ async function withImap(uid, fn) {
 }
 
 export async function gmailLink(uid, { email, appPassword }) {
-  const c = { email: String(email || "").trim().toLowerCase(), appPassword: String(appPassword || "").replace(/\s+/g, "") };
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) throw new Error("البريد غير صحيح");
-  if (c.appPassword.length < 16) throw new Error("كلمة مرور التطبيقات تتكوّن من 16 حرفًا (بدون مسافات)");
+  const c = { email: String(email || "").trim().toLowerCase(), appPassword: String(appPassword || "").replace(/\s+/g, "").toLowerCase() };
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) throw new AppError("البريد غير صحيح", 400);
+  if (!/^[a-z]{16}$/i.test(c.appPassword)) {
+    throw new AppError(
+      "«كلمة مرور التطبيقات» تتكوّن من 16 حرفًا إنجليزيًا فقط (مثل: abcd efgh ijkl mnop). ما كتبته ليس بهذا الشكل — " +
+        "يبدو أنها كلمة مرور حسابك العادية. أنشئها من صفحة كلمات مرور التطبيقات وانسخها كما هي.",
+      400,
+    );
+  }
   const client = imap(c);
   try {
     await client.connect();
     await client.logout();
-  } catch {
-    throw new Error("Gmail رفض الدخول — تأكد من البريد ومن «كلمة مرور التطبيقات» (وليست كلمة مرور حسابك العادية)");
+  } catch (err) {
+    console.warn("[gmail] link failed:", c.email.split("@")[1], err.serverResponseCode || err.code || "", err.responseText || err.message);
+    if (err.authenticationFailed) {
+      throw new AppError(
+        "جوجل رفض الدخول: البريد أو «كلمة مرور التطبيقات» غير صحيحة. تأكد أنك أنشأتها لنفس هذا البريد، وانسخها كاملة. " +
+          "إن كان بريد شركة (Google Workspace) فقد تكون كلمات مرور التطبيقات معطّلة من مسؤول الحساب.",
+        400,
+      );
+    }
+    throw new AppError(`تعذّر الاتصال بجيميل الآن (${err.code || err.message}) — حاول بعد قليل`, 502);
   }
-  await smtp(c).verify().catch(() => { throw new Error("تعذّر التحقق من الإرسال عبر Gmail"); });
+  await smtp(c).verify().catch((err) => {
+    console.warn("[gmail] smtp verify failed:", err.code || err.message);
+    throw new AppError("تم الدخول للبريد لكن تعذّر التحقق من الإرسال عبر جيميل — حاول مرة أخرى", 502);
+  });
   writeSecure(file(uid), c, aad(uid));
   return { linked: true, email: c.email };
 }

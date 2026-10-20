@@ -12,6 +12,7 @@ import makeWASocket, {
 import pino from "pino";
 import QRCode from "qrcode";
 import { clearAuthState, useEncryptedAuthState } from "./wa-auth.js";
+import { AppError } from "../errors.js";
 import { CONNECTORS_ROOT, readSecure, userDir, writeSecure } from "./secure.js";
 
 const logger = pino({ level: "silent" });
@@ -445,7 +446,7 @@ export async function waConnect(uid, { phone } = {}) {
   const s = waSession(uid);
   if (s.status === "open") return;
   const num = phone ? waNumber(phone) : null;
-  if (phone && !num) throw new Error("رقم الجوال غير صحيح");
+  if (phone && !num) throw new AppError("رقم الجوال غير صحيح — اكتبه مثل 05xxxxxxxx", 400);
   if (num) clearAuthState(uid); // ربط جديد برقم: نبدأ من حالة نظيفة
   await s.start({ phone: num });
 }

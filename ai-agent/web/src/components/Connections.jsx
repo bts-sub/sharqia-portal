@@ -126,15 +126,17 @@ function GmailCard({ gm, onChange }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   const link = async () => {
     setBusy(true);
+    setError("");
     try {
       onChange(await api("/connectors/gmail", { method: "POST", body: { email, appPassword: pass } }));
       setPass("");
-      toast("تم ربط Gmail", "success");
+      toast("تم ربط الجيميل", "success");
     } catch (err) {
-      toast(err.message, "error");
+      setError(err.message);
     } finally {
       setBusy(false);
     }
@@ -149,7 +151,7 @@ function GmailCard({ gm, onChange }) {
       <div className="connector-head">
         <span className="connector-icon gm"><Icon name="file" size={18} /></span>
         <div>
-          <strong>Gmail</strong>
+          <strong>جيميل (Gmail)</strong>
           <small className="muted">يقرأ بريدك ويلخّصه ويرد ويرسل بطلبك</small>
         </div>
         <span className={`status-chip tone-${gm.linked ? "ok" : "off"}`}>{gm.linked ? "مربوط" : "غير مربوط"}</span>
@@ -162,23 +164,27 @@ function GmailCard({ gm, onChange }) {
         </div>
       ) : (
         <div className="connector-body stack">
+          <div className="banner banner-warn small">
+            <Icon name="alert" size={16} /> لا تكتب كلمة مرور الجيميل العادية — جوجل يرفضها. المطلوب «كلمة مرور التطبيقات»: رمز من 16 حرفًا تنشئه مرة واحدة.
+          </div>
           <ol className="steps">
-            <li>فعّل <b>التحقق بخطوتين</b> في حساب Google إن لم يكن مفعّلًا</li>
+            <li>افتح <a href="https://myaccount.google.com/signinoptions/twosv" target="_blank" rel="noopener noreferrer">صفحة التحقق بخطوتين</a> وتأكد أنه <b>مفعّل</b></li>
             <li>
-              افتح <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" dir="ltr">myaccount.google.com/apppasswords</a>
-              {" "}واكتب اسمًا مثل «مساعدي» ثم اضغط إنشاء
+              افتح <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">صفحة كلمات مرور التطبيقات</a>
+              {" "}(بنفس حساب الجيميل)، واكتب اسمًا مثل «مساعدي» ثم اضغط <b>إنشاء</b>
             </li>
-            <li>انسخ الرمز المكوّن من 16 حرفًا والصقه هنا</li>
+            <li>يظهر رمز من 16 حرفًا مثل <span dir="ltr">abcd efgh ijkl mnop</span> — انسخه والصقه هنا</li>
           </ol>
           <div className="grid-2">
-            <Field label="بريد Gmail">
-              <input dir="ltr" type="email" autoComplete="off" placeholder="name@gmail.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Field label="بريد الجيميل">
+              <input dir="ltr" type="email" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="name@gmail.com" value={email} onChange={(e) => setEmail(e.target.value)} />
             </Field>
-            <Field label="كلمة مرور التطبيقات">
-              <input dir="ltr" type="password" autoComplete="off" placeholder="xxxx xxxx xxxx xxxx" value={pass} onChange={(e) => setPass(e.target.value)} />
+            <Field label="كلمة مرور التطبيقات (16 حرفًا)">
+              <input dir="ltr" type="text" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="abcd efgh ijkl mnop" value={pass} onChange={(e) => setPass(e.target.value)} />
             </Field>
           </div>
-          <div><button className="btn btn-primary" disabled={busy || !email || pass.replace(/\s/g, "").length < 16} onClick={link}>{busy ? "جارٍ التحقق…" : "ربط Gmail"}</button></div>
+          {error && <div className="form-error" role="alert">{error}</div>}
+          <div><button className="btn btn-primary" disabled={busy || !email || pass.replace(/\s/g, "").length < 16} onClick={link}>{busy ? "جارٍ التحقق…" : "ربط الجيميل"}</button></div>
         </div>
       )}
     </div>
