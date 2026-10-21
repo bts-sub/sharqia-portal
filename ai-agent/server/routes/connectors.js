@@ -5,6 +5,9 @@ import { AppError, wrap } from "../lib/errors.js";
 import { waConnect, waLogout, waStatus } from "../lib/connectors/whatsapp.js";
 import { gmailLink, gmailStatus, gmailUnlink } from "../lib/connectors/gmail.js";
 import { listFollowups, stopFollowup } from "../lib/followups.js";
+import { audit } from "../lib/audit.js";
+
+const who = (req) => ({ req, uid: req.user.id, username: req.user.username });
 
 const r = Router();
 
@@ -36,15 +39,19 @@ r.post("/whatsapp/connect", need("whatsapp"), linkLimiter, wrap(async (req, res)
 
 r.post("/whatsapp/logout", need("whatsapp"), wrap(async (req, res) => {
   await waLogout(req.user.id);
+  audit("whatsapp_unlinked", who(req));
   res.json(await waStatus(req.user.id));
 }));
 
 r.post("/gmail", need("gmail"), linkLimiter, wrap(async (req, res) => {
-  res.json(await gmailLink(req.user.id, req.body || {}));
+  const out = await gmailLink(req.user.id, req.body || {});
+  audit("gmail_linked", { ...who(req), detail: out.email });
+  res.json(out);
 }));
 
 r.delete("/gmail", need("gmail"), (req, res) => {
   gmailUnlink(req.user.id);
+  audit("gmail_unlinked", who(req));
   res.json({ linked: false });
 });
 

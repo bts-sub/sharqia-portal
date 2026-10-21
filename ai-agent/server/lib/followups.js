@@ -10,6 +10,7 @@ import { costOfUsage } from "./models.js";
 import { newId } from "./vault.js";
 import { readSecure, userDir, writeSecure } from "./connectors/secure.js";
 import { chatTranscript, selfChatId, waEvents, waSession } from "./connectors/whatsapp.js";
+import { logActivity } from "./activity.js";
 
 const FOLLOWUP_MODEL = "claude-sonnet-5-5";
 const REPLY_DEBOUNCE_MS = 25_000; // ننتظر حتى يكمل الطرف الآخر رسائله المتتالية
@@ -170,6 +171,7 @@ async function runTurn(uid, taskId) {
       try {
         await waSession(uid).send(task.chatId, msg);
         sentOk = true;
+        logActivity(uid, "followup_reply", `رد تلقائي في متابعة ${task.name}`);
       } catch (err) {
         decision.action = "needs_user";
         decision.report = `تعذّر الإرسال: ${err.message}`;

@@ -3,6 +3,7 @@ import { api } from "./lib/api.js";
 import { speaker } from "./lib/speech.js";
 import Login from "./components/Login.jsx";
 import ChangePassword from "./components/ChangePassword.jsx";
+import TwoFactorSetup from "./components/TwoFactorSetup.jsx";
 import Shell from "./components/Shell.jsx";
 import { ToastHost } from "./components/ui.jsx";
 
@@ -15,6 +16,12 @@ export default function App() {
   const refresh = useCallback(async () => {
     try {
       const data = await api("/auth/me");
+      // جلسة قديمة بلا تحقق لحساب فعّل التحقق: يلزم دخول جديد
+      if (data.security?.totpEnabled && !data.security?.mfa) {
+        await api("/auth/logout", { method: "POST" }).catch(() => {});
+        setMe(null);
+        return null;
+      }
       setMe(data);
       return data;
     } catch (err) {
@@ -54,6 +61,7 @@ export default function App() {
   if (me === undefined) view = <div className="splash"><div className="spinner" /></div>;
   else if (!me) view = <Login onDone={refresh} />;
   else if (me.user.mustChangePassword) view = <ChangePassword forced onDone={refresh} onLogout={logout} />;
+  else if (!me.security?.mfa) view = <TwoFactorSetup onDone={refresh} onLogout={logout} />;
   else view = <Shell />;
 
   return (

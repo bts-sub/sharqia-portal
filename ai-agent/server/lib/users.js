@@ -3,7 +3,7 @@
 // بيانات المستخدم — فإعادة تعيينها من الإدارة تعني بيانات جديدة فارغة.
 import bcrypt from "bcryptjs";
 import { usersStore } from "./store.js";
-import { deriveKek, newDek, newSalt, open, seal } from "./crypto.js";
+import { deriveKek, newDek, newSalt, open, openB64, seal, sealB64, subKey } from "./crypto.js";
 import { newId, wipeVault } from "./vault.js";
 import { MODELS } from "./models.js";
 import { ROLES } from "./roles.js";
@@ -154,13 +154,55 @@ export function updateOwnProfile(id, { agent, prefs }) {
   return updated;
 }
 
+// قفل مؤقت بعد محاولات خاطئة متتالية (بغضّ النظر عن عنوان IP — يمنع التخمين الموزّع)
+const LOCK_AFTER = 5;
+const LOCK_MS = 15 * 60 * 1000;
+
+export function lockMessage(u) {
+  const mins = Math.max(1, Math.ceil((u.lock.until - Date.now()) / 60000));
+  return `الحساب مقفل مؤقتًا بسبب محاولات خاطئة كثيرة — حاول بعد ${mins} دقيقة`;
+}
+export const isLocked = (u) => Boolean(u?.lock?.until && Date.now() < u.lock.until);
+
+// يسجّل محاولة فاشلة (كلمة مرور أو رمز تحقق) ويرجع true إن قُفل الحساب الآن
+export function recordFailure(id) {
+  let lockedNow = false;
+  usersStore.update((d) => {
+    const x = d.users.find((y) => y.id === id);
+    if (!x) return;
+    const lock = (x.lock ||= { failed: 0, until: 0 });
+    lock.failed += 1;
+    if (lock.failed >= LOCK_AFTER) {
+      lock.until = Date.now() + LOCK_MS;
+      lock.failed = 0;
+      lockedNow = true;
+    }
+  });
+  return lockedNow;
+}
+
+export function clearFailures(id) {
+  const u = getUser(id);
+  if (!u?.lock?.failed && !u?.lock?.until) return;
+  usersStore.update((d) => { const x = d.users.find((y) => y.id === id); if (x) delete x.lock; });
+}
+
 // التحقق من الدخول: يرجع المستخدم ومفتاح بياناته المفكوك.
 export async function verifyLogin(username, password) {
   const u = findByUsername(username);
+  if (isLocked(u)) throw new AppError(lockMessage(u), 423);
   // مقارنة وهمية عند عدم وجود المستخدم حتى لا يكشف التوقيت وجوده
   const hash = u?.passHash || DUMMY_HASH;
   const ok = await bcrypt.compare(String(password || ""), hash);
-  if (!u || !ok) throw new AppError("اسم الدخول أو كلمة المرور غير صحيحة", 401);
+  if (!u || !ok) {
+    const err = new AppError("اسم الدخول أو كلمة المرور غير صحيحة", 401);
+    if (u) {
+      err.uid = u.id;
+      err.lockedNow = recordFailure(u.id);
+      if (err.lockedNow) err.message = lockMessage(getUser(u.id));
+    }
+    throw err;
+  }
   if (u.disabled) throw new AppError("هذا الحساب موقوف — تواصل مع الإدارة", 403);
   const kek = await deriveKek(password, u.kdfSalt);
   const dek = open(kek, Buffer.from(u.wrappedDek, "base64"), "dek");
@@ -217,8 +259,41 @@ export function deleteUser(id) {
   usersStore.update((d) => { d.users = d.users.filter((u) => u.id !== id); });
 }
 
+// ===== التحقق بخطوتين =====
+const totpKey = () => subKey("totp");
+export const totpSecretOf = (u) => (u?.totp?.secret ? openB64(totpKey(), u.totp.secret, u.id).toString("utf8") : null);
+export const pendingTotpOf = (u) => (u?.totpPending ? openB64(totpKey(), u.totpPending, u.id).toString("utf8") : null);
+
+function patchUser(id, fn) {
+  let updated = null;
+  usersStore.update((d) => {
+    const x = d.users.find((y) => y.id === id);
+    if (!x) throw new AppError("المستخدم غير موجود", 404);
+    fn(x);
+    updated = x;
+  });
+  return updated;
+}
+
+export const setPendingTotp = (id, secret) => patchUser(id, (x) => { x.totpPending = sealB64(totpKey(), secret, id); });
+
+export const enableTotp = (id, { secret, step, recovery }) =>
+  patchUser(id, (x) => {
+    x.totp = { secret: sealB64(totpKey(), secret, id), lastStep: step, recovery, enabledAt: new Date().toISOString() };
+    delete x.totpPending;
+  });
+
+export const saveTotpStep = (id, step) => patchUser(id, (x) => { if (x.totp) x.totp.lastStep = step; });
+export const consumeRecovery = (id, index) => patchUser(id, (x) => { x.totp?.recovery?.splice(index, 1); });
+export const setRecovery = (id, hashes) => patchUser(id, (x) => { if (x.totp) x.totp.recovery = hashes; });
+
+// إعادة ضبط من الإدارة (فقد الجوال): يُطلب التفعيل من جديد، وتُغلق كل الجلسات
+export const resetTotp = (id) => patchUser(id, (x) => { delete x.totp; delete x.totpPending; x.tv += 1; });
+
+export const bumpSessions = (id) => patchUser(id, (x) => { x.tv += 1; });
+
 export function publicUser(u) {
   if (!u) return null;
-  const { passHash, kdfSalt, wrappedDek, tv, ...rest } = u;
-  return rest;
+  const { passHash, kdfSalt, wrappedDek, tv, totp, totpPending, lock, ...rest } = u;
+  return { ...rest, totpEnabled: Boolean(totp), recoveryLeft: totp?.recovery?.length ?? 0, locked: isLocked(u) };
 }

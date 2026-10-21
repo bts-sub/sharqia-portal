@@ -290,6 +290,51 @@ function OrgSettings({ settings, models, onSaved }) {
   );
 }
 
+function AuditLog() {
+  const [events, setEvents] = useState(null);
+  const [filter, setFilter] = useState("all");
+  useEffect(() => {
+    api("/admin/audit?limit=400").then((r) => setEvents(r.events)).catch((err) => { toast(err.message, "error"); setEvents([]); });
+  }, []);
+  if (!events) return <div className="center-pad"><div className="spinner" /></div>;
+  const bad = (e) => /failed|locked/.test(e.event);
+  const shown = events.filter((e) => filter === "all" || (filter === "bad" ? bad(e) : !bad(e)));
+  const fails24 = events.filter((e) => bad(e) && Date.now() - Date.parse(e.ts) < 86400_000).length;
+  return (
+    <div className="stack">
+      <div className="banner banner-info small">
+        <Icon name="shield" size={16} />
+        السجل يعرض الدخول والتغييرات الإدارية فقط — لا يحتوي أي محادثة أو رسالة. محاولات فاشلة آخر 24 ساعة: <b>{fails24}</b>
+      </div>
+      <div className="seg">
+        <button className={filter === "all" ? "is-on" : ""} onClick={() => setFilter("all")}>الكل</button>
+        <button className={filter === "bad" ? "is-on" : ""} onClick={() => setFilter("bad")}>محاولات فاشلة</button>
+        <button className={filter === "ok" ? "is-on" : ""} onClick={() => setFilter("ok")}>الأحداث</button>
+      </div>
+      <div className="table-wrap audit-table">
+        <table>
+          <thead>
+            <tr><th>الوقت</th><th>الحدث</th><th>الحساب</th><th>بواسطة</th><th>الجهاز / العنوان</th><th>تفاصيل</th></tr>
+          </thead>
+          <tbody>
+            {shown.map((e, i) => (
+              <tr key={i} className={bad(e) ? "is-bad" : ""}>
+                <td dir="ltr">{new Date(e.ts).toLocaleString("en-GB", { timeZone: "Asia/Riyadh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
+                <td>{e.label}</td>
+                <td dir="ltr">{e.username || "—"}</td>
+                <td dir="ltr">{e.actor || ""}</td>
+                <td>{[e.device, e.ip].filter(Boolean).join(" · ")}</td>
+                <td>{e.detail}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!shown.length && <p className="muted">لا توجد أحداث.</p>}
+    </div>
+  );
+}
+
 export default function Admin({ onMenu }) {
   const { me, refresh } = useMe();
   const [data, setData] = useState(null);
@@ -322,6 +367,23 @@ export default function Admin({ onMenu }) {
     } catch (err) { toast(err.message, "error"); }
   };
 
+  const reset2fa = async (u) => {
+    if (!confirm(`إعادة ضبط التحقق بخطوتين لـ${u.displayName}؟ (مثلًا فقد جواله)\nسيُطلب منه ربط تطبيق المصادقة من جديد عند الدخول، وتُغلق جلساته الحالية.`)) return;
+    try {
+      await api(`/admin/users/${u.id}/reset-2fa`, { method: "POST" });
+      toast("تمت إعادة الضبط", "success");
+      load();
+    } catch (err) { toast(err.message, "error"); }
+  };
+
+  const unlock = async (u) => {
+    try {
+      await api(`/admin/users/${u.id}/unlock`, { method: "POST" });
+      toast("تم فك القفل", "success");
+      load();
+    } catch (err) { toast(err.message, "error"); }
+  };
+
   const toggleDisabled = async (u) => {
     try {
       await api(`/admin/users/${u.id}`, { method: "PATCH", body: { disabled: !u.disabled } });
@@ -349,6 +411,7 @@ export default function Admin({ onMenu }) {
         <h1>لوحة الإدارة</h1>
         <div className="tabs" role="tablist">
           <button role="tab" aria-selected={tab === "users"} className={tab === "users" ? "is-on" : ""} onClick={() => setTab("users")}>الموظفون</button>
+          <button role="tab" aria-selected={tab === "audit"} className={tab === "audit" ? "is-on" : ""} onClick={() => setTab("audit")}>سجل الأمان</button>
           <button role="tab" aria-selected={tab === "settings"} className={tab === "settings" ? "is-on" : ""} onClick={() => setTab("settings")}>الإعدادات</button>
         </div>
       </header>
@@ -383,7 +446,9 @@ export default function Admin({ onMenu }) {
                     <div className="user-card-head">
                       <AgentAvatar name={u.agent?.name} gender={u.agent?.gender} size={42} />
                       <div className="user-card-meta">
-                        <strong>{u.displayName} {u.isAdmin && <span className="pill">إدارة</span>} {u.disabled && <span className="pill pill-muted">موقوف</span>}</strong>
+                        <strong>{u.displayName} {u.isAdmin && <span className="pill">إدارة</span>} {u.disabled && <span className="pill pill-muted">موقوف</span>}
+                          {u.locked && <span className="pill pill-bad">مقفل مؤقتًا</span>}
+                          {u.totpEnabled ? <span className="pill pill-ok">تحقق بخطوتين ✓</span> : <span className="pill pill-muted">لم يفعّل التحقق</span>}</strong>
                         <small dir="ltr" className="muted">@{u.username}</small>
                         <small>{u.jobTitle}</small>
                       </div>
@@ -407,6 +472,8 @@ export default function Admin({ onMenu }) {
                         <>
                           <button className="btn btn-ghost sm" onClick={() => resetPw(u)}><Icon name="key" size={15} /> كلمة المرور</button>
                           <button className="btn btn-ghost sm" onClick={() => toggleDisabled(u)}>{u.disabled ? "تفعيل" : "إيقاف"}</button>
+                          {u.totpEnabled && <button className="btn btn-ghost sm" onClick={() => reset2fa(u)}>إعادة ضبط التحقق</button>}
+                          {u.locked && <button className="btn btn-ghost sm" onClick={() => unlock(u)}>فك القفل</button>}
                           <button className="icon-btn sm danger" onClick={() => remove(u)} aria-label="حذف"><Icon name="trash" size={15} /></button>
                         </>
                       )}
@@ -417,6 +484,8 @@ export default function Admin({ onMenu }) {
             </div>
           </>
         )}
+
+        {tab === "audit" && <AuditLog />}
 
         {tab === "settings" && (
           <OrgSettings

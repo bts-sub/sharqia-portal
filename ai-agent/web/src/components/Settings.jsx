@@ -6,6 +6,7 @@ import Icon from "./Icon.jsx";
 import { AgentAvatar, Field, Meter, Switch, toast } from "./ui.jsx";
 import { PasswordForm } from "./ChangePassword.jsx";
 import Connections from "./Connections.jsx";
+import SecurityPanel from "./SecurityPanel.jsx";
 
 const DIALECTS = [
   { id: "ar-SA", label: "العربية — سعودي" },
@@ -140,6 +141,8 @@ export default function Settings({ onMenu }) {
           <div className="kv"><span>المساحة المستخدمة</span><strong dir="ltr">{fmtBytes(me.storageBytes)} / {fmtBytes(storageMax)}</strong></div>
           <Meter value={me.storageBytes} max={storageMax} />
         </section>
+
+        <SecurityPanel />
 
         <section className="card">
           <h2>كلمة المرور</h2>

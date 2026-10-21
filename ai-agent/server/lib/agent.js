@@ -211,8 +211,19 @@ function statusFor(block) {
 // ===== تشغيل الدور =====
 // emit(event, data) يرسل أحداث SSE للمتصفح. يرجع عند انتهاء الرد أو طلب أداة.
 // effort: تجاوز لهذا الدور فقط (المكالمة الصوتية تستخدم low لسرعة الرد)
+function lastUserText(conv) {
+  for (let i = conv.messages.length - 1; i >= 0; i--) {
+    const m = conv.messages[i];
+    if (m.role !== "user") continue;
+    const t = m.content.filter((b) => b.type === "text" && b.text !== VOICE_TAG).map((b) => b.text).join("\n");
+    if (t.trim()) return t;
+  }
+  return "";
+}
+
 export async function runAgent({ user, vault, conv, emit, signal, effort }) {
   const client = getClient();
+  const toolCtx = { userText: lastUserText(conv), sends: 0 };
   for (let round = 0; round < LIMITS.maxToolRounds; round++) {
     if (round > 0 && overBudget(user)) {
       emit("notice", { message: "توقّف المساعد لأنك وصلت للحدّ الشهري المسموح." });
@@ -277,7 +288,7 @@ export async function runAgent({ user, vault, conv, emit, signal, effort }) {
         } else if (ok && SERVER_TOOL_NAMES.has(t.name)) {
           // أدوات السيرفر (واتساب/Gmail/المتابعات) تُنفَّذ هنا مباشرة
           emit("status", { kind: "tool", name: t.name, label: SERVER_TOOL_LABELS[t.name]?.(t.input) });
-          const r = await runServerTool(user, t.name, t.input);
+          const r = await runServerTool(user, t.name, t.input, toolCtx);
           preset.push({ type: "tool_result", tool_use_id: t.id, content: r.text.slice(0, 100_000), ...(r.isError ? { is_error: true } : {}) });
         } else {
           preset.push({ type: "tool_result", tool_use_id: t.id, is_error: true, content: "Invalid or truncated tool input — try again with a valid input." });

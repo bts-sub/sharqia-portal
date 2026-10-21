@@ -13,6 +13,7 @@ import pino from "pino";
 import QRCode from "qrcode";
 import { clearAuthState, useEncryptedAuthState } from "./wa-auth.js";
 import { AppError } from "../errors.js";
+import { audit } from "../audit.js";
 import { CONNECTORS_ROOT, readSecure, userDir, writeSecure } from "./secure.js";
 
 const logger = pino({ level: "silent" });
@@ -266,7 +267,9 @@ class Session {
       this.error = null;
       this.retry = 0;
       const me = { id: jidNormalizedUser(sock.user?.id), name: sock.user?.name || sock.user?.notify || "" };
+      const firstLink = !this.meta.linked;
       this.saveMeta({ linked: true, me, linkedAt: this.meta.linkedAt || new Date().toISOString() });
+      if (firstLink) audit("whatsapp_linked", { uid: this.uid, detail: me.id ? `+${me.id.split("@")[0]}` : "" });
     }
     if (u.connection === "close") {
       if (this.stopped) return;
