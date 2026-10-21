@@ -95,14 +95,16 @@ export default function Calls({ onMenu }) {
 
               <li className={st.number ? "done" : ""}>
                 <div className="step-head">
-                  <strong>٢. رقم يستقبل المكالمات (من تويليو)</strong>
+                  <strong>٢. جسر خفي بين جوالك وسند</strong>
                   {st.number && <span className="status-chip tone-ok" dir="ltr">{st.number}</span>}
                 </div>
                 {!st.number ? (
                   <>
                     <p className="muted small">
-                      أنشئ حسابًا في <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noopener noreferrer">تويليو</a> واشترِ رقمًا يدعم المكالمات الصوتية،
-                      ثم انسخ من الصفحة الرئيسية لحسابك «معرّف الحساب» و«رمز المصادقة».
+                      <b>ليس رقمًا جديدًا للناس</b> — الناس يتصلون على رقمك المعتاد كالعادة. هذا جسر داخلي مثل «البريد الصوتي»: حين لا ترد،
+                      تحوّل شركة الاتصالات المكالمة إليه فيرد سند، ولا يراه أي متصل.
+                      يُنشأ من حساب في <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noopener noreferrer">تويليو</a> (رقم يدعم المكالمات)،
+                      ثم تنسخ من الصفحة الرئيسية لحسابك «معرّف الحساب» و«رمز المصادقة».
                     </p>
                     <div className="grid-3">
                       <Field label="رقم تويليو (دولي)"><input dir="ltr" placeholder="+12025550123" value={tw.phone} onChange={(e) => setTw({ ...tw, phone: e.target.value })} /></Field>
@@ -122,9 +124,10 @@ export default function Calls({ onMenu }) {
               </li>
 
               <li className={st.number ? "" : "pending"}>
-                <div className="step-head"><strong>٣. تحويل مكالمات جوالك إلى سند</strong></div>
+                <div className="step-head"><strong>٣. فعّل التحويل من جوالك (مرة واحدة)</strong></div>
                 <p className="muted small">
-                  من جوالك اطلب الرمز المناسب (مثل طلب رقم عادي) وانتظر رسالة التأكيد. الأشهر: «عند عدم الرد» و«عند الانشغال».
+                  جوالك يرن كالعادة وترد أنت متى شئت؛ فقط إذا لم ترد أو كنت مشغولًا أو مغلقًا يرد سند بدلك.
+                  اطلب الرمز من شاشة الاتصال مثل رقم عادي وانتظر رسالة التأكيد. الأشهر: «عند عدم الرد» و«عند الانشغال».
                   تنبيه: شركة الاتصالات قد تحتسب المكالمة المحوّلة لرقم دولي بسعر المكالمات الدولية.
                 </p>
                 <ForwardCodes number={st.number} />
