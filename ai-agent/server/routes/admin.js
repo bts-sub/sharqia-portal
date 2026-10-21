@@ -15,13 +15,16 @@ import { MODELS } from "../lib/models.js";
 import { ROLES } from "../lib/roles.js";
 import { testAzure } from "../lib/speech.js";
 import { getClient } from "../lib/claude.js";
+import { elTestKey, elVoices } from "../lib/elevenlabs.js";
 import { waForget, waLogout, waSession } from "../lib/connectors/whatsapp.js";
 import { wipeConnectors } from "../lib/connectors/secure.js";
+import { disconnectPhone } from "../lib/phone.js";
 
 // يُنهي ربط واتساب ويمسح بيانات الربط (عند الحذف أو إعادة التعيين)
 async function dropConnectors(uid) {
   try { if (waSession(uid).meta.linked) await waLogout(uid); } catch {}
   waForget(uid);
+  await disconnectPhone(uid).catch(() => {});
   wipeConnectors(uid);
 }
 
@@ -113,12 +116,20 @@ r.post("/users/:id/unlock", (req, res) => {
   res.json(row(getUser(target.id)));
 });
 
+r.get("/eleven/voices", wrap(async (req, res) => {
+  res.json({ voices: await elVoices() });
+}));
+
 r.get("/audit", (req, res) => {
   res.json({ events: readAudit({ limit: Math.min(Number(req.query.limit) || 200, 1000) }) });
 });
 
 r.post("/settings/test", wrap(async (req, res) => {
   const what = req.body?.what;
+  if (what === "eleven") {
+    const voices = await elVoices();
+    return res.json({ ok: true, message: `مفتاح ElevenLabs يعمل — ${voices.length} صوت في حسابك` });
+  }
   if (what === "azure") {
     await testAzure();
     return res.json({ ok: true, message: "صوت Azure يعمل" });

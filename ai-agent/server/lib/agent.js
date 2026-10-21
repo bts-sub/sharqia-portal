@@ -11,6 +11,7 @@ import { getSettings } from "./settings.js";
 import { getClient } from "./claude.js";
 import { GMAIL_TOOLS, runServerTool, SERVER_TOOL_LABELS, SERVER_TOOL_NAMES, WA_TOOLS } from "./tools.js";
 import { buildSystemPrompt } from "./roles.js";
+import { getPersona, personaBlock } from "./persona.js";
 import { costOfUsage, modelInfo, MODELS } from "./models.js";
 import { addCost, overBudget } from "./usage.js";
 import { newId } from "./vault.js";
@@ -83,7 +84,7 @@ export function createConversation(user, requestedModel) {
     model,
     effort: settings.effort,
     tools,
-    system: buildSystemPrompt({ user, orgName: settings.orgName, tools }),
+    system: buildSystemPrompt({ user, orgName: settings.orgName, tools, persona: personaBlock(getPersona(user.id), user.displayName.split(" ")[0]) }),
     messages: [],
     files: [],
     attachBytes: 0,

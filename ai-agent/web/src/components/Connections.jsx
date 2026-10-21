@@ -171,7 +171,7 @@ function GmailCard({ gm, onChange }) {
             <li>افتح <a href="https://myaccount.google.com/signinoptions/twosv" target="_blank" rel="noopener noreferrer">صفحة التحقق بخطوتين</a> وتأكد أنه <b>مفعّل</b></li>
             <li>
               افتح <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">صفحة كلمات مرور التطبيقات</a>
-              {" "}(بنفس حساب الجيميل)، واكتب اسمًا مثل «مساعدي» ثم اضغط <b>إنشاء</b>
+              {" "}(بنفس حساب الجيميل)، واكتب اسمًا مثل «سند» ثم اضغط <b>إنشاء</b>
             </li>
             <li>يظهر رمز من 16 حرفًا مثل <span dir="ltr">abcd efgh ijkl mnop</span> — انسخه والصقه هنا</li>
           </ol>

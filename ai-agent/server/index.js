@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { PORT, VERSION, WEB_DIST, IS_PROD } from "./config.js";
 import { AppError } from "./lib/errors.js";
-import { requireAdmin, requireAuth, requireReady } from "./lib/session.js";
+import { COOKIE, requireAdmin, requireAuth, requireReady } from "./lib/session.js";
 import { createUser, getUser, listUsers } from "./lib/users.js";
 import { usersStore } from "./lib/store.js";
 import { flushAll, restoreWhatsApp } from "./lib/connectors/whatsapp.js";
@@ -20,6 +20,8 @@ import fileRoutes from "./routes/files.js";
 import voiceRoutes from "./routes/voice.js";
 import adminRoutes from "./routes/admin.js";
 import connectorRoutes from "./routes/connectors.js";
+import assistantRoutes from "./routes/assistant.js";
+import { pollCalls } from "./lib/phone.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -71,6 +73,7 @@ app.use("/api/files", requireAuth, requireReady, fileRoutes);
 app.use("/api/voice", requireAuth, requireReady, voiceRoutes);
 app.use("/api/admin", requireAuth, requireReady, requireAdmin, adminRoutes);
 app.use("/api/connectors", requireAuth, requireReady, connectorRoutes);
+app.use("/api/assistant", requireAuth, requireReady, assistantRoutes);
 app.use("/api", (req, res, next) => next(new AppError("المسار غير موجود", 404)));
 
 // الواجهة (React مبنية مسبقًا)
@@ -84,6 +87,12 @@ if (existsSync(WEB_DIST)) {
       },
     }),
   );
+  // الصفحة الرئيسية: الزائر يرى صفحة «سند» التعريفية، والمسجّل يدخل التطبيق مباشرة
+  app.get("/", (req, res, next) => {
+    if (req.cookies?.[COOKIE]) return next();
+    res.setHeader("Cache-Control", "no-cache");
+    res.sendFile(resolve(WEB_DIST, "landing.html"));
+  });
   app.get("*", (req, res) => {
     res.setHeader("Cache-Control", "no-cache");
     res.sendFile(resolve(WEB_DIST, "index.html"));
@@ -115,7 +124,7 @@ async function bootstrapAdmin() {
       displayName: process.env.AI_ADMIN_NAME || "المدير العام",
       jobTitle: "المدير العام",
       agent: { name: "سند", gender: "male", role: "general" },
-      limits: { monthlyUsd: 0, features: { voice: true, files: true, folder: true, web: true, whatsapp: true, gmail: true } },
+      limits: { monthlyUsd: 0, features: { voice: true, files: true, folder: true, web: true, whatsapp: true, gmail: true, phone: true } },
       mustChangePassword: true,
     },
     { isAdmin: true },
@@ -130,6 +139,7 @@ function migrateFeatures() {
       const f = (u.limits.features ||= {});
       if (f.whatsapp === undefined) f.whatsapp = Boolean(u.isAdmin);
       if (f.gmail === undefined) f.gmail = Boolean(u.isAdmin);
+      if (f.phone === undefined) f.phone = Boolean(u.isAdmin);
     }
   });
 }
@@ -141,6 +151,9 @@ restoreWhatsApp((uid) => {
   const u = getUser(uid);
   return Boolean(u && !u.disabled && u.limits?.features?.whatsapp);
 });
+
+// مكالمات «سند»: سحب الملخصات الجديدة كل 90 ثانية
+setInterval(() => pollCalls().catch((e) => console.warn("[phone]", e.message)), 90_000).unref();
 
 // إيقاف نظيف: حفظ مخزن رسائل واتساب قبل الخروج
 for (const sig of ["SIGTERM", "SIGINT"]) {

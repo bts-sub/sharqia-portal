@@ -169,7 +169,7 @@ export function createSpeaker() {
   const audio = new Audio();
   audio.preload = "auto";
   let token = 0;
-  let cfg = { cloud: false, lang: "ar-SA", gender: "male", rate: 1, voiceName: "" };
+  let cfg = { cloud: false, lang: "ar-SA", gender: "male", rate: 1, voiceName: "", voiceId: "" };
   const keep = new Set();
 
   const playBlob = (blob, my) =>
@@ -202,7 +202,7 @@ export function createSpeaker() {
     });
 
   const fetchTts = (text) =>
-    api("/voice/tts", { method: "POST", body: { text } }).then((res) => res.blob());
+    api("/voice/tts", { method: "POST", body: cfg.voiceId ? { text, voiceId: cfg.voiceId } : { text } }).then((res) => res.blob());
 
   return {
     configure(next) { cfg = { ...cfg, ...next }; },

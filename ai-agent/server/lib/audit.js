@@ -30,6 +30,9 @@ export const LABELS = {
   whatsapp_unlinked: "إلغاء ربط واتساب",
   gmail_linked: "ربط جيميل",
   gmail_unlinked: "إلغاء ربط جيميل",
+  phone_agent_synced: "تجهيز/تحديث وكيل المكالمات",
+  phone_linked: "ربط رقم المكالمات",
+  phone_unlinked: "إلغاء الرد على المكالمات",
 };
 
 export function device(ua = "") {

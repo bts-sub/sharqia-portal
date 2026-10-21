@@ -8,9 +8,9 @@ const isMobile = typeof navigator !== "undefined" && /iPhone|iPad|Android/i.test
 
 export function RecoveryCodes({ codes }) {
   const text = codes.join("\n");
-  const copy = () => navigator.clipboard.writeText(`رموز استرداد «مساعدي الذكي» — كل رمز يُستخدم مرة واحدة:\n${text}`).then(() => toast("تم النسخ", "success"));
+  const copy = () => navigator.clipboard.writeText(`رموز استرداد «سند» — كل رمز يُستخدم مرة واحدة:\n${text}`).then(() => toast("تم النسخ", "success"));
   const download = () => {
-    const blob = new Blob([`رموز استرداد «مساعدي الذكي» — كل رمز يُستخدم مرة واحدة\n\n${text}\n`], { type: "text/plain;charset=utf-8" });
+    const blob = new Blob([`رموز استرداد «سند» — كل رمز يُستخدم مرة واحدة\n\n${text}\n`], { type: "text/plain;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "sharqia-ai-recovery-codes.txt";

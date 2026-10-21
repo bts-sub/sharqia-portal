@@ -28,6 +28,11 @@ export default function Settings({ onMenu }) {
   const [autoSpeak, setAutoSpeak] = useState(Boolean(u.prefs?.autoSpeak));
   const [notes, setNotes] = useState(u.prefs?.personalNotes || "");
   const [voices, setVoices] = useState(null); // null = لم تُحمّل بعد
+  const [elVoices, setElVoices] = useState([]);
+  const [elevenVoice, setElevenVoice] = useState(u.prefs?.elevenVoice || "");
+  useEffect(() => {
+    if (me.org.eleven && voiceOn) api("/voice/voices").then((r) => { setElVoices(r.voices); if (!u.prefs?.elevenVoice && r.current) setElevenVoice(r.current); }).catch(() => {});
+  }, [me.org.eleven]); // eslint-disable-line react-hooks/exhaustive-deps
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -41,7 +46,7 @@ export default function Settings({ onMenu }) {
         method: "PATCH",
         body: {
           agent: canCustomize ? { name: agentName, gender } : undefined,
-          prefs: { speechLang, voiceRate, browserVoice, autoSpeak, personalNotes: notes },
+          prefs: { speechLang, voiceRate, browserVoice, autoSpeak, personalNotes: notes, ...(me.org.eleven ? { elevenVoice } : {}) },
         },
       });
       setMe(data);
@@ -55,7 +60,7 @@ export default function Settings({ onMenu }) {
 
   const preview = () => {
     speaker.unlock();
-    speaker.configure({ gender, lang: speechLang, rate: voiceRate, voiceName: browserVoice, cloud: me.org.cloudVoice });
+    speaker.configure({ gender, lang: speechLang, rate: voiceRate, voiceName: browserVoice, cloud: me.org.cloudVoice, voiceId: me.org.eleven ? elevenVoice : "" });
     speaker
       .speak(speechLang === "en-US" ? `Hello, I'm ${agentName}. How can I help you today?` : `أهلًا، أنا ${agentName}. كيف أقدر أساعدك اليوم؟`)
       .then((r) => { if (!r.ok) toast(NO_VOICE_MESSAGE, "error"); });
@@ -120,7 +125,19 @@ export default function Settings({ onMenu }) {
             {!me.org.cloudVoice && voices && voices.length === 0 && (
               <div className="banner banner-warn"><Icon name="alert" size={18} /> {NO_VOICE_MESSAGE}</div>
             )}
-            {me.org.cloudVoice && <p className="muted small">يُستخدم الصوت السحابي عالي الجودة (رجل/امرأة) الذي فعّلته الإدارة.</p>}
+            {me.org.eleven && (
+              <Field label="صوت مساعدك (ElevenLabs)" hint="اختر صوتًا ثم اضغط «جرّب الصوت». الأصوات العربية تعطي أفضل نطق.">
+                <select value={elevenVoice} onChange={(e) => setElevenVoice(e.target.value)}>
+                  <option value="">افتراضي المنظّمة</option>
+                  {elVoices.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}{v.gender ? ` · ${v.gender === "male" ? "رجل" : v.gender === "female" ? "امرأة" : v.gender}` : ""}{v.accent ? ` · ${v.accent}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            {me.org.cloudVoice && !me.org.eleven && <p className="muted small">يُستخدم الصوت السحابي عالي الجودة (رجل/امرأة) الذي فعّلته الإدارة.</p>}
             <Switch checked={autoSpeak} onChange={setAutoSpeak} label="اقرأ الردود بصوت تلقائيًا" />
             <button className="btn btn-ghost" onClick={preview}><Icon name="play" size={16} /> جرّب الصوت</button>
           </section>

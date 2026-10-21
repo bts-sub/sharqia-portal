@@ -47,6 +47,7 @@ export default function App() {
       lang: me.user.prefs?.speechLang || "ar-SA",
       rate: me.user.prefs?.voiceRate || 1,
       voiceName: me.user.prefs?.browserVoice || "",
+      voiceId: me.org.eleven ? me.user.prefs?.elevenVoice || "" : "",
     });
   }, [me]);
 

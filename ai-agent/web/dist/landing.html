@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>سند — المساعد الذكي لبيت العباءة الشرقية</title>
+<meta name="description" content="سند مساعد ذكي لكل موظف في بيت العباءة الشرقية: يرد على مكالماتك حين تنشغل، يتابع عملاءك ومورديك على واتساب، يلخّص بريدك وملفاتك، ويستشيرك في المالية والموارد البشرية والأنظمة — بالعربي وبصوت طبيعي." />
+<meta name="theme-color" content="#0f0d0b" />
+<meta property="og:title" content="سند — المساعد الذكي لبيت العباءة الشرقية" />
+<meta property="og:description" content="يرد عنك، يتابع بدالك، ويشتغل معك — مساعد ذكي خاص لكل موظف." />
+<meta property="og:image" content="/icons/icon-512.png" />
+<meta property="og:locale" content="ar_SA" />
+<link rel="icon" href="/icons/icon-32.png" sizes="32x32" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<style>
+@font-face { font-family: "Plex"; src: url("/fonts/IBMPlexSansArabic-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Plex"; src: url("/fonts/IBMPlexSansArabic-Medium.ttf") format("truetype"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Plex"; src: url("/fonts/IBMPlexSansArabic-SemiBold.ttf") format("truetype"); font-weight: 600 700; font-display: swap; }
+@font-face { font-family: "Tajawal"; src: url("/fonts/Tajawal-Bold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
+
+:root {
+  --ink: #0f0d0b;
+  --ink-2: #1a1714;
+  --ink-3: #26211c;
+  --ivory: #f7f2ea;
+  --paper: #fffdf9;
+  --line: #e8dfd1;
+  --line-dark: rgba(255, 255, 255, 0.09);
+  --text: #1c1915;
+  --muted: #6e665b;
+  --muted-light: #b3a996;
+  --gold: #c9a35a;
+  --gold-2: #e2c48a;
+  --gold-deep: #9b7432;
+  --green: #2f9e66;
+  --red: #c4462b;
+  --radius: 18px;
+  --max: 1160px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body { margin: 0; font-family: "Plex", "Segoe UI", Tahoma, sans-serif; color: var(--text); background: var(--paper); line-height: 1.75; font-size: 16.5px; -webkit-font-smoothing: antialiased; }
+img { max-width: 100%; display: block; }
+a { color: inherit; }
+h1, h2, h3 { margin: 0; line-height: 1.25; }
+.wrap { max-width: var(--max); margin: 0 auto; padding: 0 20px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 6px; }
+
+/* ===== Buttons ===== */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 14px 26px; border-radius: 999px; font: inherit; font-weight: 600; text-decoration: none; border: 1px solid transparent; cursor: pointer; transition: transform 0.15s, box-shadow 0.2s, background 0.2s; white-space: nowrap; }
+.btn:hover { transform: translateY(-1px); }
+.btn-gold { background: linear-gradient(135deg, var(--gold-2), var(--gold) 55%, var(--gold-deep)); color: #1b1408; box-shadow: 0 10px 30px -10px rgba(201, 163, 90, 0.7); }
+.btn-gold:hover { box-shadow: 0 14px 38px -10px rgba(201, 163, 90, 0.85); }
+.btn-ghost { border-color: rgba(255, 255, 255, 0.22); color: #fff; background: rgba(255, 255, 255, 0.04); }
+.btn-ghost:hover { background: rgba(255, 255, 255, 0.09); }
+.btn-dark { background: var(--ink); color: #fff; }
+.btn svg { width: 18px; height: 18px; }
+
+/* ===== Header ===== */
+.top { position: fixed; inset: 0 0 auto 0; z-index: 50; transition: background 0.25s, box-shadow 0.25s, border-color 0.25s; border-bottom: 1px solid transparent; padding-top: env(safe-area-inset-top); }
+.top.scrolled { background: rgba(15, 13, 11, 0.82); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-color: var(--line-dark); }
+.top .wrap { display: flex; align-items: center; gap: 22px; height: 72px; }
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: #fff; }
+.brand img { width: 40px; height: 40px; border-radius: 11px; }
+.brand b { font-family: "Tajawal", "Plex", sans-serif; font-size: 26px; letter-spacing: 0.5px; }
+.brand small { display: block; font-size: 11.5px; color: var(--muted-light); margin-top: -4px; }
+.nav { display: flex; gap: 4px; margin-inline-start: auto; }
+.nav a { color: #e9e2d6; text-decoration: none; font-size: 15px; padding: 8px 12px; border-radius: 10px; }
+.nav a:hover { background: rgba(255, 255, 255, 0.07); }
+.top .btn { padding: 10px 20px; font-size: 15px; }
+
+/* ===== Hero ===== */
+.hero { position: relative; overflow: hidden; color: #fff; background:
+  radial-gradient(900px 520px at 85% -10%, rgba(201, 163, 90, 0.28), transparent 60%),
+  radial-gradient(700px 500px at 0% 100%, rgba(201, 163, 90, 0.12), transparent 60%),
+  linear-gradient(180deg, #14110e, var(--ink) 70%); padding: 150px 0 110px; }
+.hero::before { content: ""; position: absolute; inset: 0; opacity: 0.07; pointer-events: none;
+  background-image: repeating-linear-gradient(115deg, #fff 0 1px, transparent 1px 26px); mask-image: linear-gradient(180deg, #000, transparent 85%); }
+.hero .wrap { position: relative; display: grid; grid-template-columns: 1.08fr 0.92fr; gap: 56px; align-items: center; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--gold-2); border: 1px solid rgba(226, 196, 138, 0.35); background: rgba(201, 163, 90, 0.08); padding: 6px 14px; border-radius: 999px; }
+.eyebrow i { width: 7px; height: 7px; border-radius: 50%; background: var(--gold-2); box-shadow: 0 0 0 4px rgba(226, 196, 138, 0.18); }
+.hero h1 { font-family: "Tajawal", "Plex", sans-serif; font-size: clamp(34px, 4.3vw, 58px); margin: 22px 0 18px; letter-spacing: -0.5px; }
+.hero h1 span { white-space: nowrap; background: linear-gradient(120deg, var(--gold-2), var(--gold) 50%, #f2dcae); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero p.lead { font-size: clamp(17px, 1.6vw, 20px); color: #d8d0c3; max-width: 560px; margin: 0 0 32px; }
+.cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.chips { display: flex; gap: 10px 18px; flex-wrap: wrap; margin-top: 34px; color: var(--muted-light); font-size: 14.5px; }
+.chips span { display: inline-flex; align-items: center; gap: 8px; }
+.chips svg { width: 18px; height: 18px; color: var(--gold); }
+
+/* phone mock */
+.phone { position: relative; width: min(370px, 100%); margin-inline: auto; aspect-ratio: 9 / 18.5; border-radius: 46px; padding: 12px;
+  background: linear-gradient(160deg, #3a332b, #14110e 40%, #2b251f); box-shadow: 0 60px 120px -30px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.06) inset; }
+.screen { position: relative; height: 100%; border-radius: 36px; overflow: hidden; background: linear-gradient(180deg, #f9f5ee, #f1eadf); color: var(--text); display: flex; flex-direction: column; }
+.notch { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 110px; height: 28px; border-radius: 20px; background: #0d0b09; z-index: 3; }
+.app-bar { display: flex; align-items: center; gap: 10px; padding: 50px 18px 14px; border-bottom: 1px solid #e6ddcf; background: rgba(255, 255, 255, 0.6); }
+.av { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; font-family: "Tajawal"; font-size: 18px; background: linear-gradient(140deg, #24323d, #3d5a6c); flex: none; }
+.app-bar b { display: block; font-size: 15px; }
+.app-bar small { display: block; color: var(--muted); font-size: 11.5px; margin-top: -3px; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-inline-start: auto; box-shadow: 0 0 0 4px rgba(47, 158, 102, 0.15); }
+.feed { flex: 1; padding: 16px 14px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+.msg { max-width: 88%; padding: 10px 13px; border-radius: 16px; font-size: 13.5px; line-height: 1.6; opacity: 0; transform: translateY(10px); animation: pop 0.5s forwards; }
+.msg.me { align-self: flex-end; background: #1b1814; color: #fff; border-end-end-radius: 6px; }
+.msg.bot { align-self: flex-start; background: #fff; border: 1px solid #e8dfd1; border-end-start-radius: 6px; }
+.msg b { color: var(--gold-deep); }
+.msg.me b { color: var(--gold-2); }
+.card-call { align-self: stretch; background: #fff; border: 1px solid #e8dfd1; border-radius: 16px; padding: 11px 13px; font-size: 13px; display: flex; gap: 10px; opacity: 0; transform: translateY(10px); animation: pop 0.5s forwards; }
+.card-call .ic { width: 34px; height: 34px; border-radius: 10px; flex: none; display: grid; place-items: center; background: #fdf3e3; color: var(--gold-deep); }
+.card-call .ic svg { width: 18px; height: 18px; }
+.card-call strong { display: block; font-size: 13.5px; }
+.card-call em { font-style: normal; display: inline-block; margin-top: 4px; font-size: 11.5px; color: var(--green); background: rgba(47, 158, 102, 0.1); padding: 1px 8px; border-radius: 999px; }
+.typing { align-self: flex-start; display: flex; gap: 4px; padding: 12px 14px; background: #fff; border: 1px solid #e8dfd1; border-radius: 16px; opacity: 0; animation: pop 0.4s forwards; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); animation: blink 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay: 0.15s; } .typing i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes pop { to { opacity: 1; transform: none; } }
+@keyframes blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+.float-badge { position: absolute; z-index: 4; background: rgba(26, 23, 20, 0.92); border: 1px solid rgba(226, 196, 138, 0.3); color: #fff; border-radius: 14px; padding: 10px 14px; font-size: 13px; display: flex; gap: 10px; align-items: center; box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7); backdrop-filter: blur(8px); }
+.float-badge svg { width: 20px; height: 20px; color: var(--gold-2); flex: none; }
+.fb-1 { top: 8%; inset-inline-end: -64px; animation: bob 5s ease-in-out infinite; }
+.fb-2 { bottom: 10%; inset-inline-start: -54px; animation: bob 6s ease-in-out infinite reverse; }
+@keyframes bob { 50% { transform: translateY(-10px); } }
+
+/* ===== Strip ===== */
+.strip { background: var(--ink); color: var(--muted-light); border-top: 1px solid var(--line-dark); }
+.strip .wrap { display: flex; flex-wrap: wrap; gap: 14px 40px; justify-content: center; padding: 22px 20px; font-size: 14.5px; }
+.strip span { display: inline-flex; align-items: center; gap: 10px; }
+.strip b { color: #f0e6d5; font-weight: 600; }
+.strip svg { width: 18px; height: 18px; color: var(--gold); }
+
+/* ===== Sections ===== */
+section.block { padding: 110px 0; }
+.alt { background: var(--ivory); }
+.head { max-width: 720px; margin: 0 auto 56px; text-align: center; }
+.kicker { color: var(--gold-deep); font-weight: 600; font-size: 14.5px; letter-spacing: 0.3px; }
+.head h2 { font-family: "Tajawal", "Plex", sans-serif; font-size: clamp(30px, 3.6vw, 44px); margin: 10px 0 14px; }
+.head p { color: var(--muted); font-size: 18px; margin: 0; }
+
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.feature { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 28px 26px; transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s; }
+.feature:hover { transform: translateY(-4px); box-shadow: 0 24px 50px -28px rgba(60, 40, 10, 0.35); border-color: #dcc9a6; }
+.f-ic { width: 52px; height: 52px; border-radius: 15px; display: grid; place-items: center; background: linear-gradient(140deg, #1d1915, #3a3128); color: var(--gold-2); margin-bottom: 18px; }
+.f-ic svg { width: 24px; height: 24px; }
+.feature h3 { font-size: 20px; margin-bottom: 8px; }
+.feature p { margin: 0; color: var(--muted); font-size: 15.5px; }
+.feature .eg { margin-top: 14px; font-size: 14px; background: var(--ivory); border-radius: 12px; padding: 10px 12px; color: #4c443a; }
+
+/* departments */
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 30px; }
+.tab { font: inherit; font-size: 15px; border: 1px solid var(--line); background: #fff; color: var(--text); padding: 9px 18px; border-radius: 999px; cursor: pointer; transition: all 0.2s; }
+.tab:hover { border-color: #d6c19a; }
+.tab[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.dept { display: none; grid-template-columns: 1fr 1fr; gap: 26px; align-items: stretch; }
+.dept.on { display: grid; animation: fade 0.4s; }
+@keyframes fade { from { opacity: 0; transform: translateY(8px); } }
+.dept-text { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 32px; }
+.dept-text h3 { font-family: "Tajawal"; font-size: 28px; margin-bottom: 10px; }
+.dept-text ul { margin: 16px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.dept-text li { display: flex; gap: 10px; color: #4c443a; }
+.dept-text li::before { content: ""; flex: none; width: 8px; height: 8px; margin-top: 11px; border-radius: 50%; background: var(--gold); }
+.dept-chat { background: linear-gradient(180deg, #1b1814, #100e0c); border-radius: var(--radius); padding: 26px; display: flex; flex-direction: column; gap: 12px; justify-content: center; }
+.dept-chat .msg { opacity: 1; transform: none; animation: none; max-width: 92%; font-size: 14.5px; }
+.dept-chat .msg.me { background: #2c261f; }
+
+/* calls flow */
+.flow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; position: relative; }
+.flow::before { content: ""; position: absolute; top: 46px; inset-inline: 16%; height: 2px; background: repeating-linear-gradient(90deg, var(--gold) 0 10px, transparent 10px 20px); opacity: 0.6; }
+.step { position: relative; text-align: center; padding: 0 10px; }
+.step .num { width: 92px; height: 92px; margin: 0 auto 20px; border-radius: 28px; display: grid; place-items: center; background: #fff; border: 1px solid var(--line); box-shadow: 0 20px 40px -26px rgba(60, 40, 10, 0.45); color: var(--gold-deep); position: relative; }
+.step .num svg { width: 36px; height: 36px; }
+.step .num b { position: absolute; top: -10px; inset-inline-end: -10px; width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: var(--gold-2); display: grid; place-items: center; font-size: 14px; }
+.step h3 { font-size: 20px; margin-bottom: 8px; }
+.step p { margin: 0; color: var(--muted); }
+.report { max-width: 640px; margin: 54px auto 0; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 24px; box-shadow: 0 30px 60px -40px rgba(60, 40, 10, 0.5); }
+.report .rh { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; margin-bottom: 10px; }
+.report .rh svg { width: 20px; height: 20px; color: var(--green); }
+.report p { margin: 4px 0; }
+.report .tag { display: inline-block; font-size: 12.5px; background: #fdf3e3; color: var(--gold-deep); border-radius: 999px; padding: 2px 10px; margin-inline-end: 6px; }
+
+/* follow-up demo */
+.demo { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 40px; align-items: center; }
+.demo-copy h2 { font-family: "Tajawal"; font-size: clamp(28px, 3.2vw, 40px); margin: 10px 0 14px; }
+.demo-copy p { color: var(--muted); font-size: 17.5px; }
+.ticks { list-style: none; padding: 0; margin: 22px 0 0; display: flex; flex-direction: column; gap: 12px; }
+.ticks li { display: flex; gap: 12px; align-items: flex-start; }
+.ticks svg { width: 22px; height: 22px; color: var(--green); flex: none; margin-top: 3px; }
+.thread { background: #e9e2d6; border-radius: 26px; padding: 22px; display: flex; flex-direction: column; gap: 10px; background-image: radial-gradient(rgba(0, 0, 0, 0.035) 1px, transparent 1px); background-size: 14px 14px; }
+.thread .msg { opacity: 1; transform: none; animation: none; font-size: 14.5px; max-width: 86%; }
+.thread .msg.bot { background: #fff; }
+.thread .msg.me { background: #dff3d8; color: var(--text); border-end-end-radius: 6px; }
+.thread .who { font-size: 12px; color: var(--muted); display: block; margin-bottom: 2px; }
+.thread .sys { align-self: center; font-size: 12.5px; background: rgba(255, 255, 255, 0.75); color: #5b5246; border-radius: 10px; padding: 5px 12px; text-align: center; }
+.thread .rep { align-self: stretch; background: var(--ink); color: #f1e9db; border-radius: 16px; padding: 14px 16px; font-size: 14px; }
+.thread .rep b { color: var(--gold-2); }
+
+/* security */
+.sec { background: var(--ink); color: #fff; position: relative; overflow: hidden; }
+.sec::after { content: ""; position: absolute; width: 700px; height: 700px; border-radius: 50%; inset-inline-start: -220px; top: -260px; background: radial-gradient(circle, rgba(201, 163, 90, 0.18), transparent 65%); pointer-events: none; }
+.sec .head p { color: var(--muted-light); }
+.sec .kicker { color: var(--gold-2); }
+.sec-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; position: relative; z-index: 1; }
+.sec-item { border: 1px solid var(--line-dark); background: rgba(255, 255, 255, 0.03); border-radius: var(--radius); padding: 24px; }
+.sec-item svg { width: 26px; height: 26px; color: var(--gold-2); margin-bottom: 14px; }
+.sec-item h3 { font-size: 18.5px; margin-bottom: 6px; }
+.sec-item p { margin: 0; color: var(--muted-light); font-size: 15px; }
+
+/* start steps */
+.start { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; counter-reset: s; }
+.start div { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 28px 26px; position: relative; }
+.start div::before { counter-increment: s; content: counter(s, arabic-indic); position: absolute; top: 18px; inset-inline-end: 22px; font-family: "Tajawal"; font-size: 46px; color: #efe3cc; line-height: 1; }
+.start h3 { font-size: 19px; margin-bottom: 8px; }
+.start p { margin: 0; color: var(--muted); }
+
+/* faq */
+.faq { max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.faq details { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 4px 22px; transition: border-color 0.2s; }
+.faq details[open] { border-color: #d6c19a; }
+.faq summary { cursor: pointer; list-style: none; padding: 16px 0; font-weight: 600; font-size: 17px; display: flex; justify-content: space-between; gap: 14px; align-items: center; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; font-size: 24px; color: var(--gold-deep); transition: transform 0.2s; line-height: 1; }
+.faq details[open] summary::after { transform: rotate(45deg); }
+.faq details p { margin: 0 0 18px; color: var(--muted); }
+
+/* final cta */
+.final { padding: 100px 0; background: linear-gradient(180deg, var(--ivory), var(--paper)); }
+.final-box { background: radial-gradient(600px 300px at 80% 0%, rgba(201, 163, 90, 0.3), transparent 60%), linear-gradient(135deg, #1d1915, var(--ink)); color: #fff; border-radius: 30px; padding: 60px 40px; text-align: center; box-shadow: 0 40px 80px -40px rgba(30, 20, 5, 0.6); }
+.final-box h2 { font-family: "Tajawal"; font-size: clamp(30px, 3.6vw, 46px); margin-bottom: 12px; }
+.final-box p { color: #d8d0c3; margin: 0 auto 30px; max-width: 560px; font-size: 18px; }
+
+footer { background: var(--ink); color: var(--muted-light); padding: 34px 0 calc(34px + env(safe-area-inset-bottom)); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: space-between; align-items: center; }
+footer a { color: #e9e2d6; text-decoration: none; }
+
+/* reveal */
+.reveal { opacity: 0; transform: translateY(22px); transition: opacity 0.7s ease, transform 0.7s ease; }
+.reveal.in { opacity: 1; transform: none; }
+
+/* ===== Responsive ===== */
+@media (max-width: 980px) {
+  .hero { padding: 120px 0 80px; }
+  .hero .wrap { grid-template-columns: 1fr; gap: 50px; text-align: center; }
+  .hero p.lead { margin-inline: auto; }
+  .cta, .chips { justify-content: center; }
+  .grid, .sec-grid, .start { grid-template-columns: 1fr 1fr; }
+  .dept.on, .demo { grid-template-columns: 1fr; }
+  .nav { display: none; }
+  .top .btn { margin-inline-start: auto; }
+  .fb-1 { inset-inline-end: -10px; } .fb-2 { inset-inline-start: -10px; }
+}
+@media (max-width: 640px) {
+  body { font-size: 16px; }
+  section.block { padding: 76px 0; }
+  .grid, .sec-grid, .start, .flow { grid-template-columns: 1fr; }
+  .flow::before { display: none; }
+  .head { margin-bottom: 38px; }
+  .brand small { display: none; }
+  .top .btn { padding: 9px 16px; font-size: 14px; }
+  .float-badge { display: none; }
+  .phone { width: min(330px, 92%); }
+  .dept-text { padding: 24px; }
+  .final-box { padding: 44px 22px; border-radius: 24px; }
+  .btn { padding: 13px 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  .reveal, .msg, .card-call, .typing { opacity: 1 !important; transform: none !important; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" class="sr" aria-hidden="true">
+  <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></symbol>
+  <symbol id="i-report" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 13l2 2 4-4"/></symbol>
+  <symbol id="i-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 21h14M6 8l-3 7a4 4 0 0 0 6 0zM18 8l-3 7a4 4 0 0 0 6 0zM4 8h16M12 3l-1 2h2z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 7.5a3.5 3.5 0 1 1-4.9 4.9 3.5 3.5 0 0 1 4.9-4.9zM10.6 12.4 3 20M6 17l2 2M8 15l2 2"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.9 17.9A10 10 0 0 1 12 20c-7 0-10-8-10-8a18 18 0 0 1 5.1-5.9M9.9 4.2A9 9 0 0 1 12 4c7 0 10 8 10 8a18 18 0 0 1-2.2 3.2M1 1l22 22"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01M6 17h.01"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1M22 4 12 14l-3-3"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 12h2M6 8v8M10 5v14M14 8v8M18 10v4M22 12h0"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
+  <symbol id="i-mobile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
+</svg>
+
+<header class="top" id="top">
+  <div class="wrap">
+    <a class="brand" href="#" aria-label="سند — الصفحة الرئيسية">
+      <img src="/icons/icon-192.png" alt="" width="40" height="40" />
+      <span><b>سند</b><small>بيت العباءة الشرقية</small></span>
+    </a>
+    <nav class="nav" aria-label="أقسام الصفحة">
+      <a href="#features">ماذا يفعل</a>
+      <a href="#teams">لكل قسم</a>
+      <a href="#calls">المكالمات</a>
+      <a href="#security">الأمان</a>
+      <a href="#faq">أسئلة</a>
+    </nav>
+    <a class="btn btn-gold" href="/login">دخول الموظفين</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <span class="eyebrow"><i></i> خاص بفريق بيت العباءة الشرقية</span>
+        <h1>سند… <span>يشتغل معك</span>،<br />يرد عنك ويتابع بدالك</h1>
+        <p class="lead">
+          مساعد ذكي لكل موظف: يرد على مكالماتك حين تنشغل، يتابع عملاءك ومورديك على واتساب حتى النهاية،
+          يلخّص لك ما فاتك من رسائل وإيميلات، ويستشيرك في المالية والموارد البشرية والأنظمة — بالعربي وبصوت طبيعي.
+        </p>
+        <div class="cta">
+          <a class="btn btn-gold" href="/login">ادخل إلى سند <svg><use href="#i-arrow" /></svg></a>
+          <a class="btn btn-ghost" href="#features">شاهد ماذا يفعل</a>
+        </div>
+        <div class="chips">
+          <span><svg><use href="#i-wave" /></svg> صوت عربي طبيعي</span>
+          <span><svg><use href="#i-lock" /></svg> محادثاتك مشفّرة لك وحدك</span>
+          <span><svg><use href="#i-mobile" /></svg> على الجوال والكمبيوتر</span>
+        </div>
+      </div>
+
+      <div class="hero-visual" style="position: relative">
+        <div class="phone" aria-hidden="true">
+          <div class="screen">
+            <div class="notch"></div>
+            <div class="app-bar">
+              <div class="av">س</div>
+              <div><b>سند</b><small>مساعدك الشخصي</small></div>
+              <span class="live-dot"></span>
+            </div>
+            <div class="feed" id="feed"></div>
+          </div>
+        </div>
+        <div class="float-badge fb-1"><svg><use href="#i-phone" /></svg><span>رد على ٣ مكالمات وأنت في اجتماع</span></div>
+        <div class="float-badge fb-2"><svg><use href="#i-check" /></svg><span>المورد أكّد موعد الشحنة</span></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="strip">
+    <div class="wrap">
+      <span><svg><use href="#i-sparkle" /></svg> يفكّر بأحدث نماذج <b>Claude</b></span>
+      <span><svg><use href="#i-wave" /></svg> بأصوات <b>ElevenLabs</b> عالمية الجودة</span>
+      <span><svg><use href="#i-server" /></svg> بياناتك على <b>خوادم الشركة</b></span>
+      <span><svg><use href="#i-shield" /></svg> <b>تحقق بخطوتين</b> لكل حساب</span>
+    </div>
+  </div>
+
+  <section class="block" id="features">
+    <div class="wrap">
+      <div class="head reveal">
+        <span class="kicker">ماذا يفعل سند؟</span>
+        <h2>زميل لا يتعب، يعرفك ويعرف شغلك</h2>
+        <p>كل موظف له مساعده الخاص: باسم وصوت يختاره، وتخصص يناسب عمله.</p>
+      </div>
+      <div class="grid">
+        <article class="feature reveal">
+          <div class="f-ic"><svg><use href="#i-phone" /></svg></div>
+          <h3>يرد على مكالماتك</h3>
+          <p>إذا ما رديت، يرد سند بصوت طبيعي كمساعدك: يعرف من المتصل وطلبه، يجيب من معلوماتك المعتمدة، ويرسل لك الملخص فورًا.</p>
+          <div class="eg">«اتصل أبو خالد بخصوص شحنة الكريب، يريدك تعاود الاتصال قبل العصر.»</div>
+        </article>
+        <article class="feature reveal">
+          <div class="f-ic"><svg><use href="#i-chat" /></svg></div>
+          <h3>يتابع على واتساب حتى النهاية</h3>
+          <p>قل له «تابع مع فلان» فيرسل ويرد كلما ردّ الطرف الآخر، ولا يتجاوز حدودك، ثم يبلغك بما وصلتم إليه.</p>
+          <div class="eg">«تابع مع المصنع على موعد تسليم ٢٠٠ عباية، ولا توافق على أي زيادة سعر.»</div>
+        </article>
+        <article class="feature reveal">
+          <div class="f-ic"><svg><use href="#i-report" /></svg></div>
+          <h3>«إيه اللي فاتني؟»</h3>
+          <p>تقرير مرتّب بالمهم من رسائل واتساب وإيميلاتك: من كتب، ماذا يريد، وماذا عليك أن تفعل — حسب الأولوية.</p>
+          <div class="eg">«٤ رسائل تحتاج ردك اليوم، أهمها عميل جملة ينتظر عرض السعر.»</div>
+        </article>
+        <article class="feature reveal">
+          <div class="f-ic"><svg><use href="#i-scale" /></svg></div>
+          <h3>مستشار في كل تخصص</h3>
+          <p>مالي ومحاسبي، موارد بشرية ونظام العمل السعودي، قانوني، مبيعات وتسويق، خدمة عملاء، عمليات وإنتاج.</p>
+          <div class="eg">«احسب مكافأة نهاية الخدمة لموظف خدمته ٧ سنوات واستقال.»</div>
+        </article>
+        <article class="feature reveal">
+          <div class="f-ic"><svg><use href="#i-file" /></svg></div>
+          <h3>يقرأ ملفاتك</h3>
+          <p>عقود وفواتير PDF، جداول Excel، مستندات Word وصور — وحتى مجلد كامل من جهازك، ثم يحلّل ويلخّص ويجيب.</p>
+          <div class="eg">«راجع عقد المورد وطلّع لي البنود الخطرة.»</div>
+        </article>
+        <article class="feature reveal">
+          <div class="f-ic"><svg><use href="#i-user" /></svg></div>
+          <h3>يتعلم أسلوبك</h3>
+          <p>من محادثاتك الحقيقية يتعلم طريقتك في الكلام، والأسئلة التي تتكرر عليك وإجاباتك عنها — وأنت تعتمد كل شيء.</p>
+          <div class="eg">«يرد بنفس تحيتك ولهجتك، وفي حدود ما سمحت به فقط.»</div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="block alt" id="teams">
+    <div class="wrap">
+      <div class="head reveal">
+        <span class="kicker">لكل قسم في بيت العباءة</span>
+        <h2>نفس سند… بتخصص كل فريق</h2>
+        <p>تحدد الإدارة دور مساعد كل موظف، فيتكلم بلغة قسمه ويعرف أنظمته.</p>
+      </div>
+      <div class="tabs" role="tablist" aria-label="الأقسام">
+        <button class="tab" role="tab" aria-selected="true" data-tab="sales">المبيعات</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="cs">خدمة العملاء</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="ops">المصنع والإنتاج</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="hr">الموارد البشرية</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="fin">المالية</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="mgmt">الإدارة</button>
+      </div>
+
+      <div class="dept on" id="dept-sales" role="tabpanel">
+        <div class="dept-text">
+          <h3>المبيعات</h3>
+          <p>يتابع طلبات الجملة والعملاء المترددين، ويكتب المحتوى التسويقي بلهجة السوق.</p>
+          <ul><li>متابعة عروض الأسعار حتى الرد</li><li>أفكار حملات لرمضان والأعياد واليوم الوطني</li><li>وصف منتجات جذاب لمتجر سلّة</li></ul>
+        </div>
+        <div class="dept-chat">
+          <div class="msg me">تابع مع مؤسسة النور على طلب ٣٠٠ عباية كريب</div>
+          <div class="msg bot">أرسلت لهم الآن وسأرد عليهم أولًا بأول. <b>آخر تحديث:</b> وافقوا على الكمية وينتظرون عرض السعر النهائي منك.</div>
+        </div>
+      </div>
+      <div class="dept" id="dept-cs" role="tabpanel">
+        <div class="dept-text">
+          <h3>خدمة العملاء</h3>
+          <p>ردود مهذبة وسريعة على الاستفسارات والشكاوى، ضمن سياسة الاستبدال والاسترجاع.</p>
+          <ul><li>صياغة ردود جاهزة لكل حالة</li><li>تلخيص الشكاوى المتكررة للإدارة</li><li>متابعة الطلبات المتأخرة مع الشحن</li></ul>
+        </div>
+        <div class="dept-chat">
+          <div class="msg me">عميلة تأخر طلبها ٥ أيام وزعلانة، اكتب رد</div>
+          <div class="msg bot">«أختي الكريمة، نعتذر منك على التأخير، طلبك خرج اليوم من المستودع وهذا رقم الشحنة… ولك كود خصم على طلبك القادم تقديرًا لصبرك 🌷»</div>
+        </div>
+      </div>
+      <div class="dept" id="dept-ops" role="tabpanel">
+        <div class="dept-text">
+          <h3>المصنع والإنتاج</h3>
+          <p>حسابات التكلفة والقماش والمخزون، ومتابعة الموردين وشركات الشحن.</p>
+          <ul><li>تكلفة العباية من استهلاك القماش والخياطة</li><li>حد إعادة الطلب للأقمشة</li><li>مقارنة عروض الشحن الدولي</li></ul>
+        </div>
+        <div class="dept-chat">
+          <div class="msg me">كم تكلفة العباية لو المتر بـ٢٢ ريال والاستهلاك ٣.٢ متر والخياطة ٣٥؟</div>
+          <div class="msg bot">القماش: ٣.٢ × ٢٢ = <b>٧٠.٤</b> ريال، + الخياطة ٣٥ = <b>١٠٥.٤</b> ريال قبل الإكسسوارات والتغليف.</div>
+        </div>
+      </div>
+      <div class="dept" id="dept-hr" role="tabpanel">
+        <div class="dept-text">
+          <h3>الموارد البشرية</h3>
+          <p>خبير بنظام العمل السعودي ولوائحه، ويصوغ الخطابات والسياسات.</p>
+          <ul><li>حساب المستحقات ونهاية الخدمة</li><li>الإجازات وفترة التجربة والإنذارات</li><li>قوى ومُدد والتأمينات</li></ul>
+        </div>
+        <div class="dept-chat">
+          <div class="msg me">كم الإجازة السنوية لموظف خدمته ٦ سنوات؟</div>
+          <div class="msg bot">حسب نظام العمل: <b>٣٠ يومًا</b> بعد إكمال ٥ سنوات متصلة لدى صاحب العمل (و٢١ يومًا قبلها).</div>
+        </div>
+      </div>
+      <div class="dept" id="dept-fin" role="tabpanel">
+        <div class="dept-text">
+          <h3>المالية</h3>
+          <p>تحليل الأرقام والتدفقات النقدية، وضريبة القيمة المضافة والزكاة بلغة واضحة.</p>
+          <ul><li>تحليل ملفات المبيعات Excel</li><li>حسابات الضريبة والفوترة</li><li>موازنات ومؤشرات شهرية</li></ul>
+        </div>
+        <div class="dept-chat">
+          <div class="msg me">فاتورة ١١٬٥٠٠ ريال شاملة الضريبة، كم الضريبة؟</div>
+          <div class="msg bot">١١٬٥٠٠ ÷ ١.١٥ = <b>١٠٬٠٠٠</b> ريال قبل الضريبة، والضريبة <b>١٬٥٠٠</b> ريال (١٥٪).</div>
+        </div>
+      </div>
+      <div class="dept" id="dept-mgmt" role="tabpanel">
+        <div class="dept-text">
+          <h3>الإدارة</h3>
+          <p>صورة يومية سريعة لكل ما يحتاج قرارك، ومتابعة لا تنسى أحدًا.</p>
+          <ul><li>تقرير «إيه اللي فاتني» من واتساب والبريد</li><li>رد على المكالمات أثناء الاجتماعات</li><li>متابعات مفتوحة بنتائج واضحة</li></ul>
+        </div>
+        <div class="dept-chat">
+          <div class="msg me">إيه اللي فاتني اليوم؟</div>
+          <div class="msg bot">٣ أمور تحتاج قرارك: <b>١)</b> المورد يطلب زيادة ٨٪ <b>٢)</b> عميل جملة ينتظر عرض السعر <b>٣)</b> مكالمة من البنك تطلب معاودة الاتصال.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="calls">
+    <div class="wrap">
+      <div class="head reveal">
+        <span class="kicker">الرد على المكالمات</span>
+        <h2>ما عاد في مكالمة ضايعة</h2>
+        <p>حين تنشغل أو لا ترد، تتحول المكالمة إلى سند فيرد بصوت طبيعي ويعرّف بنفسه كمساعدك.</p>
+      </div>
+      <div class="flow">
+        <div class="step reveal">
+          <div class="num"><svg><use href="#i-phone" /></svg><b>١</b></div>
+          <h3>مكالمة لم ترد عليها</h3>
+          <p>تتحول تلقائيًا من جوالك إلى سند — بدون تغيير رقمك.</p>
+        </div>
+        <div class="step reveal">
+          <div class="num"><svg><use href="#i-wave" /></svg><b>٢</b></div>
+          <h3>سند يرد ويسمع</h3>
+          <p>يرحّب، يعرف الاسم والطلب، ويجيب فقط مما اعتمدته أنت — بلا وعود ولا أسعار من عنده.</p>
+        </div>
+        <div class="step reveal">
+          <div class="num"><svg><use href="#i-report" /></svg><b>٣</b></div>
+          <h3>يصلك الملخص فورًا</h3>
+          <p>على واتساب وفي صفحة المكالمات: من اتصل، ماذا يريد، وهل يطلب معاودة الاتصال.</p>
+        </div>
+      </div>
+      <div class="report reveal">
+        <div class="rh"><svg><use href="#i-check" /></svg> ملخص مكالمة — قبل دقيقتين</div>
+        <p><strong>أبو خالد (مورد القماش)</strong></p>
+        <p>يسأل عن موعد استلام دفعة الكريب، ويقول إن الشحنة تأخرت في الميناء يومين.</p>
+        <p><span class="tag">يريد معاودة الاتصال</span><span class="tag">قبل العصر</span></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block alt">
+    <div class="wrap demo">
+      <div class="demo-copy reveal">
+        <span class="kicker">المتابعة الذكية</span>
+        <h2>قل له «تابع»… وانشغل بغيره</h2>
+        <p>يقرأ محادثتك السابقة ليفهم أين وصلتم، ثم يتابع بأسلوبك وفي حدودك، ويرجع لك فقط حين يحتاج قرارك.</p>
+        <ul class="ticks">
+          <li><svg><use href="#i-check" /></svg><span>لا يوافق على أسعار أو خصومات أو مواعيد غير مصرّح بها</span></li>
+          <li><svg><use href="#i-check" /></svg><span>إذا رددت أنت بنفسك يتوقف ويترك لك الحديث</span></li>
+          <li><svg><use href="#i-check" /></svg><span>يرسل لك تقريرًا واضحًا بما تم والمطلوب منك</span></li>
+        </ul>
+      </div>
+      <div class="thread reveal" aria-label="مثال متابعة على واتساب">
+        <div class="sys">بدأ سند المتابعة بطلب منك</div>
+        <div class="msg me"><span class="who">سند (باسمك)</span>السلام عليكم أبو خالد، حبيت أتطمن على شحنة الكريب ٥٠٠ متر، متى توصل؟</div>
+        <div class="msg bot"><span class="who">أبو خالد</span>وعليكم السلام، الشحنة متأخرة بالميناء، وبصراحة الأسعار زادت ٨٪</div>
+        <div class="msg me"><span class="who">سند (باسمك)</span>الله يعطيك العافية، موضوع الزيادة أرجع لك فيه. متى تقريبًا الوصول؟ وياليت ترسل رقم البوليصة.</div>
+        <div class="rep"><b>تقرير لك:</b> الشحنة متأخرة في الميناء، والمورد يطلب زيادة ٨٪ — لم أوافق، وأخبرته أنك سترد. طلبت موعد الوصول ورقم البوليصة. <b>القرار عندك بشأن الزيادة.</b></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block sec" id="security">
+    <div class="wrap">
+      <div class="head reveal">
+        <span class="kicker">الأمان والخصوصية</span>
+        <h2>بياناتك لك وحدك</h2>
+        <p>بُني سند ليحمي أسرار العمل قبل أي شيء.</p>
+      </div>
+      <div class="sec-grid">
+        <div class="sec-item reveal"><svg><use href="#i-lock" /></svg><h3>مشفّرة بكلمة مرورك</h3><p>محادثاتك وملفاتك مشفّرة بمفتاح لا يملكه غيرك — ولا حتى الإدارة.</p></div>
+        <div class="sec-item reveal"><svg><use href="#i-key" /></svg><h3>تحقق بخطوتين</h3><p>رمز من جوالك مع كل دخول، وقفل تلقائي بعد المحاولات الخاطئة.</p></div>
+        <div class="sec-item reveal"><svg><use href="#i-eye" /></svg><h3>الإدارة لا ترى محادثاتك</h3><p>الإدارة تفتح الحسابات وتحدد الحدود فقط، وترى أرقام الاستهلاك لا المحتوى.</p></div>
+        <div class="sec-item reveal"><svg><use href="#i-alert" /></svg><h3>محمي من الرسائل المخادعة</h3><p>لا ينفّذ أي طلب مكتوب داخل رسالة أو إيميل وصلك، ولا يرسل لجهة جديدة إلا بأمرك.</p></div>
+        <div class="sec-item reveal"><svg><use href="#i-shield" /></svg><h3>سجل أمان كامل</h3><p>كل دخول ومحاولة فاشلة وكل ما أرسله سند باسمك — مسجّل وتراه بنفسك.</p></div>
+        <div class="sec-item reveal"><svg><use href="#i-server" /></svg><h3>على خوادم الشركة</h3><p>البيانات محفوظة على خادم بيت العباءة الشرقية، وليست منتشرة على الإنترنت.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <div class="head reveal">
+        <span class="kicker">البداية سهلة</span>
+        <h2>ثلاث خطوات وتبدأ</h2>
+      </div>
+      <div class="start">
+        <div class="reveal"><h3>الإدارة تفتح حسابك</h3><p>وتختار لمساعدك تخصصه وحدود استخدامه، وتصلك بيانات الدخول.</p></div>
+        <div class="reveal"><h3>تأمين حسابك وصوت مساعدك</h3><p>تفعّل التحقق بخطوتين، وتختار اسم مساعدك وصوته (رجل أو امرأة).</p></div>
+        <div class="reveal"><h3>اربط واتساب وبريدك</h3><p>اختياري: ليقرأ ما فاتك، ويتابع ويرد على مكالماتك — وتكلمه بالصوت أو الكتابة.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block alt" id="faq">
+    <div class="wrap">
+      <div class="head reveal">
+        <span class="kicker">أسئلة شائعة</span>
+        <h2>كل ما تريد معرفته</h2>
+      </div>
+      <div class="faq">
+        <details class="reveal"><summary>هل يرد سند على المكالمات باسمي؟</summary><p>يرد كمساعدك ويعرّف بنفسه بذلك، ولا يدّعي أنه أنت. يأخذ اسم المتصل وطلبه ويجيب فقط مما اعتمدته في «سند يعرفك»، ثم يرسل لك الملخص فورًا.</p></details>
+        <details class="reveal"><summary>هل يقدر أحد يقرأ محادثاتي مع سند؟</summary><p>لا. محادثاتك وملفاتك مشفّرة بمفتاح مشتق من كلمة مرورك، والإدارة لا تملك أي طريقة لقراءتها — ترى فقط أرقام الاستهلاك.</p></details>
+        <details class="reveal"><summary>هل يرسل رسائل من واتساب بدون علمي؟</summary><p>لا يرسل إلا بطلبك الصريح، أو ضمن متابعة بدأتها أنت وحددت هدفها. وكل ما يرسله يظهر في نشاط حسابك، ويتوقف إن رددت بنفسك.</p></details>
+        <details class="reveal"><summary>هل يفهم اللهجة السعودية؟</summary><p>نعم، يفهم ويتكلم العربية الفصحى واللهجات الخليجية والمصرية، ويرد بالإنجليزية إن كتبت له بها.</p></details>
+        <details class="reveal"><summary>ماذا لو ضاع جوالي؟</summary><p>تدخل برمز من رموز الاسترداد التي حفظتها عند التفعيل، أو تطلب من الإدارة إعادة ضبط التحقق بخطوتين.</p></details>
+        <details class="reveal"><summary>هل يعمل على الجوال؟</summary><p>نعم، على أي جوال أو كمبيوتر من المتصفح، ويمكن تثبيته على الشاشة الرئيسية كتطبيق.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="final">
+    <div class="wrap">
+      <div class="final-box reveal">
+        <h2>جاهز يشتغل معك سند؟</h2>
+        <p>ادخل بالحساب الذي أرسلته لك الإدارة، وابدأ أول محادثة في دقيقة.</p>
+        <a class="btn btn-gold" href="/login">ادخل إلى سند <svg><use href="#i-arrow" /></svg></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© <span id="year">2026</span> بيت العباءة الشرقية — «سند» المساعد الذكي</span>
+    <a href="/login">دخول الموظفين</a>
+  </div>
+</footer>
+<script src="/landing.js" defer></script>
+</body>
+</html>

@@ -11,6 +11,7 @@ const FEATURES = [
   { key: "web", label: "البحث في الإنترنت", hint: "للأنظمة واللوائح والأسعار الحديثة ($0.01 لكل بحث)" },
   { key: "whatsapp", label: "ربط واتساب والمتابعات", hint: "يربط الموظف رقمه؛ المساعد يقرأ ويلخّص ويرسل ويتابع نيابةً عنه" },
   { key: "gmail", label: "ربط Gmail", hint: "قراءة البريد وتلخيصه والرد عليه" },
+  { key: "phone", label: "الرد على المكالمات", hint: "سند يرد على مكالمات الموظف حين لا يرد (يحتاج ElevenLabs ورقم تويليو)" },
 ];
 
 const randomPassword = () => {
@@ -40,7 +41,7 @@ function UserEditor({ data, user, onClose, onSaved }) {
       dailyMessages: user?.limits?.dailyMessages ?? 0,
       storageMb: user?.limits?.storageMb ?? 300,
       models: user?.limits?.models || data.models.map((m) => m.id),
-      features: { voice: true, files: true, folder: true, web: false, whatsapp: false, gmail: false, ...(user?.limits?.features || {}) },
+      features: { voice: true, files: true, folder: true, web: false, whatsapp: false, gmail: false, phone: false, ...(user?.limits?.features || {}) },
       allowCustomize: user?.limits?.allowCustomize ?? true,
     },
   }));
@@ -194,17 +195,26 @@ function OrgSettings({ settings, models, onSaved }) {
   const [anthropicKey, setAnthropicKey] = useState("");
   const [azureKey, setAzureKey] = useState("");
   const [azureRegion, setAzureRegion] = useState(settings.azureRegion);
+  const [elevenKey, setElevenKey] = useState("");
+  const [elevenModel, setElevenModel] = useState(settings.elevenModel);
+  const [vMale, setVMale] = useState(settings.elevenVoiceMale);
+  const [vFemale, setVFemale] = useState(settings.elevenVoiceFemale);
+  const [voices, setVoices] = useState([]);
+  const loadVoices = () => api("/admin/eleven/voices").then((r) => setVoices(r.voices)).catch(() => setVoices([]));
+  useEffect(() => { if (settings.hasEleven) loadVoices(); }, [settings.hasEleven]); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
 
   const save = async (extra = {}) => {
     setBusy(true);
     try {
-      const body = { orgName, defaultModel, effort, azureRegion, ...extra };
+      const body = { orgName, defaultModel, effort, azureRegion, elevenModel, elevenVoiceMale: vMale, elevenVoiceFemale: vFemale, ...extra };
       if (anthropicKey) body.anthropicKey = anthropicKey;
       if (azureKey) body.azureKey = azureKey;
+      if (elevenKey) body.elevenKey = elevenKey;
       const s = await api("/admin/settings", { method: "PUT", body });
       setAnthropicKey("");
       setAzureKey("");
+      if (elevenKey) { setElevenKey(""); setTimeout(loadVoices, 300); }
       onSaved(s);
       toast("تم حفظ الإعدادات", "success");
       return true;
@@ -217,7 +227,7 @@ function OrgSettings({ settings, models, onSaved }) {
   };
 
   const test = async (what) => {
-    if ((what === "claude" && anthropicKey) || (what === "azure" && azureKey)) {
+    if ((what === "claude" && anthropicKey) || (what === "azure" && azureKey) || (what === "eleven" && elevenKey)) {
       if (!(await save())) return;
     }
     try {
@@ -262,7 +272,47 @@ function OrgSettings({ settings, models, onSaved }) {
       </section>
 
       <section className="card">
-        <h2><Icon name="speaker" size={18} /> الصوت السحابي (اختياري)</h2>
+        <h2><Icon name="wave" size={18} /> ElevenLabs — أصوات عالمية الجودة والرد على المكالمات</h2>
+        <p className="muted small">
+          عند إضافته يصبح صوت المساعد طبيعيًا جدًا على كل الأجهزة، ويمكن تفعيل الرد على المكالمات. المفتاح من حسابك:
+          الإعدادات ← مفاتيح الواجهة البرمجية (API Keys)، ويُحفظ مشفّرًا.
+        </p>
+        <div className="grid-2">
+          <Field label="مفتاح ElevenLabs" hint={settings.hasEleven ? `مضبوط (${settings.elevenKeyHint})` : "غير مضبوط"}>
+            <input dir="ltr" type="password" autoComplete="off" placeholder="sk_…" value={elevenKey} onChange={(e) => setElevenKey(e.target.value)} />
+          </Field>
+          <Field label="نموذج الصوت">
+            <select value={elevenModel} onChange={(e) => setElevenModel(e.target.value)}>
+              <option value="eleven_flash_v2_5">سريع جدًا (موصى به للمحادثة الصوتية)</option>
+              <option value="eleven_multilingual_v2">أعلى ثباتًا للنصوص الطويلة</option>
+            </select>
+          </Field>
+        </div>
+        {settings.hasEleven && (
+          <div className="grid-2">
+            <Field label="صوت المساعدين الرجال (افتراضي)">
+              <select value={vMale} onChange={(e) => setVMale(e.target.value)}>
+                <option value="">— اختر —</option>
+                {voices.map((v) => <option key={v.id} value={v.id}>{v.name}{v.gender ? ` · ${v.gender === "male" ? "رجل" : v.gender === "female" ? "امرأة" : v.gender}` : ""}{v.accent ? ` · ${v.accent}` : ""}</option>)}
+              </select>
+            </Field>
+            <Field label="صوت المساعدات النساء (افتراضي)">
+              <select value={vFemale} onChange={(e) => setVFemale(e.target.value)}>
+                <option value="">— اختر —</option>
+                {voices.map((v) => <option key={v.id} value={v.id}>{v.name}{v.gender ? ` · ${v.gender === "male" ? "رجل" : v.gender === "female" ? "امرأة" : v.gender}` : ""}{v.accent ? ` · ${v.accent}` : ""}</option>)}
+              </select>
+            </Field>
+          </div>
+        )}
+        <p className="muted small">كل موظف يقدر يختار صوتًا آخر لمساعده من «الإعدادات ← الصوت». لأفضل نطق عربي أضف لحسابك أصواتًا عربية من «مكتبة الأصوات» في ElevenLabs.</p>
+        <div className="row-gap">
+          <button className="btn btn-ghost" onClick={() => test("eleven")} disabled={busy}>اختبار المفتاح</button>
+          {settings.hasEleven && <button className="btn btn-ghost danger" onClick={() => save({ elevenKey: "" })} disabled={busy}>إزالة المفتاح</button>}
+        </div>
+      </section>
+
+      <section className="card">
+        <h2><Icon name="speaker" size={18} /> الصوت السحابي البديل (Azure — اختياري)</h2>
         <p className="muted small">
           بدون إعداد: يستخدم التطبيق أصوات الجهاز المجانية (جودتها تختلف من جهاز لآخر). مع Azure Speech: أصوات عربية طبيعية
           ثابتة على كل الأجهزة — رجل (حامد) وامرأة (زارية) بلهجة سعودية — بتكلفة تقارب $16 لكل مليون حرف.

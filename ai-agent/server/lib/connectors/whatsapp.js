@@ -559,6 +559,19 @@ export function chatTranscript(uid, chatId, limit = 40) {
     .join("\n");
 }
 
+// رسالة لمحادثة المستخدم مع نفسه (تقارير المتابعات والمكالمات)
+export async function notifySelf(uid, text) {
+  const s = sessions.get(uid);
+  const self = s?.meta?.me?.id;
+  if (!s?.sock || s.status !== "open" || !self) return false;
+  try {
+    await s.sock.sendMessage(self, { text: String(text).slice(0, 3500) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function selfChatId(uid) {
   return waSession(uid).meta.me?.id || null;
 }

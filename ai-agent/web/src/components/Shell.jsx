@@ -7,6 +7,8 @@ import Chat from "./Chat.jsx";
 import Settings from "./Settings.jsx";
 import Admin from "./Admin.jsx";
 import Followups from "./Followups.jsx";
+import Persona from "./Persona.jsx";
+import Calls from "./Calls.jsx";
 
 function parseHash() {
   const h = window.location.hash.replace(/^#\/?/, "");
@@ -15,6 +17,8 @@ function parseHash() {
   if (view === "settings") return { view: "settings" };
   if (view === "admin") return { view: "admin" };
   if (view === "followups") return { view: "followups" };
+  if (view === "persona") return { view: "persona" };
+  if (view === "calls") return { view: "calls" };
   return { view: "chat", id: null };
 }
 
@@ -78,7 +82,7 @@ export default function Shell() {
           <div className="brand">
             <img src="/icons/icon-192.png" alt="" />
             <div>
-              <strong>مساعدي الذكي</strong>
+              <strong>سند</strong>
               <small>{me.org.name}</small>
             </div>
           </div>
@@ -123,6 +127,14 @@ export default function Shell() {
             {limit > 0 && <Meter value={used} max={limit} />}
           </div>
           <div className="side-links">
+            <button className={`side-link ${route.view === "persona" ? "is-active" : ""}`} onClick={() => go("#/persona")}>
+              <Icon name="users" size={18} /> سند يعرفك
+            </button>
+            {u.limits?.features?.phone && (
+              <button className={`side-link ${route.view === "calls" ? "is-active" : ""}`} onClick={() => go("#/calls")}>
+                <Icon name="phone" size={18} /> المكالمات
+              </button>
+            )}
             {u.limits?.features?.whatsapp && (
               <button className={`side-link ${route.view === "followups" ? "is-active" : ""}`} onClick={() => go("#/followups")}>
                 <Icon name="sparkle" size={18} /> المتابعات
@@ -146,6 +158,8 @@ export default function Shell() {
         {route.view === "settings" && <Settings onMenu={() => setDrawer(true)} />}
         {route.view === "admin" && u.isAdmin && <Admin onMenu={() => setDrawer(true)} />}
         {route.view === "followups" && <Followups onMenu={() => setDrawer(true)} />}
+        {route.view === "persona" && <Persona onMenu={() => setDrawer(true)} />}
+        {route.view === "calls" && <Calls onMenu={() => setDrawer(true)} />}
         {route.view === "chat" && (
           <Chat
             key={chat.key}

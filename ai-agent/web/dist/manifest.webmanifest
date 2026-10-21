@@ -1,9 +1,9 @@
 {
-  "name": "مساعدي الذكي — الشرقية",
-  "short_name": "مساعدي",
+  "name": "سند — المساعد الذكي",
+  "short_name": "سند",
   "description": "مساعد ذكي خاص لكل موظف: استشارات مالية وموارد بشرية وقانونية، بالصوت والملفات.",
   "id": "/",
-  "start_url": "/",
+  "start_url": "/login",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",

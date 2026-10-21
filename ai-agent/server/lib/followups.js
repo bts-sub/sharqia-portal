@@ -11,6 +11,7 @@ import { newId } from "./vault.js";
 import { readSecure, userDir, writeSecure } from "./connectors/secure.js";
 import { chatTranscript, selfChatId, waEvents, waSession } from "./connectors/whatsapp.js";
 import { logActivity } from "./activity.js";
+import { getPersona, personaBlock } from "./persona.js";
 
 const FOLLOWUP_MODEL = "claude-sonnet-5-5";
 const REPLY_DEBOUNCE_MS = 25_000; // ننتظر حتى يكمل الطرف الآخر رسائله المتتالية
@@ -115,6 +116,8 @@ export async function decideFollowup({ user, orgName, task, transcript }) {
 
 هدف المتابعة كما طلبه ${user.displayName}:
 ${task.goal}
+
+${personaBlock(getPersona(user.id), user.displayName) || ""}
 
 القواعد:
 - اكتب كأنك ${user.displayName} نفسه يتابع (بصيغة المتكلم)، بأسلوب مهذب ومختصر يناسب واتساب في السعودية، وبنفس لهجة المحادثة السابقة.

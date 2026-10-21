@@ -20,7 +20,7 @@ export const DEFAULT_LIMITS = {
   dailyMessages: 0, // 0 = بلا حد
   storageMb: 300,
   models: Object.keys(MODELS),
-  features: { voice: true, files: true, folder: true, web: false, whatsapp: false, gmail: false },
+  features: { voice: true, files: true, folder: true, web: false, whatsapp: false, gmail: false, phone: false },
   allowCustomize: true, // يسمح للموظف بتغيير اسم المساعد وصوته
 };
 
@@ -83,6 +83,7 @@ export function cleanPrefs(p = {}, base = {}) {
   if (typeof p.personalNotes === "string") out.personalNotes = p.personalNotes.trim().slice(0, 2000);
   if (typeof p.browserVoice === "string") out.browserVoice = p.browserVoice.slice(0, 120);
   if (typeof p.voiceRate === "number" && p.voiceRate >= 0.6 && p.voiceRate <= 1.6) out.voiceRate = p.voiceRate;
+  if (typeof p.elevenVoice === "string") out.elevenVoice = p.elevenVoice.replace(/[^A-Za-z0-9]/g, "").slice(0, 40);
   return out;
 }
 

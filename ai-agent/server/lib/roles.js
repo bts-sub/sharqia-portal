@@ -103,7 +103,7 @@ function todayRiyadh() {
 }
 
 // يُستدعى مرّة عند إنشاء المحادثة؛ الناتج يُحفظ داخلها.
-export function buildSystemPrompt({ user, orgName, tools }) {
+export function buildSystemPrompt({ user, orgName, tools, persona = "" }) {
   const agent = user.agent || {};
   const role = roleById(agent.role);
   const name = (agent.name || "مساعد").trim();
@@ -115,6 +115,7 @@ export function buildSystemPrompt({ user, orgName, tools }) {
     role.instructions,
     agent.customInstructions ? `تعليمات إضافية من الإدارة:\n${agent.customInstructions}` : "",
     user.prefs?.personalNotes ? `ملاحظات المستخدم عن نفسه وتفضيلاته:\n${user.prefs.personalNotes}` : "",
+    persona ? `${persona}\n(استخدم هذه المعلومات لتفهمه وتكتب بأسلوبه عند الصياغة باسمه.)` : "",
     `قواعد عامة:
 - ردّ بلغة المستخدم (العربية افتراضيًا)، بأسلوب مهني ودود وواضح، دون إطالة بلا فائدة.
 - استخدم Markdown بسيطًا عند الحاجة: عناوين قصيرة، نقاط، وجداول للأرقام والمقارنات.

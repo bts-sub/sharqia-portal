@@ -107,7 +107,7 @@ export function mePayload(user, { mfa = true } = {}) {
     role: { id: role.id, title: user.agent?.role === "custom" ? user.agent.customTitle || "مساعد مخصّص" : role.title, summary: role.summary },
     usage: getUsage(user.id),
     storageBytes: vaultSize(user.id),
-    org: { name: s.orgName, hasKey: s.hasAnthropicKey, cloudVoice: s.hasAzure },
+    org: { name: s.orgName, hasKey: s.hasAnthropicKey, cloudVoice: s.hasAzure || s.hasEleven, eleven: s.hasEleven },
     models: allowed.map((id) => ({ id, label: MODELS[id].label, hint: MODELS[id].hint })),
     defaultModel: allowed.includes(user.model) ? user.model : allowed.includes(s.defaultModel) ? s.defaultModel : allowed[0],
   };
