@@ -97,7 +97,7 @@ function page() {
     var isIOS=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
     var isAndroid=/android/i.test(ua);
     var you=document.getElementById("you"),yt=document.getElementById("youtxt");
-    if(isIOS){document.getElementById("ios").classList.add("hi");yt.textContent="جهازك آيفون (iOS)";you.hidden=false;document.getElementById("ios-steps").classList.add("show");}
+    if(isIOS){document.getElementById("ios").classList.add("hi");yt.textContent="جهازك آيفون (iOS)";you.hidden=false;${APP_STORE_URL ? "" : 'document.getElementById("ios-steps").classList.add("show");'}}
     else if(isAndroid){document.getElementById("android").classList.add("hi");yt.textContent="جهازك أندرويد";you.hidden=false;}
   })();
 </script>
