@@ -75,6 +75,9 @@
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .thumb{width:48px;height:48px;border-radius:8px;object-fit:cover;background:var(--chip);flex-shrink:0}
   .thumb-ph{display:flex;align-items:center;justify-content:center;font-size:20px}
+  .price-in{width:84px;padding:6px 8px;font-size:13px;text-align:center}
+  .linkbtn{background:none;border:none;color:var(--gold);font-weight:700;font-size:13px;cursor:pointer;padding:10px;width:100%}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 </style>
 </head>
 <body>
@@ -83,15 +86,16 @@
     <div class="logo">ع</div>
     <div>
       <div class="ttl">مبيعات بيت العباءة الشرقية</div>
-      <div class="sub">موصّل بأودو — أوامر بيع ولينك دفع</div>
+      <div class="sub">موصّل بأودو — فواتير ولينكات دفع ماي فاتورة</div>
     </div>
     <div class="conn"><span class="dot" id="connDot"></span><span id="connTxt">…</span></div>
   </header>
   <main id="main"><div class="spin"></div></main>
   <nav>
-    <button data-nav="orders" class="on"><span class="ic">🧾</span>الطلبات</button>
-    <button data-nav="new"><span class="ic">➕</span>طلب خارجي</button>
+    <button data-nav="invoices" class="on"><span class="ic">🧾</span>الفواتير</button>
+    <button data-nav="new"><span class="ic">➕</span>فاتورة جديدة</button>
     <button data-nav="products"><span class="ic">🛍️</span>المنتجات</button>
+    <button data-nav="orders"><span class="ic">📄</span>عروض الأسعار</button>
   </nav>
 </div>
 
@@ -122,11 +126,101 @@
   function thumbHtml(id){ return '<img class="thumb" src="/api/sales/products/'+id+'/image" loading="lazy" data-thumb alt="">'; }
   function wireThumbs(el){ (el||document).querySelectorAll('img[data-thumb]').forEach(function(im){ im.onerror=function(){ this.onerror=null; var b=document.createElement('span'); b.className='thumb thumb-ph'; b.textContent='🛍️'; if(this.parentNode) this.parentNode.replaceChild(b,this); }; }); }
 
+  // حالات فاتورة ماي فاتورة + تسليمها من المخزن
+  var MF_AR={draft:["مسودّة","var(--sub)"],pending:["بانتظار الدفع","var(--warn)"],paid:["مدفوعة","var(--good)"],
+    expired:["منتهية","var(--sub)"],canceled:["ملغاة","var(--bad)"],unknown:["غير معروفة","var(--sub)"]};
+  var DLV_AR={to_assign:["بانتظار المنتجات","var(--warn)"],to_deliver:["جاهزة للتسليم","var(--blue)"],delivered:["سُلِّمت","var(--good)"]};
+  function badgeOf(map,s){ var m=map[s]; if(!m) return ""; return '<span class="badge" style="background:'+m[1]+'22;color:'+m[1]+'">'+esc(m[0])+'</span>'; }
+  function shortDate(s){ return s ? String(s).slice(0,16).replace("T"," ") : ""; }
+
   // ---------- حالة التطبيق ----------
-  var view={name:"orders"};
-  var cart=[];          // [{product_id,name,code,price,qty}]
+  var view={name:"invoices"};
+  var cart=[];          // [{product_id,name,code,price(شامل الضريبة),base(سعر أودو الأساسي),qty}]
   var customer=null;    // {id,name,phone}
   var note="";
+
+  // ================= شاشة: فواتير ماي فاتورة =================
+  function screenInvoices(){
+    view={name:"invoices"}; setNav("invoices");
+    main.innerHTML='<div class="title">فواتير ولينكات الدفع</div><div id="invWrap"><div class="spin"></div></div>';
+    api("/mf-links?limit=40").then(function(rows){
+      if(!rows.length){ $("#invWrap").innerHTML='<div class="empty">لا فواتير بعد.<br>أنشئ «فاتورة جديدة» وأرسل لينك الدفع للعميل.</div>'; return; }
+      $("#invWrap").innerHTML='<div class="card" style="padding:0">'+rows.map(function(v){
+        return '<div class="list-item" data-inv="'+v.id+'">'
+          +'<div style="flex:1"><div style="font-weight:800">'+esc(v.invoice_id)+'</div>'
+          +'<div class="muted">'+esc(v.partner||"—")+' · '+esc(shortDate(v.created))+'</div></div>'
+          +'<div style="text-align:left">'+badgeOf(MF_AR,v.status)
+          +'<div style="font-weight:800;margin-top:4px">'+money(v.amount)+'</div></div></div>';
+      }).join("")+'</div>';
+      $("#invWrap").querySelectorAll("[data-inv]").forEach(function(el){ el.onclick=function(){ screenInvoice(+el.getAttribute("data-inv")); }; });
+    }).catch(function(e){ $("#invWrap").innerHTML='<div class="empty">تعذّر الجلب: '+esc(e.message)+'</div>'; });
+  }
+
+  // ================= شاشة: تفاصيل فاتورة =================
+  function screenInvoice(id, opts){
+    opts=opts||{};
+    view={name:"invoice",id:id};
+    main.innerHTML='<button class="back" id="bk">‹</button><div id="ivWrap"><div class="spin"></div></div>';
+    $("#bk").onclick=screenInvoices;
+    api("/mf-links/"+id+(opts.refresh?"?refresh=1":"")).then(function(v){
+      var lines=(v.lines||[]).map(function(l){
+        return '<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)">'
+          +(l.product_id?thumbHtml(l.product_id):'')
+          +'<div style="flex:1"><div style="font-weight:700;font-size:13px">'+esc(l.name)+'</div>'
+          +'<div class="muted">'+l.qty+' × '+money(l.price)+'</div></div>'
+          +'<div style="font-weight:700">'+money(l.subtotal)+'</div></div>';
+      }).join("");
+      var paid=v.status==="paid";
+      main.innerHTML='<button class="back" id="bk">‹</button>'
+        +'<div class="row"><div class="title" style="margin:0">فاتورة '+esc(v.invoice_id)+'</div>'+badgeOf(MF_AR,v.status)+'</div>'
+        +'<div class="card"><div class="row"><span class="muted">العميل</span><b>'+esc(v.partner||"—")+'</b></div>'
+          +(v.phone?'<div class="row" style="margin-top:6px"><span class="muted">الجوال</span><span dir="ltr">'+esc(v.phone)+'</span></div>':'')
+          +(paid?'<div class="row" style="margin-top:6px"><span class="muted">دُفعت</span><span>'+esc(shortDate(v.paid_date))+(v.payment_method?' · '+esc(v.payment_method):'')+'</span></div>'
+               :(v.expiry?'<div class="row" style="margin-top:6px"><span class="muted">اللينك ينتهي</span><span>'+esc(shortDate(v.expiry))+'</span></div>':''))
+          +(DLV_AR[v.delivery]?'<div class="row" style="margin-top:6px"><span class="muted">التسليم من المخزن</span>'+badgeOf(DLV_AR,v.delivery)+'</div>':'')
+        +'</div>'
+        +'<div class="card">'+(lines||'<div class="muted">لا أصناف</div>')
+          +'<div class="row" style="font-weight:900;font-size:16px;margin-top:8px"><span>الإجمالي (شامل الضريبة)</span><span>'+money(v.amount)+'</span></div></div>'
+        +(paid?'<div class="card" style="text-align:center;color:var(--good);font-weight:800">✓ دفع العميل — الفاتورة مسجّلة في أودو</div>'
+              :'<button class="btn primary" id="share" style="margin-bottom:8px">📤 إرسال لينك الدفع للعميل</button>'
+               +'<button class="btn ghost" id="ref">🔄 تحديث حالة الدفع</button>');
+      $("#bk").onclick=screenInvoices;
+      wireThumbs(main);
+      if($("#share")) $("#share").onclick=function(){ openShare(v); };
+      if($("#ref")) $("#ref").onclick=function(){ screenInvoice(id,{refresh:true}); };
+      if(opts.share && !paid) openShare(v);
+    }).catch(function(e){ $("#ivWrap").innerHTML='<div class="empty">تعذّر: '+esc(e.message)+'</div>'; });
+  }
+
+  // ---------- ورقة إرسال لينك ماي فاتورة (مشاركة / واتساب / نسخ) ----------
+  function openShare(v){
+    var ov=document.createElement("div"); ov.className="overlay";
+    ov.innerHTML='<div class="sheet"><div class="row"><b>إرسال لينك الدفع — '+esc(v.invoice_id)+'</b>'
+      +'<button class="back" id="x">×</button></div>'
+      +'<div class="muted" style="margin:6px 0 8px">يفتح العميل صفحة ماي فاتورة بالأصناف والمبلغ ويدفع مباشرة (مدى، فيزا، أبل باي).</div>'
+      +'<div class="linkbox">'+esc(v.url)+'</div>'
+      +'<div class="fld"><div class="lbl">جوال العميل</div><input id="phone" dir="ltr" style="text-align:right" value="'+esc(v.phone||"")+'" placeholder="05xxxxxxxx"></div>'
+      +'<button class="btn primary" id="wa" style="margin-bottom:8px">📩 إرسال واتساب بالفاتورة</button>'
+      +'<div class="grid3"><button class="btn ghost" id="shr">📤 مشاركة</button>'
+      +'<button class="btn ghost" id="copy">📋 الرابط</button>'
+      +'<button class="btn ghost" id="copymsg">📋 الرسالة</button></div>'
+      +'<div class="lbl" style="margin-top:12px">نص الرسالة</div><div class="linkbox" style="white-space:pre-wrap;border-style:solid">'+esc(v.message)+'</div></div>';
+    document.body.appendChild(ov);
+    ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+    $("#x",ov).onclick=function(){ ov.remove(); };
+    $("#copy",ov).onclick=function(){ copyText(v.url,"نُسخ الرابط"); };
+    $("#copymsg",ov).onclick=function(){ copyText(v.message,"نُسخت الرسالة"); };
+    // واتساب يُفتح مباشرةً عند الضغط (إيماءة مستخدم) — لا يُحجب كالنوافذ المتأخّرة
+    $("#wa",ov).onclick=function(){
+      var ph=waPhone($("#phone",ov).value);
+      if(!ph){ toast("أدخل جوال العميل أولًا"); return; }
+      window.open("https://wa.me/"+ph+"?text="+encodeURIComponent(v.message),"_blank");
+    };
+    $("#shr",ov).onclick=function(){
+      if(navigator.share){ navigator.share({title:"فاتورة "+v.invoice_id,text:v.message}).catch(function(){}); }
+      else copyText(v.message,"المشاركة غير مدعومة هنا — نُسخت الرسالة");
+    };
+  }
 
   function setNav(n){ var btns=document.querySelectorAll("nav button"); for(var i=0;i<btns.length;i++){ btns[i].classList.toggle("on",btns[i].getAttribute("data-nav")===n); } }
 
@@ -139,9 +233,9 @@
   // ================= شاشة: الطلبات =================
   function screenOrders(){
     view={name:"orders"}; setNav("orders");
-    main.innerHTML='<div class="title">آخر الطلبات</div><div id="ordWrap"><div class="spin"></div></div>';
+    main.innerHTML='<div class="title">عروض الأسعار (أودو)</div><div id="ordWrap"><div class="spin"></div></div>';
     api("/orders?limit=25").then(function(rows){
-      if(!rows.length){ $("#ordWrap").innerHTML='<div class="empty">لا توجد طلبات بعد.<br>أنشئ طلبًا خارجيًا جديدًا.</div>'; return; }
+      if(!rows.length){ $("#ordWrap").innerHTML='<div class="empty">لا توجد عروض أسعار بعد.</div>'; return; }
       var html='<div class="card" style="padding:0">';
       rows.forEach(function(o){
         html+='<div class="list-item" data-open="'+o.id+'">'
@@ -152,6 +246,7 @@
       });
       html+='</div>';
       $("#ordWrap").innerHTML=html;
+      $("#ordWrap").querySelectorAll("[data-open]").forEach(function(el){ el.onclick=function(){ screenOrder(+el.getAttribute("data-open")); }; });
     }).catch(function(e){ $("#ordWrap").innerHTML='<div class="empty">تعذّر الجلب: '+esc(e.message)+'</div>'; });
   }
 
@@ -238,24 +333,36 @@
     }).catch(function(e){ $("#plBody",ov).innerHTML='<div class="empty">تعذّر: '+esc(e.message)+'</div>'; });
   }
 
-  // ================= شاشة: طلب خارجي جديد =================
+  // ================= شاشة: فاتورة جديدة (لينك دفع ماي فاتورة) =================
   function screenNew(){
     view={name:"new"}; setNav("new");
     main.innerHTML=
-      '<div class="title">طلب خارجي جديد</div>'
+      '<div class="title">فاتورة جديدة</div>'
       +'<div class="card"><div class="lbl">العميل</div>'
         +'<div id="custBox"></div></div>'
       +'<div class="card"><div class="row" style="margin-bottom:8px"><b>المنتجات</b>'
         +'<button class="btn ghost sm" id="addProd">+ إضافة منتج</button></div>'
         +'<div id="cartBox"></div></div>'
-      +'<div class="card"><div class="lbl">ملاحظة (اختياري)</div><textarea id="note" rows="2">'+esc(note)+'</textarea></div>'
-      +'<div class="card"><div class="row" style="font-weight:900;font-size:16px"><span>الإجمالي التقديري</span><span id="cartTotal">'+money(0)+'</span></div>'
-        +'<div class="muted" style="margin-top:4px">الضريبة تُحتسب في أودو عند الإنشاء.</div></div>'
-      +'<button class="btn primary" id="createOrder">إنشاء عرض السعر في أودو</button>';
+      +'<div class="card"><div class="lbl">ملاحظة داخلية (اختياري)</div><textarea id="note" rows="2">'+esc(note)+'</textarea></div>'
+      +'<div class="card"><div class="row" style="font-weight:900;font-size:16px"><span>الإجمالي (شامل الضريبة)</span><span id="cartTotal">'+money(0)+'</span></div>'
+        +'<div class="muted" style="margin-top:4px">هذا ما يدفعه العميل في لينك ماي فاتورة. السعر قابل للتعديل لكل منتج.</div></div>'
+      +'<button class="btn primary" id="createLink">🔗 إنشاء لينك الدفع وإرساله</button>'
+      +'<button class="linkbtn" id="createOrder">أو إنشاء عرض سعر في أودو</button>';
     $("#note").oninput=function(){ note=this.value; };
     renderCust(); renderCart();
     $("#addProd").onclick=openProductPicker;
+    $("#createLink").onclick=doCreateLink;
     $("#createOrder").onclick=doCreateOrder;
+  }
+  function doCreateLink(){
+    if(!customer){ toast("اختر العميل أولًا"); return; }
+    if(!cart.length){ toast("أضف منتجًا واحدًا على الأقل"); return; }
+    if(cartTotal()<=0){ toast("الإجمالي لازم يكون أكبر من صفر"); return; }
+    var btn=$("#createLink"); btn.disabled=true; btn.textContent="جارٍ إنشاء الفاتورة في ماي فاتورة…";
+    api("/mf-links",{method:"POST",body:{partner_id:customer.id,note:note,
+      lines:cart.map(function(l){return {product_id:l.product_id,qty:l.qty,price_unit:l.price};})}})
+      .then(function(d){ toast("أُنشئت الفاتورة "+d.invoice_id); cart=[];customer=null;note=""; screenInvoice(d.id,{share:true}); })
+      .catch(function(e){ toast("تعذّر: "+e.message); btn.disabled=false; btn.textContent="🔗 إنشاء لينك الدفع وإرساله"; });
   }
   function renderCust(){
     var box=$("#custBox"); if(!box) return;
@@ -274,14 +381,19 @@
     var box=$("#cartBox"); if(!box) return;
     if(!cart.length){ box.innerHTML='<div class="muted">لا منتجات بعد.</div>'; if($("#cartTotal"))$("#cartTotal").textContent=money(0); return; }
     box.innerHTML=cart.map(function(l,i){
-      return '<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line)">'
+      return '<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="row">'
         +thumbHtml(l.product_id)+'<div style="flex:1"><div style="font-weight:700;font-size:13px">'+esc(l.name)+'</div>'
-        +'<div class="muted">'+money(l.price)+(l.code?' · '+esc(l.code):'')+'</div></div>'
+        +'<div class="muted">'+(l.code?esc(l.code):'')+'</div></div>'
         +'<div class="qtybox"><button data-dec="'+i+'">−</button><b style="min-width:20px;text-align:center">'+l.qty+'</b>'
-        +'<button data-inc="'+i+'">+</button><button data-rm="'+i+'" style="color:var(--bad)">🗑</button></div></div>';
+        +'<button data-inc="'+i+'">+</button><button data-rm="'+i+'" style="color:var(--bad)">🗑</button></div></div>'
+        +'<div class="row" style="margin-top:6px"><span class="muted">سعر القطعة (شامل الضريبة)</span>'
+        +'<input class="price-in" type="number" min="0" step="0.01" inputmode="decimal" data-price="'+i+'" value="'+l.price+'"></div></div>';
     }).join("");
     wireThumbs(box);
     if($("#cartTotal"))$("#cartTotal").textContent=money(cartTotal());
+    box.querySelectorAll("[data-price]").forEach(function(inp){ inp.oninput=function(){
+      var v=parseFloat(inp.value); cart[+inp.getAttribute("data-price")].price=(isFinite(v)&&v>=0)?v:0;
+      if($("#cartTotal"))$("#cartTotal").textContent=money(cartTotal()); }; });
     box.querySelectorAll("[data-inc]").forEach(function(b){b.onclick=function(){cart[+b.getAttribute("data-inc")].qty++;renderCart();};});
     box.querySelectorAll("[data-dec]").forEach(function(b){b.onclick=function(){var i=+b.getAttribute("data-dec");cart[i].qty=Math.max(1,cart[i].qty-1);renderCart();};});
     box.querySelectorAll("[data-rm]").forEach(function(b){b.onclick=function(){cart.splice(+b.getAttribute("data-rm"),1);renderCart();};});
@@ -290,8 +402,10 @@
     if(!customer){ toast("اختر العميل أولًا"); return; }
     if(!cart.length){ toast("أضف منتجًا واحدًا على الأقل"); return; }
     var btn=$("#createOrder"); btn.disabled=true; btn.textContent="جارٍ الإنشاء…";
+    // عرض السعر بسعر أودو الأساسي (قبل الضريبة) — يحوَّل السعر المعدَّل بنفس نسبة الضريبة
     api("/orders",{method:"POST",body:{partner_id:customer.id,note:note,
-      lines:cart.map(function(l){return {product_id:l.product_id,qty:l.qty,price_unit:l.price};})}})
+      lines:cart.map(function(l){ var r=(l.incl0&&l.base)?(l.incl0/l.base):1;
+        return {product_id:l.product_id,qty:l.qty,price_unit:Math.round(l.price/r*100)/100};})}})
       .then(function(d){ toast("أُنشئ عرض السعر"); cart=[];customer=null;note=""; screenOrder(d.id); })
       .catch(function(e){ toast("تعذّر: "+e.message); btn.disabled=false; btn.textContent="إنشاء عرض السعر في أودو"; });
   }
@@ -351,9 +465,10 @@
     var t;
     function load(q){ api("/products?q="+encodeURIComponent(q||"")+"&limit=40").then(function(rows){
       $("#pres",ov).innerHTML = rows.length ? '<div class="card" style="padding:0">'+rows.map(function(p){
-        return '<div class="list-item" data-p=\''+esc(JSON.stringify({product_id:p.id,name:p.name,code:p.code,price:p.price}))+'\'>'
+        var incl=(p.price_incl!=null)?p.price_incl:p.price;
+        return '<div class="list-item" data-p=\''+esc(JSON.stringify({product_id:p.id,name:p.name,code:p.code,price:incl,base:p.price,incl0:incl}))+'\'>'
           +thumbHtml(p.id)+'<div style="flex:1"><div style="font-weight:700;font-size:13px">'+esc(p.name)+'</div>'
-          +'<div class="muted">'+(p.code?esc(p.code)+" · ":"")+money(p.price)+'</div></div>'
+          +'<div class="muted">'+(p.code?esc(p.code)+" · ":"")+money(incl)+' · متاح: '+(p.qty||0)+'</div></div>'
           +'<button class="btn primary sm" data-add>إضافة</button></div>';
       }).join("")+'</div>' : '<div class="empty">لا نتائج</div>';
       wireThumbs($("#pres",ov));
@@ -361,7 +476,7 @@
         el.querySelector("[data-add]").onclick=function(ev){ ev.stopPropagation();
           var p=JSON.parse(el.getAttribute("data-p"));
           var ex=cart.filter(function(c){return c.product_id===p.product_id;})[0];
-          if(ex){ ex.qty++; } else { cart.push({product_id:p.product_id,name:p.name,code:p.code,price:p.price,qty:1}); }
+          if(ex){ ex.qty++; } else { cart.push({product_id:p.product_id,name:p.name,code:p.code,price:p.price,base:p.base,incl0:p.incl0,qty:1}); }
           toast("أُضيف: "+p.name); renderCart();
         };
       });
@@ -380,7 +495,8 @@
       $("#pwrap").innerHTML = rows.length ? '<div class="card" style="padding:0">'+rows.map(function(p){
         return '<div class="list-item" style="cursor:default">'+thumbHtml(p.id)+'<div style="flex:1"><div style="font-weight:700;font-size:13px">'+esc(p.name)+'</div>'
           +'<div class="muted">'+(p.code?esc(p.code)+" · ":"")+'متاح: '+(p.qty||0)+'</div></div>'
-          +'<b>'+money(p.price)+'</b></div>';
+          +'<div style="text-align:left"><b>'+money(p.price_incl!=null?p.price_incl:p.price)+'</b>'
+          +(p.price_incl!=null?'<div class="muted" style="font-size:10px">شامل الضريبة</div>':'')+'</div></div>';
       }).join("")+'</div>' : '<div class="empty">لا نتائج</div>';
       wireThumbs($("#pwrap"));
     }).catch(function(e){ $("#pwrap").innerHTML='<div class="empty">'+esc(e.message)+'</div>'; }); }
@@ -391,11 +507,11 @@
   // ---------- التنقّل ----------
   document.querySelectorAll("nav button").forEach(function(b){
     b.onclick=function(){ var n=b.getAttribute("data-nav");
-      if(n==="orders") screenOrders(); else if(n==="new") screenNew(); else if(n==="products") screenProducts(); };
+      if(n==="invoices") screenInvoices(); else if(n==="orders") screenOrders(); else if(n==="new") screenNew(); else if(n==="products") screenProducts(); };
   });
 
   checkConn();
-  screenOrders();
+  screenInvoices();
 })();
 </script>
 </body>

@@ -43,9 +43,12 @@ r.get("/api/sales/products", async (req, res, next) => {
       ["name", "default_code", "barcode", "list_price", "qty_available", "uom_id"],
       { limit, offset, order: q ? "name" : "id desc" }   // بلا بحث: الأحدث أولًا (منتجات العميل المضافة حديثًا)
     );
+    const incl = await mfPrices(rows.map((p) => p.id));
     res.json(rows.map((p) => ({
       id: p.id, name: p.name, code: p.default_code || "", barcode: p.barcode || "",
       price: p.list_price, qty: p.qty_available, uom: m2o(p.uom_id)?.name || "",
+      // ما يدفعه العميل في لينك ماي فاتورة (شامل الضريبة) — من أودو نفسه
+      price_incl: incl[String(p.id)] ?? null,
     })));
   } catch (e) { next(e); }
 });
@@ -170,6 +173,55 @@ r.post("/api/sales/orders/:id/send-link", async (req, res, next) => {
     }
     const waUrl = `https://wa.me/${to.replace(/\D/g, "")}?text=${encodeURIComponent(msg)}`;
     res.json({ sent, error, link, message: msg, waUrl, gateway: waConfigured() });
+  } catch (e) { next(e); }
+});
+
+// ───────────────────────── لينكات دفع ماي فاتورة ─────────────────────────
+//   الفاتورة تُنشأ في أودو (تطبيق «ماي فاتورة») بمنتجاتها، فيصل العميلَ لينكُ ماي فاتورة المعتاد
+//   بالأصناف والمبلغ ويدفع مباشرة. وبعد الدفع: قيد الإيراد وأمر التسليم من المخزن في أودو تلقائيًا.
+//   الدوال في أودو (mf_app_*) تعمل لمن له صلاحية المبيعات، وتقتصر على فواتير التطبيقات.
+const MF = "myfatoorah.payment";
+
+// أسعار شاملة الضريبة من أودو؛ وقبل ترقية موديول ماي فاتورة: فارغة (الواجهة تعرض السعر الأساسي).
+async function mfPrices(ids) {
+  if (!ids.length) return {};
+  try { return (await execKw(MF, "mf_app_prices", [ids])) || {}; } catch { return {}; }
+}
+
+function mfMessage(inv) {
+  const items = (inv.lines || []).map((l) => `• ${l.name} × ${l.qty} = ${Number(l.subtotal).toFixed(2)} ر.س`).join("\n");
+  return `السلام عليكم ${inv.partner || ""}\n`
+    + `فاتورتكم من بيت العباءة الشرقية رقم ${inv.invoice_id}:\n${items}\n`
+    + `الإجمالي: ${Number(inv.amount).toFixed(2)} ر.س (شامل الضريبة)\n`
+    + `للدفع الآمن عبر ماي فاتورة (مدى، فيزا، أبل باي):\n${inv.url}`;
+}
+
+r.post("/api/sales/mf-links", async (req, res, next) => {
+  try {
+    const { partner_id, lines, note } = req.body || {};
+    if (!partner_id) return res.status(400).json({ error: "اختر العميل" });
+    if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "أضف منتجًا واحدًا على الأقل" });
+    const clean = lines.map((l) => ({
+      product_id: num(l.product_id), qty: Math.max(1, num(l.qty, 1)),
+      price_unit: l.price_unit == null || l.price_unit === "" ? null : num(l.price_unit),
+    }));
+    const inv = await execKw(MF, "mf_app_create_link", [num(partner_id), clean], { note: note ? String(note) : false });
+    res.json({ ...inv, message: mfMessage(inv) });
+  } catch (e) { next(e); }
+});
+
+r.get("/api/sales/mf-links", async (req, res, next) => {
+  try {
+    const limit = Math.min(num(req.query.limit, 30), 100);
+    res.json(await execKw(MF, "mf_app_list", [], { limit }));
+  } catch (e) { next(e); }
+});
+
+// تفاصيل الفاتورة؛ ?refresh=1 يحدّث حالة الدفع من ماي فاتورة الآن (قراءة فقط)
+r.get("/api/sales/mf-links/:id", async (req, res, next) => {
+  try {
+    const inv = await execKw(MF, "mf_app_get", [num(req.params.id)], { refresh: req.query.refresh === "1" });
+    res.json({ ...inv, message: mfMessage(inv) });
   } catch (e) { next(e); }
 });
 
