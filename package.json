@@ -1,6 +1,6 @@
 {
   "name": "sharqia-employee-portal-backend",
-  "version": "3.45.1",
+  "version": "3.46.0",
   "description": "Backend حقيقي لبوابة موظفي بيت العباءة الشرقية — تكامل Odoo 19 + مصادقة محلية",
   "type": "module",
   "main": "src/server.js",
