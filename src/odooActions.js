@@ -4511,7 +4511,7 @@ const actions = {
         // ملفٌّ مفتوحٌ لصاحبه: لا يُفتح ثانٍ فوقه — تصحيحان متوازيان على
         // سجلٍّ واحد يتدافعان، ولا يُعرف أيُّهما الأخير.
         const [open] = await odoo.searchRead("sharqia.employee.intake",
-          [["employee_id", "=", empId], ["state", "in", ["submitted", "hr_ok"]]],
+          [["employee_id", "=", empId], ["state", "in", ["submitted", "corrected", "hr_ok"]]],
           ["name", "state"], { limit: 1 });
         return {
           pending: open ? { ref: open.name, state: open.state } : null,
@@ -4548,7 +4548,7 @@ const actions = {
       async () => {
         if (!empId) throw new Error("حسابك غير مربوط بملفٍّ وظيفي");
         const [open] = await odoo.searchRead("sharqia.employee.intake",
-          [["employee_id", "=", empId], ["state", "in", ["submitted", "hr_ok"]]],
+          [["employee_id", "=", empId], ["state", "in", ["submitted", "corrected", "hr_ok"]]],
           ["name"], { limit: 1 });
         if (open) throw new Error(`لك ملفٌّ قيد المراجعة (${open.name}) — انتظر البتّ فيه.`);
         const vals = { ...(params?.vals || {}), employee_id: empId };
