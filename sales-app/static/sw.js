@@ -2,7 +2,7 @@
 //   • الصفحة: من الشبكة أولًا (فيصل كل تحديث فورًا)، ومن الكاش إن انقطع النت.
 //   • الملفات الثابتة والخطوط: من الكاش أولًا.
 //   • /api/*: من الشبكة دائمًا — لا تُخزَّن بيانات الفواتير والأسعار أبدًا.
-const VERSION = "sales-3.46.0";
+const VERSION = "sales-3.48.0";
 const SHELL = ["/", "/static/logo.png", "/static/emblem.png", "/static/icons/icon-192.png",
   "/static/manifest.webmanifest"];
 

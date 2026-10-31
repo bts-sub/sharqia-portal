@@ -128,6 +128,10 @@ r.get("/api/sales/products", run(async (req, res) => {
   const q = String(req.query.q || "").trim();
   const limit = Math.min(num(req.query.limit, 40), 100);
   const offset = Math.max(num(req.query.offset, 0), 0);
+  // ?scope=pos: منتجات نقطة بيع الموظف بكميات مخزونها (أودو يحدّد نقطته من جلسته)
+  if (req.query.scope === "pos") {
+    return res.json(await execKw(APP, "app_pos_products", [req.appToken, q, limit, offset, req.query.stock === "1"]));
+  }
   const domain = [["sale_ok", "=", true], ["type", "!=", "service"]];
   if (q) domain.push("|", "|", ["name", "ilike", q], ["default_code", "ilike", q], ["barcode", "ilike", q]);
   const rows = await searchRead("product.product", domain, PRODUCT_FIELDS,
@@ -139,6 +143,7 @@ r.get("/api/sales/products", run(async (req, res) => {
 r.get("/api/sales/products/by-code/:code", run(async (req, res) => {
   const code = String(req.params.code || "").trim();
   if (!code) throw badRequest("الكود فارغ");
+  if (req.query.scope === "pos") return res.json(await execKw(APP, "app_pos_product_by_code", [req.appToken, code]));
   const rows = await searchRead("product.product",
     [["sale_ok", "=", true], "|", ["barcode", "=", code], ["default_code", "=", code]], PRODUCT_FIELDS, { limit: 2 });
   if (!rows.length) return res.status(404).json({ error: `لا منتج بهذا الكود: ${code}` });
@@ -164,19 +169,21 @@ r.get("/api/sales/products/:id/image", async (req, res, next) => {
 });
 
 // ───────────────────────── العملاء ─────────────────────────
+// أودو يقصر القائمة: الخارجي يراه بائعه فقط، والداخلي (زبون المعرض) لا يكشف عملاء بائعٍ آخر.
 r.get("/api/sales/customers", run(async (req, res) => {
   const q = String(req.query.q || "").trim();
   const limit = Math.min(num(req.query.limit, 30), 100);
-  const domain = [];
-  if (q) domain.push("|", ["name", "ilike", q], ["phone", "ilike", q]);
-  const rows = await searchRead("res.partner", domain, ["name", "phone", "email", "city"], { limit, order: "name" });
-  res.json(rows.map((p) => ({ id: p.id, name: p.name, phone: p.phone || "", email: p.email || "", city: p.city || "" })));
+  const scope = req.query.scope === "internal" ? "internal" : "external";
+  res.json(await execKw(APP, "app_customers", [req.appToken, q, scope, limit]));
 }));
 
+// بيانات الجواز تصل نصًّا فقط: الصورة تُقرأ على جوال البائع ولا تُرفع.
 r.post("/api/sales/customers", run(async (req, res) => {
-  const { name, phone, email, city } = req.body || {};
+  const { name, phone, email, city, passport_no, nationality, birthdate, passport_expiry, gender, scope } = req.body || {};
   if (!name || !String(name).trim()) throw badRequest("اسم العميل مطلوب");
-  res.json(await execKw(APP, "app_create_customer", [req.appToken, { name, phone, email, city }]));
+  res.json(await execKw(APP, "app_create_customer", [req.appToken,
+    { name, phone, email, city, passport_no, nationality, birthdate, passport_expiry, gender },
+    scope === "internal" ? "internal" : "external"]));
 }));
 
 // ───────────────────────── الشحن ─────────────────────────
@@ -219,6 +226,64 @@ r.get("/api/sales/mf-links", run(async (req, res) => {
 r.get("/api/sales/mf-links/:id", run(async (req, res) => {
   const inv = await execKw(APP, "app_get", [req.appToken, num(req.params.id), req.query.refresh === "1"]);
   res.json({ ...inv, message: mfMessage(inv) });
+}));
+
+// ───────────────────────── طلبات عملاء المعرض (إلى كاشير نقطة البيع) ─────────────────────────
+//   أودو يفرض كل شيء من جلسة الموظف: نقطته، وأقسام فرعه، وأصنافه هو فقط.
+const orderLines = (lines) => (Array.isArray(lines) ? lines : []).map((l) => ({
+  product_id: num(l.product_id), qty: Math.max(1, num(l.qty, 1)),
+  price_unit: l.price_unit == null || l.price_unit === "" ? null : num(l.price_unit),
+}));
+
+r.get("/api/sales/pos-orders", run(async (req, res) => {
+  res.json(await execKw(APP, "app_order_list", [req.appToken, String(req.query.box || "open"), Math.min(num(req.query.limit, 40), 100)]));
+}));
+r.get("/api/sales/pos-orders/counts", run(async (req, res) => {
+  res.json(await execKw(APP, "app_order_counts", [req.appToken]));
+}));
+r.post("/api/sales/pos-orders", run(async (req, res) => {
+  const { partner_id, lines, note } = req.body || {};
+  res.json(await execKw(APP, "app_order_create", [req.appToken, num(partner_id) || false, orderLines(lines), note ? String(note) : false]));
+}));
+r.get("/api/sales/pos-orders/:id", run(async (req, res) => {
+  res.json(await execKw(APP, "app_order_get", [req.appToken, num(req.params.id)]));
+}));
+r.put("/api/sales/pos-orders/:id", run(async (req, res) => {
+  const { partner_id, lines, note } = req.body || {};
+  res.json(await execKw(APP, "app_order_save", [req.appToken, num(req.params.id), orderLines(lines),
+    partner_id === undefined ? null : (num(partner_id) || false), note === undefined ? null : String(note || "")]));
+}));
+// إجراءات الطلب: كل واحدٍ يقابل دالة في أودو تتحقّق من الصلاحية بنفسها
+const ORDER_ACTIONS = { open: "app_order_open", release: "app_order_release", receive: "app_order_receive",
+  cashier: "app_order_send_cashier", recall: "app_order_recall" };
+r.post("/api/sales/pos-orders/:id/:action(open|release|receive|cashier|recall)", run(async (req, res) => {
+  res.json(await execKw(APP, ORDER_ACTIONS[req.params.action], [req.appToken, num(req.params.id)]));
+}));
+r.post("/api/sales/pos-orders/:id/transfer", run(async (req, res) => {
+  res.json(await execKw(APP, "app_order_transfer", [req.appToken, num(req.params.id), num((req.body || {}).pos_config_id)]));
+}));
+r.post("/api/sales/pos-orders/:id/cancel", run(async (req, res) => {
+  const reason = String((req.body || {}).reason || "").trim();
+  res.json(await execKw(APP, "app_order_cancel", [req.appToken, num(req.params.id), reason || false]));
+}));
+
+// ───────────────────────── لوحة مبيعات الموظف ─────────────────────────
+r.get("/api/sales/dashboard", run(async (req, res) => {
+  res.json(await execKw(APP, "app_dashboard", [req.appToken, String(req.query.period || "month"), num(req.query.user) || false]));
+}));
+
+// ───────────────────────── استلام مخزن الفرع واعتماد الجودة (المشرف) ─────────────────────────
+r.get("/api/sales/receipts", run(async (req, res) => {
+  res.json(await execKw(APP, "app_receipts", [req.appToken]));
+}));
+r.get("/api/sales/receipts/:id", run(async (req, res) => {
+  res.json(await execKw(APP, "app_receipt_get", [req.appToken, num(req.params.id)]));
+}));
+r.post("/api/sales/receipts/:id/approve", run(async (req, res) => {
+  const { lines, note, close } = req.body || {};
+  if (!Array.isArray(lines) || !lines.length) throw badRequest("راجع الأصناف أولًا");
+  const clean = lines.map((l) => ({ move_id: num(l.move_id), received: num(l.received), rejected: num(l.rejected), note: String(l.note || "") }));
+  res.json(await execKw(APP, "app_receipt_approve", [req.appToken, num(req.params.id), clean, note ? String(note) : false, !!close]));
 }));
 
 // ───────────────────────── عروض الأسعار (أودو) — لمن له صلاحيتها ─────────────────────────
