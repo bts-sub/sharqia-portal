@@ -417,6 +417,7 @@
   var note = "";
   var invFilter = "all";
   var boxFilter = "incoming";
+  var boxReq = 0;     // أحدث طلب صندوق: ردٌّ متأخّر من تبويبٍ سابق لا يكتب فوق الحالي
   function can(p){ return !!(me && me.perms && me.perms[p]); }
   function isInt(){ return mode === "int"; }
   function scopeQ(sep){ return isInt() ? sep + "scope=pos" : ""; }
@@ -1031,7 +1032,7 @@
       };
       if ($("#del")) $("#del").onclick = function(){
         if (!confirm("حذف المسودّة " + o.name + " نهائيًا؟")) return;
-        api("/orders/" + id, {method: "DELETE"}).then(function(){ toast("حُذفت المسودّة"); screenOrders(); }).catch(function(e){ toast(e.message); });
+        api("/orders/" + id, {method: "DELETE"}).then(function(d){ toast(d.canceled ? "أُلغي عرض السعر" : "حُذفت المسودّة"); screenOrders(); }).catch(function(e){ toast(e.message); });
       };
     }).catch(function(e){ main.innerHTML = '<div class="empty"><b>تعذّر</b>' + esc(e.message) + '</div>'; });
   }
@@ -1142,8 +1143,9 @@
     $("#rf").onclick = screenInternal;
     $$("#seg button").forEach(function(b){ b.classList.toggle("on", b.getAttribute("data-b") === boxFilter);
       b.onclick = function(){ boxFilter = b.getAttribute("data-b"); screenInternal(); }; });
+    var req = ++boxReq;
     api("/pos-orders?box=" + boxFilter).then(function(rows){
-      var wrap = $("#boxWrap"); if (!wrap) return;
+      var wrap = $("#boxWrap"); if (!wrap || req !== boxReq) return;
       if (!rows.length){ wrap.innerHTML = '<div class="empty">' + ICON.receipt + '<b>لا طلبات هنا</b>' + (boxFilter === "incoming" ? "ما يحوّله زملاؤك لقسمك يظهر هنا." : "") + '</div>'; return; }
       wrap.innerHTML = '<div class="list">' + rows.map(function(o){
         var who = o.partner ? o.partner.name : "عميل معرض";
@@ -1153,7 +1155,7 @@
           + '<div style="text-align:left"><div class="amt num">' + money(o.amount) + '</div><div style="margin-top:4px">' + pill(PO, o.state) + '</div></div></div>';
       }).join("") + '</div>';
       $$("[data-po]").forEach(function(el){ el.onclick = function(){ screenPosOrder(+el.getAttribute("data-po")); }; });
-    }).catch(function(e){ if ($("#boxWrap")) $("#boxWrap").innerHTML = '<div class="empty"><b>تعذّر الجلب</b>' + esc(e.message) + '</div>'; });
+    }).catch(function(e){ if (req === boxReq && $("#boxWrap")) $("#boxWrap").innerHTML = '<div class="empty"><b>تعذّر الجلب</b>' + esc(e.message) + '</div>'; });
   }
   function posLinesHtml(o){
     var groups = [];

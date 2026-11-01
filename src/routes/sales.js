@@ -289,6 +289,26 @@ r.post("/api/sales/receipts/:id/approve", run(async (req, res) => {
 // ───────────────────────── عروض الأسعار (أودو) — لمن له صلاحيتها ─────────────────────────
 const quote = perm("create_quotation");
 
+// عرض السعر لا يمرّ بأودو، فتُفرض هنا قاعدة لينك الدفع نفسها: التعديل بصلاحية، والخصم بحدّه الأقصى.
+async function checkQuotePrices(lines, perms) {
+  const ids = [...new Set(lines.map((l) => num(l.product_id)))];
+  const rows = await searchRead("product.product", [["id", "in", ids]], ["display_name", "list_price"]);
+  const byId = new Map(rows.map((p) => [p.id, p]));
+  for (const l of lines) {
+    if (l.price_unit == null || l.price_unit === "") continue;
+    const p = byId.get(num(l.product_id));
+    if (!p) throw badRequest("منتجٌ غير متاح للبيع في الطلب");
+    const price = num(l.price_unit);
+    if (price < 0) throw badRequest(`سعر «${p.display_name}» لا يكون سالبًا`);
+    if (Math.abs(price - p.list_price) < 0.006) continue;   // الواجهة تقرّب السعر لرقمين
+    if (!perms.edit_price) throw forbidden(`لا صلاحية لك لتعديل سعر «${p.display_name}»`);
+    const floor = Math.round(p.list_price * (1 - perms.max_discount / 100) * 100) / 100;
+    if (price < floor - 0.006) {
+      throw badRequest(`أقصى خصمٍ مسموح لك ${perms.max_discount}% — أقل سعر لـ«${p.display_name}» هو ${floor}`);
+    }
+  }
+}
+
 r.get("/api/sales/orders", quote, run(async (req, res) => {
   const limit = Math.min(num(req.query.limit, 25), 50);
   const rows = await searchRead("sale.order", [], ["name", "partner_id", "state", "amount_total", "date_order"], { limit, order: "id desc" });
@@ -314,6 +334,7 @@ r.post("/api/sales/orders", quote, run(async (req, res) => {
   const { partner_id, lines, note } = req.body || {};
   if (!partner_id) throw badRequest("اختر العميل");
   if (!Array.isArray(lines) || !lines.length) throw badRequest("أضف منتجًا واحدًا على الأقل");
+  await checkQuotePrices(lines, req.appUser.perms);
   const order_line = lines.map((l) => {
     const vals = { product_id: num(l.product_id), product_uom_qty: num(l.qty, 1) || 1 };
     if (l.price_unit != null && l.price_unit !== "") vals.price_unit = num(l.price_unit);
@@ -343,14 +364,19 @@ r.get("/api/sales/orders/:id/payment-link", quote, run(async (req, res) => {
   res.json({ url: ODOO_BASE + rel, amount_total: o.amount_total, name: o.name, state: o.state, partner: m2o(o.partner_id), phone });
 }));
 
-// حذف مسودّة (لا يحذف طلبًا مؤكَّدًا)
+// حذف مسودّة (لا يحذف طلبًا مؤكَّدًا). أودو يقصر الحذف على مدير المبيعات، ومستخدم الخدمة قد يكون
+// مندوبًا: عندها يُلغى العرض بدل حذفه.
 r.delete("/api/sales/orders/:id", quote, run(async (req, res) => {
   const id = num(req.params.id);
   const o = (await searchRead("sale.order", [["id", "=", id]], ["state"]))[0];
   if (!o) return res.status(404).json({ error: "الطلب غير موجود" });
   if (!["draft", "sent", "cancel"].includes(o.state)) throw badRequest("لا يمكن حذف طلب مؤكَّد — ألغِه من أودو");
-  await unlink("sale.order", [id]);
-  res.json({ ok: true });
+  if (await execKw("sale.order", "has_access", [[id], "unlink"])) {
+    await unlink("sale.order", [id]);
+    return res.json({ ok: true });
+  }
+  await callButton("sale.order", "action_cancel", [id]);
+  res.json({ ok: true, canceled: true });
 }));
 
 export default r;
