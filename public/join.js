@@ -658,7 +658,11 @@
   // حجمَه — لا يُترك ليُرفع فينقطع في منتصفه فيظنّ صاحبُه العطبَ عندنا.
   var FILE_MAX = 10 * 1024 * 1024;
   var TOTAL_MAX = 40 * 1024 * 1024;   // واسعٌ: كلُّ ملفٍّ يُرفع وحده فلا ينقطع
-  var state = { data: {}, files: {}, step: 0, ack: false, sign: "" };
+  // ⚠️ `have` غيرُ `files`: الأوّلُ ما هو محفوظٌ في أودو من إرسالٍ سابق
+  //   (اسمُه وحجمُه، لا بايتاتُه)، والثاني ما اختاره الآن من جهازه.
+  //   ومن خلطهما حسب المحفوظَ مرفوعًا فأرسل طلبًا بلا ملفّ، أو حسب
+  //   المختارَ محفوظًا فلم يرفعه.
+  var state = { data: {}, files: {}, have: {}, step: 0, ack: false, sign: "" };
   var dirty = false;
   var SENT = null;   // ملفٌّ سبق إرساله من هذا الجهاز: { ref, at }
   // أقسامُ المنشأة ومسمّياتها — تُجلب مرّةً وتُملأ بها القوائم
@@ -669,7 +673,11 @@
   // ويضيع ما كُتب. تبقى في الذاكرة حتى الإرسال.
   function save() {
     try {
-      localStorage.setItem(LS, JSON.stringify({ data: state.data, step: state.step, at: Date.now() }));
+      // ⚠️ و«المحفوظُ سابقًا» يُحفظ معها: بايتاتُه ليست هنا، وإنّما اسمُه
+      //   وحجمُه — ومن أعاد تحميل الصفحة بلا الرمز كان يفقد علمَه بها
+      //   فتُطلب المستنداتُ من جديد، وهي عينُ ما نُصلحه.
+      localStorage.setItem(LS, JSON.stringify({
+        data: state.data, have: state.have, step: state.step, at: Date.now() }));
       var n = $("#saveNote"); if (n) n.textContent = t("saved");
     } catch (e) { /* التخزين ممتلئ أو محظور — لا يُوقف التعبئة */ }
   }
@@ -681,6 +689,7 @@
       if (!o || !o.data) return false;
       if (Date.now() - (o.at || 0) > 30 * 864e5) { localStorage.removeItem(LS); return false; }
       state.data = o.data; state.step = Math.min(o.step || 0, SEC.length - 1);
+      state.have = (o.have && typeof o.have === "object") ? o.have : {};
       SENT = o.sent || null;
       return Object.keys(o.data).length > 0;
     } catch (e) { return false; }
@@ -822,16 +831,20 @@
   }
   function secDone(s) {
     if (s.review) return state.ack;
-    if (s.sign) return !!state.files.signature;
-    if (s.files) return (s.files || []).every(function (f) { return !f.req || state.files[f.k]; });
+    if (s.sign) return !!(state.files.signature || state.have.signature);
+    if (s.files) return (s.files || []).every(function (f) {
+      return !f.req || state.files[f.k] || state.have[f.k];
+    });
     return fieldsOf(s).every(function (f) { return !fieldError(f); });
   }
   function percent() {
     var all = [], done = 0;
     SEC.forEach(function (s) {
       fieldsOf(s).forEach(function (f) { all.push(!!(state.data[f.k] || "").toString().trim()); });
-      (s.files || []).forEach(function (f) { all.push(!!state.files[f.k]); });
-      if (s.sign) all.push(!!state.files.signature);
+      (s.files || []).forEach(function (f) {
+        all.push(!!(state.files[f.k] || state.have[f.k]));
+      });
+      if (s.sign) all.push(!!(state.files.signature || state.have.signature));
     });
     all.forEach(function (x) { if (x) done++; });
     return all.length ? Math.round((done / all.length) * 100) : 0;
@@ -1270,16 +1283,30 @@
   }
 
   function fileNode(f) {
-    var box = el("div", { class: "file" + (state.files[f.k] ? " has" : "") });
+    var kept = !state.files[f.k] && state.have[f.k] ? state.have[f.k] : null;
+    var box = el("div", { class: "file" + (state.files[f.k] || kept ? " has" : "") });
     var pick = el("input", { type: "file", class: "pick",
       accept: f.k === "photo" ? "image/*" : "image/*,application/pdf" });
     var top = el("div", { class: "top" }, [
       el("span", { class: "nm", html: "<span>" + (lk(f)) + (f.req ? " <em style='color:var(--bad)'>*</em>" : "")
-        + "</span><small>" + (state.files[f.k]
+        + "</span><small>" + (state.files[f.k] || kept
             ? (L === "ar" ? "اضغط للاستبدال" : "Tap to replace")
             : (L === "ar" ? "اضغط للاختيار — حتى ١٠ ميجابايت" : "Tap to choose — up to 10 MB")) + "</small>" }),
     ]);
     box.appendChild(pick); box.appendChild(top);
+
+    // ⚠️ المحفوظُ يُعرض ولا يُطلب: هو في ملفّك عند الموارد البشرية كما
+    //   أرسلتَه، ولا يُعاد رفعُه إلا إن أردتَ تبديلَه. وبطاقتُه بلا زرّ
+    //   «حذف»: حذفُه هنا لا يحذفه هناك، فيُوهم بما لم يقع.
+    if (kept) {
+      box.appendChild(el("div", { class: "meta" }, [
+        el("span", { class: "thumb", text: "🗂" }),
+        el("span", { class: "fi", html: "<b>" + String(kept.name || "").replace(/[<>&]/g, "")
+          + "</b><span>" + (kept.size ? human(kept.size) + " · " : "")
+          + (L === "ar" ? "محفوظٌ من إرسالك السابق ✓" : "kept from your earlier submission ✓")
+          + "</span>" }),
+      ]));
+    }
 
     var got = state.files[f.k];
     if (got) {
@@ -1646,7 +1673,9 @@
       return false;
     }
     if (s.files) {
-      var missing = (s.files || []).filter(function (f) { return f.req && !state.files[f.k]; });
+      var missing = (s.files || []).filter(function (f) {
+        return f.req && !state.files[f.k] && !state.have[f.k];
+      });
       if (missing.length) {
         msg("bad", (L === "ar" ? "مرفقٌ مطلوب: " : "Required attachment: ")
           + missing.map(function (f) { return lk(f); }).join("، "));
@@ -1690,7 +1719,9 @@
       var s = SEC[i];
       if (s.review) continue;
       var bad = fieldsOf(s).filter(function (f) { return fieldError(f); });
-      var noFile = (s.files || []).filter(function (f) { return f.req && !state.files[f.k]; });
+      var noFile = (s.files || []).filter(function (f) {
+        return f.req && !state.files[f.k] && !state.have[f.k];
+      });
       if (bad.length || noFile.length || (s.sign && !signed())) {
         go(i);
         msg("bad", L === "ar" ? "أكمل هذا القسم قبل الإرسال." : "Complete this section first.");
@@ -1876,11 +1907,18 @@
       state.data.name_first = p[0] || ""; state.data.name_father = p[1] || "";
       state.data.name_grand = p[2] || ""; state.data.name_family = p.slice(3).join(" ") || "";
     }
+    // المرفقاتُ المحفوظةُ في أودو: اسمُها وحجمُها، لا بايتاتُها
+    state.have = (j.files && typeof j.files === "object") ? j.files : {};
     SENT = { ref: j.ref || "", at: Date.now() };
     save();
     startWizard();
+    var nKept = Object.keys(state.have).length;
     msg("bad", (L === "ar" ? "ملفُّك " + (j.ref || "") + " أُعيد للتصحيح: " : "Returned: ")
-      + (j.reason || "") + (L === "ar" ? " — صحّح ما ذُكر وأعد الإرسال (وأعد إرفاق المستندات)." : ""));
+      + (j.reason || "")
+      + (L !== "ar" ? "" : nKept
+          ? " — صحّح ما ذُكر وأعد الإرسال. ومرفقاتُك محفوظةٌ (" + nKept
+            + ") فلا تُعدها إلا لتبديلها."
+          : " — صحّح ما ذُكر وأعد الإرسال."));
     return true;
   }
 
@@ -2043,7 +2081,7 @@
         onclick: function () {
           if (!window.confirm("سيُمسح ما كتبتَه على هذا الجهاز ويبدأ الملفُّ من أوّله. متأكّد؟")) return;
           try { localStorage.removeItem(LS); } catch (e) {}
-          state.data = {}; state.files = {}; state.sign = ""; state.ack = false; state.step = 0;
+          state.data = {}; state.files = {}; state.have = {}; state.sign = ""; state.ack = false; state.step = 0;
           dirty = false;
           location.reload();
         } }),
