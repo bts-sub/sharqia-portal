@@ -842,7 +842,7 @@
     var pass = null;     // ما قُرئ من الجواز
     var ov = sheet("عميل جديد",
       '<label class="btn dark" style="margin-bottom:6px">' + ICON.id + ' مسح جواز السفر<input id="pf" type="file" accept="image/*" capture="environment" hidden></label>'
-      + '<div class="muted" style="margin-bottom:12px;text-align:center">تُقرأ الصورة على جوالك ولا تُرفع ولا تُحفظ.</div><div id="pbox"></div>'
+      + '<div class="muted" style="margin-bottom:12px;text-align:center">تُرسل الصورة لقراءتها فقط ولا تُحفظ.</div><div id="pbox"></div>'
       + '<div style="margin-bottom:12px"><div class="lbl">الاسم *</div><input id="n" autocomplete="name"></div>'
       + '<div style="margin-bottom:12px"><div class="lbl">الجوال</div><input id="p" dir="ltr" style="text-align:right" inputmode="tel" placeholder="05xxxxxxxx"></div>'
       + '<div style="margin-bottom:12px"><div class="lbl">البريد</div><input id="e" dir="ltr" style="text-align:right" inputmode="email"></div>'
@@ -851,7 +851,7 @@
     $("#pf", ov).onchange = function(){
       var file = this.files && this.files[0]; this.value = ""; if (!file) return;
       var box = $("#pbox", ov), saveBtn = $("#save", ov);
-      box.innerHTML = '<div class="pass-box warn" id="pstat">جارٍ تجهيز القارئ…</div>'; saveBtn.disabled = true; pass = null;
+      box.innerHTML = '<div class="pass-box warn" id="pstat">جارٍ تجهيز الصورة…</div>'; saveBtn.disabled = true; pass = null;
       readPassport(file, function(msg){ var s = $("#pstat", ov); if (s) s.textContent = msg; }).then(function(m){
         pass = m; $("#n", ov).value = m.name;
         var expired = m.passport_expiry && m.passport_expiry < new Date().toISOString().slice(0, 10);
@@ -1335,109 +1335,33 @@
   }
 
   // ════════════ قراءة جواز السفر ════════════
-  // تُقرأ الصورة هنا على الجوال (tesseract.js) ولا تصل الخادم: يرسل التطبيق نتيجة القراءة نصًّا فقط.
-  // السطران السفليان في الجواز (MRZ) لهما أرقام تحقّق، فالقراءة الخاطئة تُرفض ولا تُسجَّل.
-  var OCR = {js: "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js",
-    worker: "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js",
-    core: "https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1",
-    lang: "https://cdn.jsdelivr.net/gh/DoubangoTelecom/tesseractMRZ@master/tessdata_best"};
-  var ocrLib = null, ocrWorker = null;
-  function loadOcr(say){
-    if (ocrWorker) return Promise.resolve(ocrWorker);
-    if (!ocrLib) ocrLib = new Promise(function(ok, fail){
-      var s = document.createElement("script"); s.src = OCR.js; s.onload = ok;
-      s.onerror = function(){ ocrLib = null; fail(new Error("تعذّر تحميل قارئ الجواز — تحقّق من الإنترنت")); };
-      document.head.appendChild(s);
+  // الصورة تُصغَّر هنا ثم يقرؤها أودو (خدمة OCR + أرقام تحقّق سطري MRZ) ويعيد البيانات نصًّا.
+  // لا تُحفظ الصورة؛ والقراءة غير المؤكَّدة تُرفض فيكتب البائع البيانات يدويًا.
+  // ⚠️ خدمة OCR المجانية لا تقبل صورةً فوق 1MB: تُصغَّر حتى تنزل تحته.
+  function shrinkImage(file){
+    return new Promise(function(ok, fail){
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function(){
+        URL.revokeObjectURL(url);
+        var tries = [[1800, .85], [1400, .8], [1100, .75]], out = "";
+        for (var i = 0; i < tries.length; i++){
+          var s = Math.min(1, tries[i][0] / Math.max(img.naturalWidth, img.naturalHeight));
+          var c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+          c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+          out = c.toDataURL("image/jpeg", tries[i][1]).split(",")[1];
+          if (out.length < 1300000) break;
+        }
+        ok(out);
+      };
+      img.onerror = function(){ URL.revokeObjectURL(url); fail(new Error("تعذّر فتح الصورة")); };
+      img.src = url;
     });
-    return ocrLib.then(function(){
-      say("أول مرة فقط: تنزيل قارئ الجواز…");
-      // ⚠️ المكتبة تبلع خطأ تحميل بيانات القراءة فيبقى الوعد معلّقًا للأبد؛ errorHandler والمهلة يُنهيانه.
-      return new Promise(function(ok, fail){
-        var failed = function(){ clearTimeout(timer); fail(new Error("تعذّر تحميل قارئ الجواز — تحقّق من الإنترنت وحاول مرة أخرى، أو اكتب البيانات يدويًا.")); };
-        var timer = setTimeout(failed, 180000);
-        window.Tesseract.createWorker("mrz", 1, {workerPath: OCR.worker, corePath: OCR.core, langPath: OCR.lang, gzip: false, errorHandler: failed})
-          .then(function(w){ clearTimeout(timer); ok(w); }, failed);
-      });
-    }).then(function(w){ return w.setParameters({tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<", tessedit_pageseg_mode: "6"}).then(function(){ ocrWorker = w; return w; }); });
-  }
-  function mrzDigit(s){
-    return s.split("").reduce(function(sum, c, i){
-      var v = c === "<" ? 0 : (c >= "0" && c <= "9") ? +c : c.charCodeAt(0) - 55;
-      return sum + v * [7, 3, 1][i % 3];
-    }, 0) % 10;
-  }
-  var TO_DIGIT = {O: "0", Q: "0", D: "0", I: "1", L: "1", Z: "2", S: "5", G: "6", B: "8"};
-  var TO_ALPHA = {"0": "O", "1": "I", "2": "Z", "5": "S", "6": "G", "8": "B"};
-  function digits(s){ return s.split("").map(function(c){ return TO_DIGIT[c] || c; }).join(""); }
-  function letters(s){ return s.split("").map(function(c){ return TO_ALPHA[c] || c; }).join(""); }
-  function mrzDate(s, future){
-    var yy = +s.slice(0, 2), now = new Date().getFullYear() % 100;
-    var full = (future ? 2000 + yy : (yy > now ? 1900 + yy : 2000 + yy));
-    return full + "-" + s.slice(2, 4) + "-" + s.slice(4, 6);
-  }
-  // نص القارئ ← بيانات الجواز، أو null إن لم تتطابق أرقام التحقّق
-  function parseMrz(text){
-    var lines = String(text || "").toUpperCase().split(/\n+/).map(function(l){ return l.replace(/[^A-Z0-9<]/g, ""); }).filter(function(l){ return l.length >= 28; });
-    for (var i = 1; i < lines.length; i++){
-      var l1 = lines[i - 1], l2 = (lines[i] + "<".repeat(44)).slice(0, 44);
-      var at = l1.indexOf("P<"); if (at > 0 && at < 4) l1 = l1.slice(at);   // ضجيجٌ قبل بداية السطر
-      if (l1.charAt(0) !== "P") continue;
-      var no = l2.slice(0, 9), noChk = digits(l2.charAt(9)), dob = digits(l2.slice(13, 19)), dobChk = digits(l2.charAt(19)),
-        exp = digits(l2.slice(21, 27)), expChk = digits(l2.charAt(27));
-      if (!/^\d{6}$/.test(dob) || !/^\d{6}$/.test(exp)) continue;
-      if (mrzDigit(dob) !== +dobChk || mrzDigit(exp) !== +expChk) continue;
-      if (mrzDigit(no) !== +noChk){ no = digits(no); if (mrzDigit(no) !== +noChk) continue; }
-      var names = letters(l1.slice(5)).replace(/<+$/, "").split("<<");
-      var clean = function(s){ return String(s || "").split("<").filter(Boolean).join(" "); };
-      var surname = clean(names[0]), given = clean(names[1]);
-      if (!surname && !given) continue;
-      var sex = l2.charAt(20);
-      return {name: (given + " " + surname).trim(), surname: surname, given: given, passport_no: no.replace(/</g, ""),
-        nationality: letters(l2.slice(10, 13)).replace(/</g, ""), birthdate: mrzDate(dob, false), passport_expiry: mrzDate(exp, true),
-        gender: sex === "F" || sex === "M" ? sex : ""};
-    }
-    return null;
-  }
-  // منطقة السطرين: أسفل الصفحة، بعد تدويرها إن صُوّرت طوليًّا؛ وتكبير وتحويل لرمادي بتباينٍ عالٍ
-  function mrzCrop(img, turn, fromTop){
-    var W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
-    var c = document.createElement("canvas"), x = c.getContext("2d");
-    var side = Math.abs(turn) === 90 || turn === 270, tw = side ? H : W, th = side ? W : H;
-    var scale = Math.min(2.5, 2000 / Math.max(tw, 1)), cw = Math.round(tw * scale), ch = Math.round(th * (1 - fromTop) * scale);
-    c.width = cw; c.height = ch;
-    x.translate(cw / 2, Math.round(th * scale * (.5 - fromTop)));
-    x.rotate(turn * Math.PI / 180); x.scale(scale, scale);
-    x.imageSmoothingQuality = "high";
-    x.drawImage(img, -W / 2, -H / 2);
-    var d = x.getImageData(0, 0, cw, ch), p = d.data, lo = 255, hi = 0, i, g;
-    for (i = 0; i < p.length; i += 4){ g = .3 * p[i] + .59 * p[i + 1] + .11 * p[i + 2]; if (g < lo) lo = g; if (g > hi) hi = g; p[i] = g; }
-    var k = 255 / Math.max(hi - lo, 1);
-    for (i = 0; i < p.length; i += 4){ g = (p[i] - lo) * k; p[i] = p[i + 1] = p[i + 2] = g; p[i + 3] = 255; }
-    x.putImageData(d, 0, 0);
-    return c;
   }
   function readPassport(file, say){
-    return loadOcr(say).then(function(worker){
-      return new Promise(function(ok, fail){
-        var url = URL.createObjectURL(file), img = new Image();
-        img.onload = function(){ ok({worker: worker, img: img, url: url}); };
-        img.onerror = function(){ URL.revokeObjectURL(url); fail(new Error("تعذّر فتح الصورة")); };
-        img.src = url;
-      });
-    }).then(function(ctx){
+    say("جارٍ تجهيز الصورة…");
+    return shrinkImage(file).then(function(image){
       say("جارٍ قراءة الجواز…");
-      // [تدوير الصورة، من أين تبدأ منطقة القراءة]: تصوير الجوال مائلٌ قليلًا غالبًا
-      var tries = [[0, .55], [0, .7], [3, .55], [-3, .55], [6, .55], [-6, .55], [0, .3], [90, .55], [270, .55], [180, .55]];
-      var attempt = function(n){
-        if (n >= tries.length){ URL.revokeObjectURL(ctx.url);
-          throw new Error("لم تُقرأ بيانات الجواز — صوّر صفحة البيانات كاملة في إضاءة جيدة وبدون لمعان، أو اكتبها يدويًا."); }
-        return ctx.worker.recognize(mrzCrop(ctx.img, tries[n][0], tries[n][1])).then(function(r){
-          var m = parseMrz(r.data.text);
-          if (m){ URL.revokeObjectURL(ctx.url); return m; }
-          return attempt(n + 1);
-        });
-      };
-      return attempt(0);
+      return api("/passport/read", {method: "POST", body: {image: image}});
     });
   }
 

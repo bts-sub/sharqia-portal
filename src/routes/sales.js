@@ -81,14 +81,15 @@ r.get("/api/sales/health", (req, res) => res.json({ ok: true, odooBase: ODOO_BAS
 
 // ───────────────────────── الدخول ─────────────────────────
 // حدٌّ لكل عنوان IP فوق قفل أودو لكل بائع: يصدّ تجريب أسماء دخولٍ كثيرة.
-const loginHits = new Map();
-function loginLimited(ip) {
+function hitLimited(map, key, max) {
   const now = Date.now(), win = 10 * 60_000;
-  const hits = (loginHits.get(ip) || []).filter((t) => now - t < win);
-  hits.push(now); loginHits.set(ip, hits);
-  if (loginHits.size > 5000) loginHits.delete(loginHits.keys().next().value);
-  return hits.length > 20;
+  const hits = (map.get(key) || []).filter((t) => now - t < win);
+  hits.push(now); map.set(key, hits);
+  if (map.size > 5000) map.delete(map.keys().next().value);
+  return hits.length > max;
 }
+const loginHits = new Map();
+const loginLimited = (ip) => hitLimited(loginHits, ip, 20);
 
 r.post("/api/sales/login", run(async (req, res) => {
   const { login, pin, device } = req.body || {};
@@ -177,13 +178,26 @@ r.get("/api/sales/customers", run(async (req, res) => {
   res.json(await execKw(APP, "app_customers", [req.appToken, q, scope, limit]));
 }));
 
-// بيانات الجواز تصل نصًّا فقط: الصورة تُقرأ على جوال البائع ولا تُرفع.
+// بيانات الجواز تصل نصًّا: الصورة تُقرأ في /passport/read ولا تُحفظ.
 r.post("/api/sales/customers", run(async (req, res) => {
   const { name, phone, email, city, passport_no, nationality, birthdate, passport_expiry, gender, scope } = req.body || {};
   if (!name || !String(name).trim()) throw badRequest("اسم العميل مطلوب");
   res.json(await execKw(APP, "app_create_customer", [req.appToken,
     { name, phone, email, city, passport_no, nationality, birthdate, passport_expiry, gender },
     scope === "internal" ? "internal" : "external"]));
+}));
+
+// ───────────────────────── قراءة جواز السفر ─────────────────────────
+//   صورةٌ مصغّرة من جوال البائع ← أودو يقرؤها (خدمة OCR + أرقام تحقّق MRZ) ويعيد البيانات. الصورة لا تُحفظ.
+//   كل قراءة تستهلك من حصّة خدمة OCR (500 يوميًا في المجانية): حدٌّ لكل بائع كي لا يستنزفها أحد.
+const passportHits = new Map();
+r.post("/api/sales/passport/read", perm("create_customer"), run(async (req, res) => {
+  const image = String((req.body || {}).image || "");
+  if (!image) throw badRequest("صوّر صفحة بيانات الجواز");
+  if (image.length > 1_500_000) throw badRequest("الصورة كبيرة — أعد التصوير");
+  if (hitLimited(passportHits, req.appUser.id, 30)) throw tooMany("قراءات كثيرة — انتظر قليلًا أو اكتب البيانات يدويًا");
+  // ⚠️ أودو قد يسأل خدمة OCR مرّتين: مهلةٌ أطول من المعتاد وأقصر من قطع nginx عند 60 ثانية
+  res.json(await execKw(APP, "app_read_passport", [req.appToken, image], {}, { timeoutMs: 55_000 }));
 }));
 
 // ───────────────────────── الشحن ─────────────────────────

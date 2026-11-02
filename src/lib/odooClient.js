@@ -32,7 +32,7 @@ function describeNetError(e, url) {
   return new Error(`تعذّر الوصول إلى خادم Odoo (${url}): ${why}${code ? ` [${code}]` : ""}`);
 }
 
-async function rpcTo(url, service, method, args) {
+async function rpcTo(url, service, method, args, timeoutMs) {
   if (!url) throw new Error("عنوان خادم Odoo غير مضبوط");
   let res;
   try {
@@ -40,7 +40,7 @@ async function rpcTo(url, service, method, args) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: { service, method, args }, id: Date.now() }),
-      signal: AbortSignal.timeout(config.odoo.timeoutMs || 20000),
+      signal: AbortSignal.timeout(timeoutMs || config.odoo.timeoutMs || 20000),
     });
   } catch (e) {
     throw describeNetError(e, url);
@@ -67,10 +67,10 @@ export async function getUid(force = false) {
   return uid;
 }
 
-export async function execKw(model, method, args = [], kwargs = {}) {
+export async function execKw(model, method, args = [], kwargs = {}, { timeoutMs } = {}) {
   const c = getEffectiveCreds();
   const uid = await getUid();
-  return rpcTo(c.url, "object", "execute_kw", [c.db, uid, c.password, model, method, args, kwargs]);
+  return rpcTo(c.url, "object", "execute_kw", [c.db, uid, c.password, model, method, args, kwargs], timeoutMs);
 }
 
 export const searchRead = (model, domain = [], fields = [], opts = {}) =>
