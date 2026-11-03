@@ -1453,16 +1453,61 @@
     var ov = sheet("إيصال " + esc(o.name), '<div class="spin"></div>');
     api("/pos-orders/" + o.id + "/receipt").then(function(r){
       if (!ov.isConnected) return;
-      $(".sb", ov).innerHTML = '<div class="rcpt-view">' + r.html + '</div><button class="btn dark" id="rcptPrint">' + ICON.print + ' طباعة</button>';
+      $(".sb", ov).innerHTML = '<div class="rcpt-view">' + r.html + '</div><div class="row">'
+        + '<button class="btn dark grow" id="rcptPrint">' + ICON.print + ' طباعة</button>'
+        + '<button class="btn soft grow" id="rcptShare" disabled>' + ICON.share + ' <span>تجهيز…</span></button></div>';
       $("#rcptPrint", ov).onclick = function(){ printReceipt(r.html); };
+      // الصورة تُجهَّز مسبقًا: الآيفون يسمح بالمشاركة فور اللمس فقط، لا بعد انتظار
+      var share = $("#rcptShare", ov), file = null;
+      receiptImage(r.html, r.name).then(function(f){ file = f; share.disabled = false; $("span", share).textContent = "مشاركة"; },
+        function(){ $("span", share).textContent = "تعذّرت الصورة"; });
+      share.onclick = function(){ if (file) shareFile(file, "إيصال " + r.name); };
     }).catch(function(e){ if (ov.isConnected) $(".sb", ov).innerHTML = '<div class="empty"><b>تعذّر جلب الإيصال</b>' + esc(e.message) + '</div>'; });
+  }
+  function imagesReady(el){
+    return Promise.all($$("img", el).map(function(im){ return im.complete ? 0 : new Promise(function(ok){ im.onload = im.onerror = ok; }); }));
   }
   function printReceipt(html){
     var box = $("#printBox");
     if (!box){ box = document.createElement("div"); box.id = "printBox"; document.body.appendChild(box); }
     box.innerHTML = html;
-    Promise.all($$("img", box).map(function(im){ return im.complete ? 0 : new Promise(function(ok){ im.onload = im.onerror = ok; }); }))
-      .then(function(){ window.print(); });
+    imagesReady(box).then(function(){ window.print(); });
+  }
+  // صورة الإيصال (PNG) للمشاركة: يرسمها المتصفح نفسه عبر SVG فالعربي سليم، وصور الإيصال مضمّنة (data:) فلا طلبات
+  function receiptImage(html, name){
+    var W = 560, K = 2;
+    var host = document.createElement("div");
+    host.style.cssText = "position:fixed;top:0;left:-9999px;width:" + W + "px;background:#fff";
+    host.innerHTML = html;
+    var rc = $(".sharqia-receipt", host);
+    if (rc){ rc.style.fontSize = "21px"; rc.style.fontFamily = "-apple-system,'SF Arabic','Segoe UI',Tahoma,'Noto Sans Arabic',Arial,sans-serif"; }
+    document.body.appendChild(host);
+    function load(src){ return new Promise(function(ok, no){ var im = new Image(); im.onload = function(){ ok(im); }; im.onerror = function(){ no(new Error("svg")); }; im.src = src; }); }
+    return imagesReady(host).then(function(){
+      var h = Math.ceil(host.getBoundingClientRect().height);
+      host.style.cssText = "width:" + W + "px;background:#fff";
+      var xml = new XMLSerializer().serializeToString(host);
+      host.remove();
+      var src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="' + W * K + '" height="' + h * K
+        + '" viewBox="0 0 ' + W + " " + h + '"><foreignObject x="0" y="0" width="100%" height="100%">' + xml + "</foreignObject></svg>");
+      // سفاري قد يرسم صور الإيصال الداخلية فارغةً في أول تحميل، فيُحمَّل مرتين
+      return load(src).then(function(){ return load(src); }).then(function(img){
+        var c = document.createElement("canvas"); c.width = W * K; c.height = h * K;
+        var g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+        return new Promise(function(ok, no){ c.toBlob(function(b){ if (b) ok(new File([b], "receipt-" + name + ".png", {type: "image/png"})); else no(new Error("png")); }, "image/png"); });
+      });
+    }).catch(function(e){ host.remove(); throw e; });
+  }
+  function shareFile(file, title){
+    if (navigator.canShare && navigator.canShare({files: [file]})){
+      navigator.share({files: [file], title: title}).catch(function(e){ if (e && e.name !== "AbortError") toast("تعذّرت المشاركة"); });
+      return;
+    }
+    // متصفحٌ لا يشارك الملفات (الكمبيوتر غالبًا): تنزيل الصورة
+    var a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = file.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+    toast("نُزّلت صورة الإيصال");
   }
   function openTransfer(o, done){
     var ov = sheet("تحويل لقسم آخر", '<div class="muted" style="margin-bottom:10px">يصل القسم كطلبٍ وارد، فيستلمه موظفه ويضيف منتجاته.</div>'
