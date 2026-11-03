@@ -926,20 +926,89 @@
     loadProducts(res, "", 50); updateCartUI();
   }
 
-  // ════════════ الباركود بكاميرا الجوال ════════════
-  // html5-qrcode: يستعمل قارئ الباركود المدمج في المتصفح إن وُجد (أندرويد) وإلا يقرأ بنفسه (آيفون).
-  // يُحمَّل فقط عند فتح الكاميرا.
-  var scanLib = null;
-  function loadScanLib(){
-    if (window.Html5Qrcode) return Promise.resolve();
-    if (scanLib) return scanLib;
-    scanLib = new Promise(function(ok, fail){
-      var s = document.createElement("script");
-      s.src = "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js";
-      s.onload = ok; s.onerror = function(){ scanLib = null; fail(new Error("تعذّر تحميل قارئ الباركود — تحقّق من الإنترنت")); };
+  // ════════════ الكاميرا وقارئ الباركود ════════════
+  // الكاميرا بأعلى دقة يعطيها الجوال، ويُقرأ ما داخل الإطار المرسوم فقط (ومعه هامش) فيكبر الملصق الصغير.
+  // القارئ: المدمج في المتصفح إن قرأ Code128 (أندرويد)، وإلا zxing-cpp مترجمًا WebAssembly ومستضافًا في
+  // /static/vendor (آيفون). ملصقات المعرض Code128 حرارية صغيرة خلف كيس لامع: قارئ جافاسكربت الخالص
+  // (html5-qrcode) لم يقرأها على الآيفون، وكان يرسم إطاره ويزيح رأس الشاشة.
+  var LINEAR = ["code_128", "code_39", "code_93", "codabar", "ean_13", "ean_8", "itf", "upc_a", "upc_e"];
+  var zxingLib = null;
+  function loadZxing(){
+    if (zxingLib) return zxingLib;
+    zxingLib = new Promise(function(ok, fail){
+      var s = document.createElement("script"); s.src = "/static/vendor/barcode-detector-3.2.3.js";
+      s.onload = function(){
+        var A = window.BarcodeDetectionAPI;
+        A.setZXingModuleOverrides({locateFile: function(path, prefix){ return /\.wasm$/.test(path) ? "/static/vendor/zxing_reader-3.1.6.wasm" : prefix + path; }});
+        ok(A);
+      };
+      s.onerror = function(){ zxingLib = null; fail(new Error("scanlib")); };
       document.head.appendChild(s);
     });
-    return scanLib;
+    return zxingLib;
+  }
+  function makeDetector(formats){
+    var N = window.BarcodeDetector;
+    var have = N && N.getSupportedFormats ? N.getSupportedFormats().catch(function(){ return []; }) : Promise.resolve([]);
+    return have.then(function(list){
+      if (list.indexOf("code_128") >= 0) return new N({formats: formats.filter(function(f){ return list.indexOf(f) >= 0; })});
+      return loadZxing().then(function(A){ return new A.BarcodeDetector({formats: formats}); });
+    });
+  }
+  // يشغّل الكاميرا في شاشة المسح el (#reader و.frame و#torch و#shint) ويرسل كل كود يُقرأ لـonCode؛ يرجع {stop}.
+  function startCamera(el, formats, onCode){
+    var video = document.createElement("video"), frame = $(".frame", el), hint = $("#shint", el), torchBtn = $("#torch", el);
+    video.setAttribute("playsinline", ""); video.setAttribute("muted", ""); video.muted = true;
+    $("#reader", el).appendChild(video);
+    var canvas = document.createElement("canvas"), ctx = canvas.getContext("2d", {willReadFrequently: true});
+    var cam = {stopped: false, stream: null, ready: false}, detector = null;
+    var WAIT = "يجهّز الكاميرا والقارئ…", orig = hint ? hint.textContent : "";
+    if (hint) hint.textContent = WAIT;
+    cam.stop = function(){ cam.stopped = true; if (cam.stream) cam.stream.getTracks().forEach(function(t){ t.stop(); }); };
+    // الإطار على الشاشة ← نفس المنطقة في إطار الفيديو (الفيديو يملأ الشاشة بـobject-fit: cover)
+    function area(){
+      var vw = video.videoWidth, vh = video.videoHeight, vb = video.getBoundingClientRect(), fb = frame.getBoundingClientRect();
+      if (!fb.width || !vb.width) return {x: 0, y: 0, w: vw, h: vh};
+      var s = Math.max(vb.width / vw, vb.height / vh), ox = vb.left + (vb.width - vw * s) / 2, oy = vb.top + (vb.height - vh * s) / 2;
+      var mx = fb.width * .15, my = fb.height * .35;      // ملصقٌ يتجاوز الإطار قليلًا يُقرأ أيضًا
+      var x = Math.max(0, (fb.left - mx - ox) / s), y = Math.max(0, (fb.top - my - oy) / s);
+      return {x: x, y: y, w: Math.min(vw - x, (fb.width + 2 * mx) / s), h: Math.min(vh - y, (fb.height + 2 * my) / s)};
+    }
+    function tick(){
+      if (cam.stopped) return;
+      if (video.readyState < 2 || !video.videoWidth){ setTimeout(tick, 120); return; }
+      var a = area(), k = Math.min(1, 1280 / a.w);
+      canvas.width = Math.round(a.w * k); canvas.height = Math.round(a.h * k);
+      ctx.drawImage(video, a.x, a.y, a.w, a.h, 0, 0, canvas.width, canvas.height);
+      detector.detect(canvas).then(function(found){
+        if (!cam.ready){ cam.ready = true; if (hint && hint.textContent === WAIT) hint.textContent = orig; }
+        if (!cam.stopped) found.forEach(function(b){ if (b.rawValue) onCode(String(b.rawValue).trim()); });
+      }, function(){}).then(function(){ setTimeout(tick, 40); });
+    }
+    var gum = navigator.mediaDevices && navigator.mediaDevices.getUserMedia
+      ? navigator.mediaDevices.getUserMedia({audio: false, video: {facingMode: {ideal: "environment"}, width: {ideal: 1920}, height: {ideal: 1080}}})
+      : Promise.reject(new Error("NotSupported"));
+    gum.then(function(stream){ cam.stream = stream; if (cam.stopped) cam.stop(); }, function(){});
+    Promise.all([gum, makeDetector(formats)]).then(function(r){
+      if (cam.stopped) return;
+      detector = r[1]; video.srcObject = r[0];
+      var track = r[0].getVideoTracks()[0], caps = {};
+      try { caps = track.getCapabilities ? track.getCapabilities() : {}; } catch(e){}
+      if (caps.focusMode && caps.focusMode.indexOf("continuous") >= 0) track.applyConstraints({advanced: [{focusMode: "continuous"}]}).catch(function(){});
+      if (caps.torch && torchBtn){
+        var on = false; torchBtn.hidden = false;
+        torchBtn.onclick = function(){ on = !on; track.applyConstraints({advanced: [{torch: on}]}).catch(function(){}); torchBtn.classList.toggle("on", on); };
+      }
+      return video.play().then(tick);
+    }).catch(function(e){
+      if (cam.stream) cam.stream.getTracks().forEach(function(t){ t.stop(); });
+      if (!hint) return;
+      var msg = String((e && (e.name + " " + e.message)) || e || "");
+      hint.textContent = /NotAllowed|Permission|denied|Security/i.test(msg) ? "اسمح للتطبيق باستخدام الكاميرا من إعدادات المتصفح، أو اكتب الكود يدويًا."
+        : /scanlib/.test(msg) ? "تعذّر تحميل قارئ الباركود — تحقّق من الإنترنت، أو اكتب الكود يدويًا."
+        : "تعذّر تشغيل الكاميرا — اكتب الكود يدويًا.";
+    });
+    return cam;
   }
   var beepCtx = null;
   function beep(ok){
@@ -959,23 +1028,15 @@
       + '<div class="manual"><input id="mcode" dir="ltr" inputmode="numeric" placeholder="أو اكتب الكود يدويًا"><button class="btn gold sm" id="mgo">إضافة</button></div>'
       + '<button class="btn gold" id="sdone" hidden></button></div>';
     document.body.appendChild(el);
-    var reader = null, lastCode = "", lastAt = 0, busy = false, torchOn = false;
-    function done(){
-      var finish = function(){ el.remove(); if (cartCount()) screenNew(); };
-      // ⚠️ إن رُفض إذن الكاميرا فالماسح لم يبدأ، وstop() عندها يرمي خطأً فلا تُغلق الشاشة.
-      try {
-        if (reader && reader.isScanning){
-          reader.stop().then(function(){ try { reader.clear(); } catch(e){} finish(); }).catch(finish);
-          return;
-        }
-      } catch(e){}
-      finish();
-    }
+    var cam = null, seen = {}, busy = false;
+    function done(){ if (cam) cam.stop(); el.remove(); if (cartCount()) screenNew(); }
     function showDone(){ var n = cartCount(), b = $("#sdone", el); b.hidden = !n; b.innerHTML = "السلة " + n + " قطعة · " + money(itemsTotal()) + " ‹"; }
-    function lookup(code){
-      code = String(code || "").trim(); if (!code || busy) return;
-      var now = Date.now(); if (code === lastCode && now - lastAt < 1800) return;
-      lastCode = code; lastAt = now; busy = true;
+    // الكود نفسه لا يُضاف ثانيةً ما دام أمام الكاميرا: قطعةٌ ثانية = أبعِد الكاميرا ثم أعِدها
+    function lookup(code, manual){
+      code = String(code || "").trim(); if (!code) return;
+      var now = Date.now(), last = seen[code] || 0; seen[code] = now;
+      if (busy || (!manual && now - last < 1500)) return;
+      busy = true;
       api("/products/by-code/" + encodeURIComponent(code) + scopeQ("?")).then(function(p){
         remember(p); var l = cartLine(p.id); setQty(p.id, (l ? l.qty : 0) + 1);
         beep(true); vibrate(60);
@@ -990,27 +1051,10 @@
     }
     $("#sx", el).onclick = done;
     $("#sdone", el).onclick = done;
-    $("#mgo", el).onclick = function(){ lookup($("#mcode", el).value); $("#mcode", el).value = ""; };
+    $("#mgo", el).onclick = function(){ lookup($("#mcode", el).value, true); $("#mcode", el).value = ""; };
     $("#mcode", el).onkeydown = function(e){ if (e.key === "Enter") $("#mgo", el).click(); };
     showDone();
-    loadScanLib().then(function(){
-      var F = window.Html5QrcodeSupportedFormats;
-      reader = new window.Html5Qrcode("reader", {verbose: false,
-        formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.CODE_93, F.ITF, F.CODABAR, F.QR_CODE],
-        experimentalFeatures: {useBarCodeDetectorIfSupported: true}});
-      return reader.start({facingMode: "environment"}, {fps: 12, disableFlip: true,
-        qrbox: function(w, h){ return {width: Math.floor(Math.min(w * .78, 340)), height: Math.floor(Math.min(h * .3, 190))}; }},
-        function(text){ lookup(text); }, function(){});
-    }).then(function(){
-      try { var caps = reader.getRunningTrackCameraCapabilities(); var tf = caps && caps.torchFeature();
-        if (tf && tf.isSupported()){ var tb = $("#torch", el); tb.hidden = false;
-          tb.onclick = function(){ torchOn = !torchOn; tf.apply(torchOn); tb.classList.toggle("on", torchOn); }; } } catch(e){}
-    }).catch(function(e){
-      var msg = String((e && e.message) || e || "");
-      $("#shint", el).textContent = /Permission|NotAllowed|denied/i.test(msg)
-        ? "اسمح للتطبيق باستخدام الكاميرا من إعدادات المتصفح، أو اكتب الكود يدويًا."
-        : "تعذّر تشغيل الكاميرا — اكتب الكود يدويًا.";
-    });
+    cam = startCamera(el, LINEAR.concat(["qr_code"]), function(code){ lookup(code); });
   }
 
   // ════════════ عروض الأسعار (أودو) ════════════
@@ -1571,12 +1615,12 @@
       + '<div class="manual"><input id="mcode" dir="ltr" placeholder="أو اكتب الكود يدويًا"><button class="btn gold sm" id="mgo">إضافة</button></div>'
       + '<button class="btn gold" id="sdone">تم — عرض عدّي ‹</button></div>';
     document.body.appendChild(el);
-    var reader = null, torchOn = false, seen = {}, asking = false, mode = store("countMode") === "qty" ? "qty" : "auto";
+    var cam = null, seen = {}, asking = false, mode = store("countMode") === "qty" ? "qty" : "auto";
     function hud(){ $("#hudN", el).textContent = qn(jrPieces()); }
     function pickMode(m){
       mode = m; store("countMode", m);
       $$("#cmode button", el).forEach(function(b){ b.classList.toggle("on", b.getAttribute("data-m") === m); });
-      $("#shint", el).textContent = m === "auto" ? "مرّر الكاميرا على الملصقات واحدًا واحدًا — كل صوت = قطعة" : "امسح ملصقًا واحدًا ثم اختر عدد قطع موديله أمامك";
+      $("#shint", el).textContent = m === "auto" ? "على بُعد شبر من الملصق، مرّر الكاميرا عليها واحدًا واحدًا — كل صوت = قطعة" : "امسح ملصقًا واحدًا ثم اختر عدد قطع موديله أمامك";
     }
     function showLast(code, n){
       var p = jrNames[code], box = $("#slast", el); if (!box) return;
@@ -1624,9 +1668,8 @@
       if (mode === "qty") askQty(code); else hit(code, 1);
     }
     function done(){
-      var finish = function(){ el.remove(); jrSync(); if (view.name === "count") renderCount(); };
-      try { if (reader && reader.isScanning){ reader.stop().then(function(){ try { reader.clear(); } catch(e){} finish(); }).catch(finish); return; } } catch(e){}
-      finish();
+      if (cam) cam.stop();
+      el.remove(); jrSync(); if (view.name === "count") renderCount();
     }
     $$("#cmode button", el).forEach(function(b){ b.onclick = function(){ pickMode(b.getAttribute("data-m")); }; });
     $("#sx", el).onclick = done;
@@ -1634,24 +1677,7 @@
     $("#mgo", el).onclick = function(){ var v = $("#mcode", el).value.trim(); $("#mcode", el).value = ""; if (!v || asking) return; if (mode === "qty") askQty(v); else hit(v, 1); };
     $("#mcode", el).onkeydown = function(e){ if (e.key === "Enter") $("#mgo", el).click(); };
     pickMode(mode); hud(); jrStatus();
-    loadScanLib().then(function(){
-      var F = window.Html5QrcodeSupportedFormats;
-      reader = new window.Html5Qrcode("reader", {verbose: false,
-        formatsToSupport: [F.CODE_128, F.CODE_39, F.CODE_93, F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.ITF, F.CODABAR, F.QR_CODE],
-        experimentalFeatures: {useBarCodeDetectorIfSupported: true}});
-      return reader.start({facingMode: "environment"}, {fps: 15, disableFlip: true,
-        qrbox: function(w, h){ return {width: Math.floor(Math.min(w * .78, 340)), height: Math.floor(Math.min(h * .3, 190))}; }},
-        onRead, function(){});
-    }).then(function(){
-      try { var caps = reader.getRunningTrackCameraCapabilities(); var tf = caps && caps.torchFeature();
-        if (tf && tf.isSupported()){ var tb = $("#torch", el); tb.hidden = false;
-          tb.onclick = function(){ torchOn = !torchOn; tf.apply(torchOn); tb.classList.toggle("on", torchOn); }; } } catch(e){}
-    }).catch(function(e){
-      var msg = String((e && e.message) || e || "");
-      $("#shint", el).textContent = /Permission|NotAllowed|denied/i.test(msg)
-        ? "اسمح للتطبيق باستخدام الكاميرا من إعدادات المتصفح، أو اكتب الكود يدويًا."
-        : "تعذّر تشغيل الكاميرا — اكتب الكود يدويًا.";
-    });
+    cam = startCamera(el, LINEAR, onRead);
   }
 
   // ════════════ قراءة جواز السفر ════════════
