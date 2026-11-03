@@ -262,6 +262,10 @@ r.post("/api/sales/pos-orders", run(async (req, res) => {
 r.get("/api/sales/pos-orders/:id", run(async (req, res) => {
   res.json(await execKw(APP, "app_order_get", [req.appToken, num(req.params.id)]));
 }));
+// إيصال الكاشير للطلب المدفوع: HTML جاهز من أودو (موديول إيصال العباءة الشرقية) بتنسيقه وصوره
+r.get("/api/sales/pos-orders/:id/receipt", run(async (req, res) => {
+  res.json(await execKw(APP, "app_order_receipt", [req.appToken, num(req.params.id)]));
+}));
 r.put("/api/sales/pos-orders/:id", run(async (req, res) => {
   const { partner_id, lines, note } = req.body || {};
   res.json(await execKw(APP, "app_order_save", [req.appToken, num(req.params.id), orderLines(lines),

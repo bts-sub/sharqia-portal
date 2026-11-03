@@ -324,6 +324,18 @@
   .ct-row:last-child{border-bottom:none}
   .ct-add{display:flex;gap:8px;margin-bottom:12px}
   [hidden]{display:none!important}
+
+  /* ── إيصال الطلب المدفوع (من أودو): معاينة ثم طباعة بورق الكاشير 80mm ── */
+  .rcpt-view{background:#fff;color:#000;border-radius:14px;padding:6px;max-width:380px;margin:0 auto 12px}
+  .rcpt-view .sharqia-receipt{font-size:12px}
+  #printBox{display:none}
+  @media print{
+    @page{size:auto;margin:3mm}
+    html,body{background:#fff!important}
+    body>*:not(#printBox){display:none!important}
+    #printBox{display:block!important}
+    #printBox .sharqia-receipt{width:72mm;margin:0 auto;font-size:10.5px}
+  }
 </style>
 </head>
 <body>
@@ -414,7 +426,8 @@
     store: '<svg class="i" viewBox="0 0 24 24"><path d="M4 9l1-5h14l1 5M4 9v11h16V9M4 9h16M9 20v-6h6v6"/></svg>',
     swap: '<svg class="i" viewBox="0 0 24 24"><path d="M7 7h13l-3-3M17 17H4l3 3"/></svg>',
     id: '<svg class="i" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3.5"/><path d="M8 17h8"/></svg>',
-    bell: '<svg class="i" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4zM10 21h4"/></svg>'
+    bell: '<svg class="i" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4zM10 21h4"/></svg>',
+    print: '<svg class="i" viewBox="0 0 24 24"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>'
   };
   function thumbHtml(id, cls){ return '<img class="' + (cls || "thumb") + '" src="/api/sales/products/' + id + '/image" loading="lazy" data-thumb alt="">'; }
   function wireThumbs(el){ $$("img[data-thumb]", el).forEach(function(im){ im.onerror = function(){ this.onerror = null;
@@ -1262,6 +1275,7 @@
       + (can2.cashier ? '<button class="btn dark" id="aCash" style="margin-bottom:10px">' + ICON.store + ' إرسال للكاشير</button>' : '')
       + (can2.transfer ? '<button class="btn soft" id="aMove" style="margin-bottom:10px">' + ICON.swap + ' تحويل لقسم آخر</button>' : '')
       + (can2.recall ? '<button class="btn soft" id="aBack" style="margin-bottom:10px">استرجاع من الكاشير للتعديل</button>' : '')
+      + (o.state === "paid" ? '<button class="btn dark" id="aPrint" style="margin-bottom:10px">' + ICON.print + ' طباعة الإيصال</button>' : '')
       + '<div class="card"><div class="h2">مسار الطلب</div>' + o.log.map(function(l){
           return '<div class="log-row"><span class="grow"><b>' + esc(l.action) + '</b>' + (l.by ? ' — ' + esc(l.by) : '') + (l.detail ? '<span class="muted" style="display:block">' + esc(l.detail) + '</span>' : '') + '</span><span class="muted num">' + esc(fmtDate(l.at)) + '</span></div>';
         }).join("") + '</div>'
@@ -1276,9 +1290,26 @@
     if ($("#aCash")) $("#aCash").onclick = function(){ this.disabled = true; post("cashier", "أُرسل للكاشير").then(again, function(){ screenPosOrder(o.id); }); };
     if ($("#aMove")) $("#aMove").onclick = function(){ openTransfer(o, again); };
     if ($("#aBack")) $("#aBack").onclick = function(){ if (confirm("يُلغى من شاشة الكاشير ويعود مفتوحًا للتعديل. متابعة؟")) post("recall", "عاد الطلب للتعديل").then(again, function(){}); };
+    if ($("#aPrint")) $("#aPrint").onclick = function(){ openReceipt(o); };
     if ($("#aCancel")) $("#aCancel").onclick = function(){
       var reason = prompt("سبب الإلغاء (اختياري):", ""); if (reason === null) return;
       orderAction(api("/pos-orders/" + o.id + "/cancel", {method: "POST", body: {reason: reason}}), "أُلغي الطلب").then(again, function(){}); };
+  }
+  // إيصال الكاشير نفسه كما يبنيه أودو (إيصال العباءة الشرقية): معاينة، ثم طباعة الإيصال وحده
+  function openReceipt(o){
+    var ov = sheet("إيصال " + esc(o.name), '<div class="spin"></div>');
+    api("/pos-orders/" + o.id + "/receipt").then(function(r){
+      if (!ov.isConnected) return;
+      $(".sb", ov).innerHTML = '<div class="rcpt-view">' + r.html + '</div><button class="btn dark" id="rcptPrint">' + ICON.print + ' طباعة</button>';
+      $("#rcptPrint", ov).onclick = function(){ printReceipt(r.html); };
+    }).catch(function(e){ if (ov.isConnected) $(".sb", ov).innerHTML = '<div class="empty"><b>تعذّر جلب الإيصال</b>' + esc(e.message) + '</div>'; });
+  }
+  function printReceipt(html){
+    var box = $("#printBox");
+    if (!box){ box = document.createElement("div"); box.id = "printBox"; document.body.appendChild(box); }
+    box.innerHTML = html;
+    Promise.all($$("img", box).map(function(im){ return im.complete ? 0 : new Promise(function(ok){ im.onload = im.onerror = ok; }); }))
+      .then(function(){ window.print(); });
   }
   function openTransfer(o, done){
     var ov = sheet("تحويل لقسم آخر", '<div class="muted" style="margin-bottom:10px">يصل القسم كطلبٍ وارد، فيستلمه موظفه ويضيف منتجاته.</div>'
