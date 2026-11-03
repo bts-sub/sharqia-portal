@@ -301,6 +301,28 @@
   .qc-row:last-child{border-bottom:none}
   .qc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
   .qc-grid .stepper{width:100%}
+
+  /* ── جرد المخزون بالكاميرا ── */
+  .scan .hud{position:absolute;top:calc(70px + env(safe-area-inset-top,0px));left:0;right:0;z-index:2;text-align:center;pointer-events:none}
+  .scan .hud b{display:block;font-size:46px;font-weight:800;line-height:1;text-shadow:0 2px 14px rgba(0,0,0,.6)}
+  .scan .hud span{font-size:12.5px;opacity:.85}
+  .scan .tb .sub{display:block;font-size:11.5px;opacity:.85;margin-top:2px}
+  .scan .flash{position:absolute;inset:0;z-index:1;pointer-events:none;background:rgba(43,212,122,.32);opacity:0}
+  .scan .flash.on{animation:fl .35s ease}
+  @keyframes fl{from{opacity:1}to{opacity:0}}
+  .scan .seg{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.2);margin:0}
+  .scan .seg button{color:rgba(255,255,255,.75)}
+  .scan .seg button.on{background:var(--gold);color:#fff}
+  .scan .last.warn{background:#FCF0DA;color:#7A4A04}
+  .scan .undo{border:none;background:rgba(28,26,21,.08);color:inherit;border-radius:10px;padding:8px 10px;font-weight:800;font-size:12.5px;cursor:pointer;font-family:inherit}
+  .scan .qpad{background:rgba(255,255,255,.97);color:#1C1A15;border-radius:16px;padding:12px;animation:up .2s ease}
+  .scan.asking #slast,.scan.asking #shint,.scan.asking .manual{display:none}
+  .qchips{display:flex;gap:6px;margin:10px 0}
+  .qchips button{flex:1;height:38px;border-radius:10px;border:1px solid #E2D9C4;background:#FBF9F3;color:#1C1A15;font-weight:800;font-size:15px;cursor:pointer;font-family:inherit}
+  .qchips button.on{background:var(--navy);color:#F3D97A;border-color:var(--navy)}
+  .ct-row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line)}
+  .ct-row:last-child{border-bottom:none}
+  .ct-add{display:flex;gap:8px;margin-bottom:12px}
   [hidden]{display:none!important}
 </style>
 </head>
@@ -354,7 +376,7 @@
     opts = opts || {};
     var h = {}; if (opts.body){ h["Content-Type"] = "application/json"; opts.body = JSON.stringify(opts.body); }
     if (token) h["Authorization"] = "Bearer " + token;
-    return fetch(API + path, {method: opts.method || "GET", headers: h, body: opts.body}).then(function(r){
+    return fetch(API + path, {method: opts.method || "GET", headers: h, body: opts.body, keepalive: !!opts.keepalive}).then(function(r){
       return r.json().catch(function(){ return {}; }).then(function(d){
         if (r.status === 401 && token && !opts.login){ signOut(true); }
         if (!r.ok) throw new Error(d.error || ("خطأ " + r.status)); return d; });
@@ -486,7 +508,7 @@
       + '<div class="muted">' + (me.role === "supervisor" ? "مشرف" : "بائع") + ' · ' + esc(me.login) + '</div></div></div>'
       + (me.pos ? '<div class="card"><div class="kv"><span>نقطة البيع</span><b>' + esc(me.pos.name) + '</b></div><div class="kv"><span>المخزون</span><span>' + esc(me.pos.stock) + '</span></div></div>'
         : '<div class="note">حسابك غير مربوط بنقطة بيع — اطلب ربطه من مدير المبيعات.</div>')
-      + '<div class="card"><div class="h2">صلاحياتك</div>' + row(P.internal, "البيع الداخلي (عملاء المعرض)") + row(P.receive_stock, "استلام المخزن واعتماد الجودة") + row(P.create_link, "إنشاء لينك دفع")
+      + '<div class="card"><div class="h2">صلاحياتك</div>' + row(P.internal, "البيع الداخلي (عملاء المعرض)") + row(P.receive_stock, "استلام المخزن واعتماد الجودة") + row(P.count, "جرد المخزون بالكاميرا") + row(P.create_link, "إنشاء لينك دفع")
       + row(P.edit_price, "تعديل سعر المنتج" + (P.edit_price ? " (حتى خصم " + (+P.max_discount || 0) + "%)" : ""))
       + row(P.edit_shipping, "تعديل سعر الشحن") + row(P.create_customer, "إضافة عملاء") + row(P.create_quotation, "عروض أسعار أودو")
       + row(P.view_all, "رؤية فواتير كل البائعين") + '</div>'
@@ -499,7 +521,8 @@
     mode = can("internal") ? "int" : "ext";
     refreshInstallChip(); refreshIncoming();
     var go = new URLSearchParams(location.search).get("go");
-    if (go === "new") screenNew(); else if (go === "scan"){ screenDash(); openScanner(); } else screenDash();
+    if (go === "new") screenNew(); else if (go === "scan"){ screenDash(); openScanner(); }
+    else if (go === "count" && can("count")) screenCounts(); else screenDash();
   }
   // شارة «الطلبات»: ما ينتظر استلام قسمي
   function refreshIncoming(){
@@ -1082,6 +1105,10 @@
   // ما ينتظر الموظف الآن، فوق أرقامه
   function renderDashTasks(){
     var box = $("#dashTasks"); if (!box) return;
+    if (can("count")){
+      box.insertAdjacentHTML("afterbegin", '<button class="action-card" id="goCt"><span class="avatar">' + ICON.scan + '</span><span class="grow"><b>جرد المخزون بالكاميرا</b><span class="muted" style="display:block">امسح ملصقات القطع فيُعدّ كل موديل تلقائيًا</span></span></button>');
+      $("#goCt").onclick = screenCounts;
+    }
     if (can("internal")) api("/pos-orders/counts").then(function(c){
       var b = $("#navIn"); b.textContent = c.incoming; b.hidden = !c.incoming;
       if (!c.incoming || !$("#dashTasks")) return;
@@ -1332,6 +1359,299 @@
           .catch(function(e){ toast(e.message); btn.disabled = false; });
       };
     }).catch(function(e){ main.innerHTML = '<div class="empty"><b>تعذّر</b>' + esc(e.message) + '</div>'; });
+  }
+
+  // ════════════ جرد المخزون بالكاميرا ════════════
+  // ملصق القطعة يحمل رقم موديلها (نفسه لكل المقاسات والألوان)، فكل ملصقٍ يُقرأ = قطعة من موديله.
+  // العدّ يُحفظ في الجوال أولًا ثم يُرسل لأودو كاملًا كل بضع ثوانٍ — فلا يضيع بانقطاع النت،
+  // وأودو يحدّث عدّ هذا الموظف وحده في جرد الموقع (زملاؤه يعدّون أرففًا أخرى في نفس الجرد).
+  var CT = {open: ["جارٍ العدّ", "p-info"], review: ["بانتظار المراجعة", "p-warn"], done: ["طُبّق على المخزون", "p-good"], cancel: ["ملغي", "p-sub"]};
+  var jr = {count: null, qty: {}, order: [], ver: 0, sent: 0, timer: null, saving: false, offline: false, closed: false, undo: []};
+  var jrNames = (function(){ try { return JSON.parse(store("countNames") || "{}") || {}; } catch(e){ return {}; } })();
+  function qn(n){ return String(Math.round(Number(n) || 0)); }
+  function jrKeep(){
+    if (jr.count) store("count:" + jr.count.id, JSON.stringify({qty: jr.qty, order: jr.order, dirty: jr.ver !== jr.sent}));
+  }
+  function jrKeepNames(){
+    if (Object.keys(jrNames).length > 3000) jrNames = {};
+    store("countNames", JSON.stringify(jrNames));
+  }
+  function jrMergeNames(lines){
+    (lines || []).forEach(function(l){ jrNames[l.code] = l.product_id ? {id: l.product_id, name: l.name, stock: l.stock} : false; });
+    jrKeepNames();
+  }
+  // اسم الموديل فور مسحه (مرّة لكل كود على هذا الجوال)
+  function jrLookup(codes){
+    codes = codes.filter(function(c){ return !(c in jrNames) && c.indexOf(",") < 0; }).slice(0, 50);
+    if (!codes.length) return Promise.resolve();
+    return api("/counts/lookup?codes=" + encodeURIComponent(codes.join(","))).then(function(m){
+      Object.keys(m).forEach(function(c){ jrNames[c] = m[c] ? {id: m[c].id, name: m[c].name, stock: m[c].stock} : false; });
+      jrKeepNames();
+    }).catch(function(){});
+  }
+  function jrPieces(){ return Object.keys(jr.qty).reduce(function(s, k){ return s + jr.qty[k]; }, 0); }
+  function jrAdd(code, n){
+    code = String(code || "").trim().slice(0, 64); if (!code || !n) return 0;
+    var now = Math.max(0, (jr.qty[code] || 0) + n);
+    if (now) jr.qty[code] = now; else delete jr.qty[code];
+    if (n > 0) jr.order = [code].concat(jr.order.filter(function(c){ return c !== code; }));
+    jr.ver++; jrKeep(); jrSchedule();
+    return now;
+  }
+  function jrSchedule(){
+    jrStatus();
+    if (!jr.timer && !jr.closed) jr.timer = setTimeout(function(){ jr.timer = null; jrSync(); }, jr.offline ? 10000 : 3000);
+  }
+  function jrSync(opts){
+    if (!jr.count || jr.saving || jr.closed || jr.ver === jr.sent) return Promise.resolve();
+    var ver = jr.ver, id = jr.count.id, lines = Object.keys(jr.qty).map(function(c){ return {code: c, qty: jr.qty[c]}; });
+    jr.saving = true; jrStatus();
+    // keepalive (عند إغلاق الصفحة) لا يحمل أكثر من 64KB
+    return api("/counts/" + id, {method: "PUT", body: {lines: lines}, keepalive: !!(opts && opts.keepalive) && lines.length < 800}).then(function(c){
+      if (!jr.count || jr.count.id !== id) return;
+      jr.sent = ver; jr.offline = false; jr.count = c; jrMergeNames(c.mine); jrKeep();
+    }).catch(function(e){
+      if (/انتهى هذا الجرد|أُلغي|غير موجود/.test(e.message)){ jr.closed = true; toast(e.message); } else jr.offline = true;
+    }).then(function(){
+      jr.saving = false; jrStatus();
+      if (jr.count && jr.count.id === id && jr.ver !== jr.sent) jrSchedule();
+      if (view.name === "count" && view.id === id) renderCountTeam();
+    });
+  }
+  function jrStatus(){
+    var t, cls;
+    if (jr.ver === jr.sent){ t = "محفوظ في أودو"; cls = "p-good"; }
+    else if (jr.closed){ t = "لم يُرسل — انتهى الجرد"; cls = "p-bad"; }
+    else if (jr.offline){ t = "على الجوال — بانتظار الاتصال"; cls = "p-warn"; }
+    else { t = "يُحفظ…"; cls = "p-info"; }
+    $$("[data-jrsync]").forEach(function(el){ el.className = "pill " + cls; el.textContent = t; });
+  }
+  document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "hidden") jrSync({keepalive: true}); });
+  // جرد من أودو ← الجوال. ما لم يُرسل بعد من هذا الجوال هو الأحدث، فيبقى ويُرسل.
+  function jrOpen(c){
+    var same = jr.count && jr.count.id === c.id, unsent = same && jr.ver !== jr.sent;
+    if (!same){ if (jr.timer){ clearTimeout(jr.timer); jr.timer = null; } jr = {count: c, qty: {}, order: [], ver: 0, sent: 0, timer: null, saving: false, offline: false, closed: false, undo: []}; }
+    jr.count = c; jr.closed = c.state !== "open"; jrMergeNames(c.mine);
+    if (unsent) return;
+    var local = null; try { local = JSON.parse(store("count:" + c.id) || "null"); } catch(e){}
+    if (local && local.dirty && c.state === "open"){
+      jr.qty = local.qty || {}; jr.order = local.order || []; jr.ver = jr.sent + 1; jrSchedule();
+    } else {
+      if (local && local.dirty) toast("جزءٌ من عدّك على هذا الجوال لم يصل قبل إنهاء الجرد — راجع المشرف");
+      jr.qty = {}; c.mine.forEach(function(l){ jr.qty[l.code] = Math.round(l.qty); });
+      var order = (local && local.order) || [];
+      jr.order = order.filter(function(k){ return k in jr.qty; }).concat(Object.keys(jr.qty).filter(function(k){ return order.indexOf(k) < 0; }));
+      jr.ver = jr.sent; jrKeep();
+    }
+  }
+
+  function screenCounts(){
+    view = {name: "counts"}; setNav("dash"); updateCartUI();
+    main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">جرد المخزون</span></div><div id="ctWrap"><div class="spin"></div></div>';
+    $("#bk").onclick = function(){ screenDash(); };
+    api("/counts").then(function(d){
+      var wrap = $("#ctWrap"); if (!wrap) return;
+      var h = '<div class="note" style="background:var(--info-soft);color:var(--info)">اختر الموقع وامسح ملصق كل قطعة بالكاميرا: كل ملصق = قطعة من موديله. زملاؤك يعدّون معك في نفس الجرد، وكلٌّ يُحفظ عدّه باسمه.</div>'
+        + '<div class="list">' + d.locations.map(function(l){
+          var o = l.open;
+          return '<div class="li" data-loc="' + l.id + '"><div class="avatar">' + ICON.store + '</div><div class="grow"><div style="font-weight:800" class="ellip">' + esc(l.name) + '</div>'
+            + '<div class="muted ellip">' + (o ? 'جرد جارٍ · بدأه ' + esc(o.started_by) + ' ' + ago(o.started) + (o.users.length ? ' · يعدّ: ' + esc(o.users.join("، ")) : '') : 'لا جرد جارٍ — اضغط لتبدأ') + '</div></div>'
+            + (o ? '<div style="text-align:left"><b class="num">' + qn(o.pieces) + '</b><div class="muted">قطعة</div></div>' : '<span class="pill p-sub">ابدأ</span>') + '</div>';
+        }).join("") + '</div>';
+      if (d.recent.length) h += '<div class="sec-h">آخر الجرد</div><div class="list">' + d.recent.map(function(c){
+        return '<div class="li" data-ct="' + c.id + '"><div class="grow"><div style="font-weight:800" class="num">' + esc(c.name) + '</div><div class="muted ellip">' + esc(c.location.name) + ' · ' + ago(c.started) + '</div></div>'
+          + '<div style="text-align:left">' + pill(CT, c.state) + '<div class="muted num" style="margin-top:4px">' + qn(c.pieces) + ' قطعة</div></div></div>';
+      }).join("") + '</div>';
+      wrap.innerHTML = h;
+      $$("[data-loc]").forEach(function(el){ el.onclick = function(){
+        el.style.opacity = ".5";
+        api("/counts", {method: "POST", body: {location_id: +el.getAttribute("data-loc")}}).then(function(c){ jrOpen(c); screenCount(c.id, true); })
+          .catch(function(e){ el.style.opacity = ""; toast(e.message); });
+      }; });
+      $$("[data-ct]").forEach(function(el){ el.onclick = function(){ screenCount(+el.getAttribute("data-ct")); }; });
+    }).catch(function(e){ if ($("#ctWrap")) $("#ctWrap").innerHTML = '<div class="empty"><b>تعذّر الجلب</b>' + esc(e.message) + '</div>'; });
+  }
+  function screenCount(id, loaded){
+    view = {name: "count", id: id}; setNav("dash"); updateCartUI();
+    if (loaded) return renderCount();
+    main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">الجرد</span></div><div class="spin"></div>';
+    $("#bk").onclick = screenCounts;
+    api("/counts/" + id).then(function(c){ jrOpen(c); if (view.name === "count" && view.id === id) renderCount(); })
+      .catch(function(e){ main.innerHTML = '<div class="empty"><b>تعذّر</b>' + esc(e.message) + '</div>'; });
+  }
+  function renderCount(){
+    var c = jr.count, open = c.state === "open" && !jr.closed;
+    main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow ellip">' + esc(c.location.name) + '</span></div>'
+      + '<div class="hero"><div class="row between" style="position:relative;z-index:1"><span class="num" style="opacity:.8;font-size:13px">' + esc(c.name) + '</span>' + pill(CT, c.state) + '</div>'
+      + '<div class="big num" id="ctBig" style="position:relative;z-index:1"></div><div class="meta" id="ctMeta" style="position:relative;z-index:1"></div>'
+      + '<div style="margin-top:10px;position:relative;z-index:1"><span data-jrsync></span></div></div>'
+      + (open ? '<button class="btn gold" id="ctScan" style="margin-bottom:12px">' + ICON.scan + ' افتح الكاميرا وابدأ العدّ</button>'
+        + '<div class="ct-add"><input id="ctCode" dir="ltr" placeholder="أو اكتب كود الموديل"><button class="btn dark sm" id="ctGo" style="white-space:nowrap">+ قطعة</button></div>'
+        : '<div class="note">' + (c.state === "review" ? "انتهى العدّ — بانتظار مراجعة مدير المخزون وتطبيقه في أودو." : c.state === "done" ? "طُبّق هذا الجرد على المخزون." : "أُلغي هذا الجرد.") + '</div>')
+      + '<div class="card"><div class="h2 between"><span>عدّي</span><span class="muted" id="ctMine"></span></div><div id="ctList"></div></div>'
+      + '<div class="card" id="ctTeam"></div>'
+      + (c.can_close && open ? '<button class="btn soft" id="ctClose">' + ICON.check + ' إنهاء الجرد وإرساله للمراجعة</button>' : '');
+    $("#bk").onclick = function(){ jrSync(); screenCounts(); };
+    if (open){
+      $("#ctScan").onclick = openCountScanner;
+      $("#ctGo").onclick = function(){ var v = $("#ctCode").value.trim(); if (!v) return; jrAdd(v, 1); jrLookup([v]).then(renderCountList); $("#ctCode").value = ""; renderCountList(); };
+      $("#ctCode").onkeydown = function(e){ if (e.key === "Enter") $("#ctGo").click(); };
+      if ($("#ctClose")) $("#ctClose").onclick = closeCountSheet;
+    }
+    $("#ctList").addEventListener("click", function(e){
+      var b = e.target.closest("[data-d]"); if (!b || !open) return;
+      var code = b.closest("[data-code]").getAttribute("data-code"), d = +b.getAttribute("data-d");
+      if (d < 0 && (jr.qty[code] || 0) <= 1 && !confirm("حذف هذا الموديل من عدّك؟")) return;
+      jrAdd(code, d); vibrate(15); renderCountList();
+    });
+    renderCountList(); renderCountTeam(); jrStatus();
+    jrLookup(Object.keys(jr.qty)).then(function(){ if (view.name === "count" && jr.count === c) renderCountList(); });
+  }
+  function renderCountList(){
+    var box = $("#ctList"); if (!box) return;
+    var open = jr.count.state === "open" && !jr.closed, codes = jr.order.filter(function(k){ return k in jr.qty; });
+    $("#ctBig").textContent = qn(jrPieces()) + " قطعة";
+    $("#ctMeta").textContent = "عددتها أنا · " + codes.length + " موديل";
+    $("#ctMine").textContent = codes.length ? codes.length + " موديل" : "";
+    if (!codes.length){ box.innerHTML = '<div class="muted" style="padding:6px 0">' + (open ? "لم تعدّ شيئًا بعد — افتح الكاميرا وامسح الملصقات." : "لم تعدّ في هذا الجرد.") + '</div>'; return; }
+    box.innerHTML = codes.map(function(code){
+      var p = jrNames[code];
+      return '<div class="ct-row" data-code="' + esc(code) + '">' + (p ? thumbHtml(p.id) : '<span class="thumb thumb-ph">' + ICON.bag + '</span>')
+        + '<div class="grow"><div style="font-weight:700;font-size:14px" class="ellip">' + (p ? esc(p.name) : p === false ? '<span class="pill p-warn">كود غير معروف</span>' : '…') + '</div>'
+        + '<div class="muted num" dir="ltr" style="text-align:right">' + esc(code) + '</div></div>'
+        + (open ? '<div class="stepper sm"><button data-d="-1" aria-label="أنقص">−</button><b class="num">' + qn(jr.qty[code]) + '</b><button data-d="1" aria-label="زد">+</button></div>'
+          : '<b class="num">' + qn(jr.qty[code]) + '</b>') + '</div>';
+    }).join("");
+    wireThumbs(box);
+  }
+  function renderCountTeam(){
+    var box = $("#ctTeam"); if (!box || !jr.count) return;
+    var t = jr.count.team || [], all = t.reduce(function(s, m){ return s + m.pieces; }, 0);
+    box.innerHTML = '<div class="h2 between"><span>الفريق في هذا الجرد</span><b class="num">' + qn(all) + ' قطعة</b></div>'
+      + (t.length ? t.map(function(m){ return '<div class="kv"><span>' + esc(m.name) + (m.me ? ' (أنا)' : '') + ' · ' + m.models + ' موديل</span><b class="num">' + qn(m.pieces) + '</b></div>'; }).join("")
+        : '<div class="muted">لم يصل أي عدّ لأودو بعد.</div>')
+      + '<div class="muted" style="margin-top:6px">يحدَّث مع كل حفظ.</div>';
+  }
+  function closeCountSheet(){
+    var ov = sheet("إنهاء الجرد", '<div class="card" id="clTeam"><div class="spin"></div></div>'
+      + '<div class="note">بعد الإنهاء لا يُضاف عدّ من أي موظف، ويراجع مدير المخزون الفروق في أودو ثم يطبّقها على المخزون. تأكّد أن زملاءك انتهوا.</div>'
+      + '<button class="btn gold" id="clOk" disabled>' + ICON.check + ' إنهاء الجرد</button>');
+    var id = jr.count.id;
+    jrSync().then(function(){ return api("/counts/" + id); }).then(function(c){
+      if (!$("#clTeam", ov)) return;
+      jr.count = c;
+      $("#clTeam", ov).innerHTML = (c.team || []).map(function(m){ return '<div class="kv"><span>' + esc(m.name) + ' · ' + m.models + ' موديل</span><b class="num">' + qn(m.pieces) + ' قطعة</b></div>'; }).join("")
+        + '<div class="kv"><span>الإجمالي</span><b class="num">' + qn(c.pieces) + ' قطعة · ' + c.models + ' موديل</b></div>'
+        + (c.unknown ? '<div class="pill p-warn" style="margin-top:6px">' + c.unknown + ' كود غير معروف — يُراجع في أودو</div>' : '');
+      $("#clOk", ov).disabled = jr.ver !== jr.sent;
+      if (jr.ver !== jr.sent) $("#clTeam", ov).insertAdjacentHTML("beforeend", '<div class="note" style="margin-top:8px">عدّك لم يُحفظ في أودو بعد — تحقّق من الاتصال.</div>');
+    }).catch(function(e){ if ($("#clTeam", ov)) $("#clTeam", ov).innerHTML = '<div class="muted">' + esc(e.message) + '</div>'; });
+    $("#clOk", ov).onclick = function(){
+      var btn = this; btn.disabled = true;
+      api("/counts/" + id + "/close", {method: "POST"}).then(function(c){ ov.remove(); jrOpen(c); toast("انتهى الجرد — بانتظار مراجعة مدير المخزون"); screenCount(c.id, true); })
+        .catch(function(e){ toast(e.message); btn.disabled = false; });
+    };
+  }
+
+  // الكاميرا: «قطعة قطعة» — كل ملصقٍ يدخل الإطار = قطعة؛ والملصق نفسه لا يُعدّ ثانيةً ما دام أمام الكاميرا
+  // (القطع المتطابقة تحمل نفس الرقم، فالفاصل هو غياب الملصق عن الإطار). «بالعدد» — مسحة ثم عدد قطع الموديل.
+  var COUNT_GAP = 900;
+  function openCountScanner(){
+    closeSheets();
+    var c = jr.count; if (!c || c.state !== "open" || jr.closed) return;
+    // iOS يسمح بالصوت بعد لمسة المستخدم فقط: يُفتح هنا ليعمل صوت كل قراءة لاحقًا
+    try { beepCtx = beepCtx || new (window.AudioContext || window.webkitAudioContext)(); if (beepCtx.resume) beepCtx.resume(); } catch(e){}
+    var el = document.createElement("div"); el.className = "scan";
+    el.innerHTML = '<div id="reader"></div><div class="shade"><div class="frame"><i></i><i></i><i></i><i></i><span class="laser"></span></div></div><div class="flash" id="cfl"></div>'
+      + '<div class="tb"><button class="round" id="sx" aria-label="إغلاق">' + ICON.close + '</button><div class="grow"><b class="ellip" style="display:block">جرد ' + esc(c.location.name) + '</b><span class="sub"><span data-jrsync></span></span></div>'
+      + '<button class="round" id="torch" aria-label="الفلاش" hidden>' + ICON.torch + '</button></div>'
+      + '<div class="hud"><b class="num" id="hudN"></b><span>قطعة عددتها</span></div>'
+      + '<div class="bottom"><div class="seg" id="cmode"><button data-m="auto">قطعة قطعة</button><button data-m="qty">بالعدد</button></div>'
+      + '<div class="hint" id="shint"></div><div id="slast"></div><div id="qpad"></div>'
+      + '<div class="manual"><input id="mcode" dir="ltr" placeholder="أو اكتب الكود يدويًا"><button class="btn gold sm" id="mgo">إضافة</button></div>'
+      + '<button class="btn gold" id="sdone">تم — عرض عدّي ‹</button></div>';
+    document.body.appendChild(el);
+    var reader = null, torchOn = false, seen = {}, asking = false, mode = store("countMode") === "qty" ? "qty" : "auto";
+    function hud(){ $("#hudN", el).textContent = qn(jrPieces()); }
+    function pickMode(m){
+      mode = m; store("countMode", m);
+      $$("#cmode button", el).forEach(function(b){ b.classList.toggle("on", b.getAttribute("data-m") === m); });
+      $("#shint", el).textContent = m === "auto" ? "مرّر الكاميرا على الملصقات واحدًا واحدًا — كل صوت = قطعة" : "امسح ملصقًا واحدًا ثم اختر عدد قطع موديله أمامك";
+    }
+    function showLast(code, n){
+      var p = jrNames[code], box = $("#slast", el); if (!box) return;
+      box.innerHTML = '<div class="last' + (p === false ? ' warn' : '') + '">' + (p ? thumbHtml(p.id) : '') + '<div class="grow"><div style="font-weight:800" class="ellip">'
+        + (p ? esc(p.name) : p === false ? 'كود غير معروف — يُعدّ ويُراجع في أودو' : '…') + '</div>'
+        + '<div class="num" style="font-size:12.5px" dir="ltr">' + esc(code) + ' · +' + n + ' · عندك منه: ' + qn(jr.qty[code] || 0) + '</div></div>'
+        + '<button class="undo" id="undo">تراجع</button></div>';
+      wireThumbs(box);
+      $("#undo", el).onclick = function(){
+        var u = jr.undo.pop(); if (!u) return;
+        jrAdd(u.code, -u.n); beep(false); vibrate(30); hud();
+        box.innerHTML = '<div class="last err"><div class="grow"><b>أُلغيت آخر قراءة</b><div class="num" style="font-size:12.5px" dir="ltr">' + esc(u.code) + ' −' + u.n + '</div></div></div>';
+      };
+    }
+    function hit(code, n){
+      jrAdd(code, n); jr.undo.push({code: code, n: n}); if (jr.undo.length > 100) jr.undo.shift();
+      beep(true); vibrate(50); hud();
+      var f = $("#cfl", el); f.classList.remove("on"); void f.offsetWidth; f.classList.add("on");
+      showLast(code, n);
+      if (!(code in jrNames)) jrLookup([code]).then(function(){ if (jr.undo.length && jr.undo[jr.undo.length - 1].code === code) showLast(code, n); });
+    }
+    function askQty(code){
+      asking = true; beep(true); vibrate(40); el.classList.add("asking");
+      var n = 1, pad = $("#qpad", el);
+      var close = function(){ pad.innerHTML = ""; asking = false; el.classList.remove("asking"); };
+      var draw = function(){
+        var p = jrNames[code];
+        pad.innerHTML = '<div class="qpad"><div style="font-weight:800" class="ellip">' + (p ? esc(p.name) : p === false ? 'كود غير معروف' : '…') + '</div>'
+          + '<div class="num" style="font-size:12.5px;opacity:.7" dir="ltr">' + esc(code) + (jr.qty[code] ? ' · عندك منه: ' + qn(jr.qty[code]) : '') + '</div>'
+          + '<div class="qchips">' + [1, 2, 3, 5, 10].map(function(k){ return '<button data-k="' + k + '" class="' + (k === n ? "on" : "") + '">' + k + '</button>'; }).join("") + '</div>'
+          + '<div class="row"><div class="stepper" style="flex:1"><button data-s="-1" aria-label="أنقص">−</button><b class="num">' + n + '</b><button data-s="1" aria-label="زد">+</button></div>'
+          + '<button class="btn gold sm" id="qok">أضف ' + n + '</button><button class="btn soft sm" id="qno">إلغاء</button></div></div>';
+        $$("[data-k]", pad).forEach(function(b){ b.onclick = function(){ n = +b.getAttribute("data-k"); draw(); }; });
+        $$("[data-s]", pad).forEach(function(b){ b.onclick = function(){ n = Math.max(1, Math.min(999, n + +b.getAttribute("data-s"))); draw(); }; });
+        $("#qok", pad).onclick = function(){ close(); hit(code, n); };
+        $("#qno", pad).onclick = close;
+      };
+      draw();
+      if (!(code in jrNames)) jrLookup([code]).then(function(){ if (asking && pad.innerHTML) draw(); });
+    }
+    function onRead(text){
+      var code = String(text || "").trim().slice(0, 64); if (!code) return;
+      var now = Date.now(), last = seen[code] || 0; seen[code] = now;
+      if (asking || now - last < COUNT_GAP) return;     // الملصق نفسه ما زال أمام الكاميرا
+      if (mode === "qty") askQty(code); else hit(code, 1);
+    }
+    function done(){
+      var finish = function(){ el.remove(); jrSync(); if (view.name === "count") renderCount(); };
+      try { if (reader && reader.isScanning){ reader.stop().then(function(){ try { reader.clear(); } catch(e){} finish(); }).catch(finish); return; } } catch(e){}
+      finish();
+    }
+    $$("#cmode button", el).forEach(function(b){ b.onclick = function(){ pickMode(b.getAttribute("data-m")); }; });
+    $("#sx", el).onclick = done;
+    $("#sdone", el).onclick = done;
+    $("#mgo", el).onclick = function(){ var v = $("#mcode", el).value.trim(); $("#mcode", el).value = ""; if (!v || asking) return; if (mode === "qty") askQty(v); else hit(v, 1); };
+    $("#mcode", el).onkeydown = function(e){ if (e.key === "Enter") $("#mgo", el).click(); };
+    pickMode(mode); hud(); jrStatus();
+    loadScanLib().then(function(){
+      var F = window.Html5QrcodeSupportedFormats;
+      reader = new window.Html5Qrcode("reader", {verbose: false,
+        formatsToSupport: [F.CODE_128, F.CODE_39, F.CODE_93, F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.ITF, F.CODABAR, F.QR_CODE],
+        experimentalFeatures: {useBarCodeDetectorIfSupported: true}});
+      return reader.start({facingMode: "environment"}, {fps: 15, disableFlip: true,
+        qrbox: function(w, h){ return {width: Math.floor(Math.min(w * .78, 340)), height: Math.floor(Math.min(h * .3, 190))}; }},
+        onRead, function(){});
+    }).then(function(){
+      try { var caps = reader.getRunningTrackCameraCapabilities(); var tf = caps && caps.torchFeature();
+        if (tf && tf.isSupported()){ var tb = $("#torch", el); tb.hidden = false;
+          tb.onclick = function(){ torchOn = !torchOn; tf.apply(torchOn); tb.classList.toggle("on", torchOn); }; } } catch(e){}
+    }).catch(function(e){
+      var msg = String((e && e.message) || e || "");
+      $("#shint", el).textContent = /Permission|NotAllowed|denied/i.test(msg)
+        ? "اسمح للتطبيق باستخدام الكاميرا من إعدادات المتصفح، أو اكتب الكود يدويًا."
+        : "تعذّر تشغيل الكاميرا — اكتب الكود يدويًا.";
+    });
   }
 
   // ════════════ قراءة جواز السفر ════════════

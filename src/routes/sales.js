@@ -300,6 +300,32 @@ r.post("/api/sales/receipts/:id/approve", run(async (req, res) => {
   res.json(await execKw(APP, "app_receipt_approve", [req.appToken, num(req.params.id), clean, note ? String(note) : false, !!close]));
 }));
 
+// ───────────────────────── جرد المخزون بالكاميرا ─────────────────────────
+//   الجوال يعدّ (كل ملصقٍ قطعة) ويرسل عدّ الموظف كاملًا؛ أودو يحدّث أسطره هو فقط في جرد الموقع.
+r.get("/api/sales/counts", run(async (req, res) => {
+  res.json(await execKw(APP, "app_count_locations", [req.appToken]));
+}));
+r.get("/api/sales/counts/lookup", run(async (req, res) => {
+  const codes = String(req.query.codes || "").split(",").map((c) => c.trim()).filter(Boolean).slice(0, 50);
+  res.json(codes.length ? await execKw(APP, "app_count_lookup", [req.appToken, codes]) : {});
+}));
+r.post("/api/sales/counts", run(async (req, res) => {
+  res.json(await execKw(APP, "app_count_start", [req.appToken, num((req.body || {}).location_id)]));
+}));
+r.get("/api/sales/counts/:id(\\d+)", run(async (req, res) => {
+  res.json(await execKw(APP, "app_count_get", [req.appToken, num(req.params.id)]));
+}));
+r.put("/api/sales/counts/:id(\\d+)", run(async (req, res) => {
+  const { lines } = req.body || {};
+  if (!Array.isArray(lines)) throw badRequest("العدّ مفقود");
+  const clean = lines.slice(0, 5000).map((l) => ({ code: String((l && l.code) || "").trim().slice(0, 64), qty: Math.max(0, Math.floor(num(l && l.qty))) }))
+    .filter((l) => l.code && l.qty);
+  res.json(await execKw(APP, "app_count_save", [req.appToken, num(req.params.id), clean]));
+}));
+r.post("/api/sales/counts/:id(\\d+)/close", run(async (req, res) => {
+  res.json(await execKw(APP, "app_count_close", [req.appToken, num(req.params.id)]));
+}));
+
 // ───────────────────────── عروض الأسعار (أودو) — لمن له صلاحيتها ─────────────────────────
 const quote = perm("create_quotation");
 
