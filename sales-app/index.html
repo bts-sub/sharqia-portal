@@ -317,6 +317,28 @@
   .scan .undo{border:none;background:rgba(28,26,21,.08);color:inherit;border-radius:10px;padding:8px 10px;font-weight:800;font-size:12.5px;cursor:pointer;font-family:inherit}
   .scan .qpad{background:rgba(255,255,255,.97);color:#1C1A15;border-radius:16px;padding:12px;animation:up .2s ease}
   .scan.asking #slast,.scan.asking #shint,.scan.asking .manual{display:none}
+  .scan .ov{position:absolute;inset:0;z-index:1;width:100%;height:100%;pointer-events:none}
+  .scan.rack .ov{pointer-events:auto}
+  .scan.rack .shade,.scan.rack .manual,.scan.rack #shint,.scan.rack #slast,.scan.rack #sdone{display:none}
+  .scan .zoomc{position:absolute;top:calc(78px + env(safe-area-inset-top,0px));inset-inline-start:16px;z-index:2;display:flex;flex-direction:column;gap:6px}
+  .scan .zoomc[hidden]{display:none}
+  .scan .zoomc button{width:44px;height:36px;border-radius:12px;border:none;background:rgba(0,0,0,.55);color:#fff;font-weight:800;font-family:inherit;cursor:pointer}
+  .scan .zoomc button.on{background:var(--gold)}
+  .scan .rackp{background:rgba(20,18,26,.86);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+  .rk-sum{display:flex;justify-content:space-between;gap:8px;font-weight:800;font-size:14px}
+  .rk-red{color:#FF8A8A}
+  .rk-chips{display:flex;flex-wrap:wrap;gap:6px}
+  .rk-chip{background:rgba(43,212,122,.18);border:1px solid rgba(43,212,122,.6);color:#CFF7DF;border-radius:999px;padding:4px 10px;font-size:12.5px;font-weight:800}
+  .rk-chip.warn{background:rgba(252,180,60,.18);border-color:rgba(252,180,60,.7);color:#FFE1A8}
+  .rk-dup{display:flex;gap:8px;align-items:center;background:#E2F4E9;color:#14532d;border-radius:12px;padding:6px 8px;font-size:13px}
+  .rk-dup img{width:30px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0}
+  .rk-undo{background:none;border:none;color:#F3D97A;font-weight:800;font-size:12.5px;font-family:inherit;cursor:pointer;padding:0;align-self:flex-start}
+  .rk-tip{font-size:13px;opacity:.85}
+  .scan .shot{position:absolute;inset:0;z-index:6;background:#000;display:flex;flex-direction:column}
+  .shot-img{position:relative;flex:1;min-height:0}
+  .shot-img img,.shot-img canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+  .shot-bar{padding:12px 16px calc(14px + var(--safe-b));background:#14121A;display:flex;flex-direction:column;gap:8px}
+  .shot-bar .meter{background:rgba(255,255,255,.12)}
   .qchips{display:flex;gap:6px;margin:10px 0}
   .qchips button{flex:1;height:38px;border-radius:10px;border:1px solid #E2D9C4;background:#FBF9F3;color:#1C1A15;font-weight:800;font-size:15px;cursor:pointer;font-family:inherit}
   .qchips button.on{background:var(--navy);color:#F3D97A;border-color:var(--navy)}
@@ -968,35 +990,51 @@
       return loadZxing().then(function(A){ return new A.BarcodeDetector({formats: formats}); });
     });
   }
-  // يشغّل الكاميرا في شاشة المسح el (#reader و.frame و#torch و#shint) ويرسل كل كود يُقرأ لـonCode؛ يرجع {stop}.
-  function startCamera(el, formats, onCode){
+  // يشغّل الكاميرا في شاشة المسح el (#reader و.frame و#torch و#shint) ويرسل كل كود يُقرأ لـonCode.
+  // opts.full(): تُقرأ اللقطة كلها وتصل الأكواد بمواضعها لـopts.onFrame (وضع الرصّة)؛ opts.paused() يوقف القراءة؛
+  // opts.onStart(cam) حين تعمل الكاميرا. يرجع {stop, grab, toScreen, fromScreen, setZoom, detector, track, caps}.
+  function startCamera(el, formats, onCode, opts){
+    opts = opts || {};
     var video = document.createElement("video"), frame = $(".frame", el), hint = $("#shint", el), torchBtn = $("#torch", el);
     video.setAttribute("playsinline", ""); video.setAttribute("muted", ""); video.muted = true;
     $("#reader", el).appendChild(video);
     var canvas = document.createElement("canvas"), ctx = canvas.getContext("2d", {willReadFrequently: true});
-    var cam = {stopped: false, stream: null, ready: false}, detector = null;
+    var cam = {stopped: false, stream: null, ready: false, video: video, detector: null, track: null, caps: {}};
     var WAIT = "يجهّز الكاميرا والقارئ…", orig = hint ? hint.textContent : "";
     if (hint) hint.textContent = WAIT;
-    cam.stop = function(){ cam.stopped = true; if (cam.stream) cam.stream.getTracks().forEach(function(t){ t.stop(); }); };
-    // الإطار على الشاشة ← نفس المنطقة في إطار الفيديو (الفيديو يملأ الشاشة بـobject-fit: cover)
+    cam.stop = function(){ cam.stopped = true; if (cam.stream) cam.stream.getTracks().forEach(function(t){ t.stop(); }); video.remove(); };
+    // الفيديو يملأ الشاشة بـobject-fit: cover — تحويل نقطةٍ بين بكسل الفيديو والشاشة
+    function fit(){
+      var vw = video.videoWidth, vh = video.videoHeight, vb = video.getBoundingClientRect();
+      var s = Math.max(vb.width / vw, vb.height / vh) || 1;
+      return {s: s, ox: vb.left + (vb.width - vw * s) / 2, oy: vb.top + (vb.height - vh * s) / 2};
+    }
+    cam.toScreen = function(x, y){ var f = fit(); return {x: f.ox + x * f.s, y: f.oy + y * f.s}; };
+    cam.fromScreen = function(x, y){ var f = fit(); return {x: (x - f.ox) / f.s, y: (y - f.oy) / f.s}; };
+    // جزءٌ من اللقطة الحالية بدقة الكاميرا الكاملة، مكبَّرًا k مرّة — «التقريب» على ملصقٍ بعينه
+    cam.grab = function(r, k){ return cropTo(video, r, k); };
+    // الإطار على الشاشة ← نفس المنطقة في إطار الفيديو
     function area(){
-      var vw = video.videoWidth, vh = video.videoHeight, vb = video.getBoundingClientRect(), fb = frame.getBoundingClientRect();
-      if (!fb.width || !vb.width) return {x: 0, y: 0, w: vw, h: vh};
-      var s = Math.max(vb.width / vw, vb.height / vh), ox = vb.left + (vb.width - vw * s) / 2, oy = vb.top + (vb.height - vh * s) / 2;
-      var mx = fb.width * .15, my = fb.height * .35;      // ملصقٌ يتجاوز الإطار قليلًا يُقرأ أيضًا
-      var x = Math.max(0, (fb.left - mx - ox) / s), y = Math.max(0, (fb.top - my - oy) / s);
-      return {x: x, y: y, w: Math.min(vw - x, (fb.width + 2 * mx) / s), h: Math.min(vh - y, (fb.height + 2 * my) / s)};
+      var vw = video.videoWidth, vh = video.videoHeight, fb = frame.getBoundingClientRect();
+      if (!fb.width || !video.getBoundingClientRect().width) return {x: 0, y: 0, w: vw, h: vh};
+      var f = fit(), mx = fb.width * .15, my = fb.height * .35;      // ملصقٌ يتجاوز الإطار قليلًا يُقرأ أيضًا
+      var x = Math.max(0, (fb.left - mx - f.ox) / f.s), y = Math.max(0, (fb.top - my - f.oy) / f.s);
+      return {x: x, y: y, w: Math.min(vw - x, (fb.width + 2 * mx) / f.s), h: Math.min(vh - y, (fb.height + 2 * my) / f.s)};
     }
     function tick(){
       if (cam.stopped) return;
-      if (video.readyState < 2 || !video.videoWidth){ setTimeout(tick, 120); return; }
-      var a = area(), k = Math.min(1, 1280 / a.w);
+      if ((opts.paused && opts.paused()) || video.readyState < 2 || !video.videoWidth){ setTimeout(tick, 150); return; }
+      var full = !!(opts.full && opts.full());
+      var a = full ? {x: 0, y: 0, w: video.videoWidth, h: video.videoHeight} : area();
+      var k = Math.min(1, full ? 1600 / Math.max(a.w, a.h) : 1280 / a.w);
       canvas.width = Math.round(a.w * k); canvas.height = Math.round(a.h * k);
       ctx.drawImage(video, a.x, a.y, a.w, a.h, 0, 0, canvas.width, canvas.height);
-      detector.detect(canvas).then(function(found){
+      detectIn(cam.detector, canvas, a.x, a.y, k).then(function(hits){
         if (!cam.ready){ cam.ready = true; if (hint && hint.textContent === WAIT) hint.textContent = orig; }
-        if (!cam.stopped) found.forEach(function(b){ if (b.rawValue) onCode(String(b.rawValue).trim()); });
-      }, function(){}).then(function(){ setTimeout(tick, 40); });
+        if (cam.stopped) return;
+        if (full){ if (opts.onFrame) opts.onFrame(hits); }
+        else hits.forEach(function(h){ onCode(h.code); });
+      }).then(function(){ setTimeout(tick, 40); });
     }
     var gum = navigator.mediaDevices && navigator.mediaDevices.getUserMedia
       ? navigator.mediaDevices.getUserMedia({audio: false, video: {facingMode: {ideal: "environment"}, width: {ideal: 1920}, height: {ideal: 1080}}})
@@ -1004,15 +1042,17 @@
     gum.then(function(stream){ cam.stream = stream; if (cam.stopped) cam.stop(); }, function(){});
     Promise.all([gum, makeDetector(formats)]).then(function(r){
       if (cam.stopped) return;
-      detector = r[1]; video.srcObject = r[0];
-      var track = r[0].getVideoTracks()[0], caps = {};
+      cam.detector = r[1]; video.srcObject = r[0];
+      var track = cam.track = r[0].getVideoTracks()[0], caps = {};
       try { caps = track.getCapabilities ? track.getCapabilities() : {}; } catch(e){}
+      cam.caps = caps;
       if (caps.focusMode && caps.focusMode.indexOf("continuous") >= 0) track.applyConstraints({advanced: [{focusMode: "continuous"}]}).catch(function(){});
       if (caps.torch && torchBtn){
         var on = false; torchBtn.hidden = false;
         torchBtn.onclick = function(){ on = !on; track.applyConstraints({advanced: [{torch: on}]}).catch(function(){}); torchBtn.classList.toggle("on", on); };
       }
-      return video.play().then(tick);
+      cam.setZoom = function(z){ return track.applyConstraints({advanced: [{zoom: z}]}); };
+      return video.play().then(function(){ if (opts.onStart) opts.onStart(cam); tick(); });
     }).catch(function(e){
       if (cam.stream) cam.stream.getTracks().forEach(function(t){ t.stop(); });
       if (!hint) return;
@@ -1022,6 +1062,119 @@
         : "تعذّر تشغيل الكاميرا — اكتب الكود يدويًا.";
     });
     return cam;
+  }
+  // منطقة r من صورة/فيديو src في لوحةٍ مكبَّرة k مرّة
+  function cropTo(src, r, k){
+    var c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(r.w * k)); c.height = Math.max(1, Math.round(r.h * k));
+    var g = c.getContext("2d", {willReadFrequently: true}); g.imageSmoothingQuality = "high";
+    g.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
+    return c;
+  }
+  // الأكواد في لوحةٍ قُصّت من (ox, oy) بتكبير k، بمواضعها في الصورة الأصلية
+  function detectIn(detector, src, ox, oy, k){
+    if (!detector) return Promise.resolve([]);
+    return detector.detect(src).then(function(found){
+      return found.filter(function(b){ return b.rawValue; }).map(function(b){
+        var bb = b.boundingBox || {x: 0, y: 0, width: 0, height: 0};
+        var pts = b.cornerPoints && b.cornerPoints.length ? b.cornerPoints : [{x: bb.x, y: bb.y}, {x: bb.x + bb.width, y: bb.y + bb.height}];
+        return hitBox(String(b.rawValue).trim(), pts.map(function(p){ return {x: ox + p.x / k, y: oy + p.y / k}; }));
+      });
+    }, function(){ return []; });
+  }
+  function hitBox(code, pts){
+    var xs = pts.map(function(p){ return p.x; }), ys = pts.map(function(p){ return p.y; });
+    var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+    var w = Math.max(1, x1 - x0), h = Math.max(y1 - y0, w * .3);     // الباركود الخطّي قد يرجع خطًّا: ارتفاعٌ أدنى
+    return {code: code, x: x0, y: (y0 + y1) / 2 - h / 2, w: w, h: h, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2};
+  }
+  // نفس الملصق = نفس الكود في نفس المكان تقريبًا؛ ملصقان بنفس الرقم في مكانين = قطعتان
+  function sameLabel(a, b){
+    var lim = Math.max(a.w, a.h, b.w, b.h) * .45;
+    return a.code === b.code && Math.abs(a.cx - b.cx) < lim && Math.abs(a.cy - b.cy) < lim;
+  }
+  function addHit(list, h){
+    for (var i = 0; i < list.length; i++) if (sameLabel(list[i], h)){ h.seen = h.seen || list[i].seen; list[i] = h; return false; }
+    list.push(h); return true;
+  }
+  function covers(b, h){ return h.cx > b.x - b.w * .1 && h.cx < b.x + b.w * 1.1 && h.cy > b.y - b.h * .1 && h.cy < b.y + b.h * 1.1; }
+  // الملصقات البيضاء في لقطةٍ مصغّرة: أبيض قليل التشبّع، بحجم ملصق، وفيه خطوط كثيفة (نص وباركود).
+  // مساعدةٌ لِما لم يُقرأ فقط (المربع الأحمر والتقريب عليه) — لا يُعدّ منها شيء.
+  function findLabels(im){
+    var W = im.width, H = im.height, d = im.data, n = W * H, hist = new Uint32Array(256);
+    var v = new Uint8Array(n), wh = new Uint8Array(n), gr = new Uint8Array(n), i, p;
+    for (i = 0, p = 0; i < n; i++, p += 4){
+      var r = d[p], g = d[p + 1], b = d[p + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      v[i] = mx; gr[i] = (r + g + b) / 3; wh[i] = mx - mn < .22 * mx ? 1 : 0; hist[mx]++;
+    }
+    var acc = 0, thr = 255;
+    for (var t = 255; t >= 0; t--){ acc += hist[t]; if (acc >= n * .15){ thr = t; break; } }
+    thr = Math.max(158, thr);
+    for (i = 0; i < n; i++) wh[i] = wh[i] && v[i] > thr ? 1 : 0;
+    var lab = new Uint8Array(n), stack = new Int32Array(n), out = [], amin = n * .0004, amax = n * .06;
+    for (var s = 0; s < n; s++){
+      if (!wh[s] || lab[s]) continue;
+      var top = 0, area = 0, x0 = W, y0 = H, x1 = 0, y1 = 0;
+      stack[top++] = s; lab[s] = 1;
+      while (top){
+        var q = stack[--top], qx = q % W, qy = (q - qx) / W; area++;
+        if (qx < x0) x0 = qx; if (qx > x1) x1 = qx; if (qy < y0) y0 = qy; if (qy > y1) y1 = qy;
+        if (qx > 0 && wh[q - 1] && !lab[q - 1]){ lab[q - 1] = 1; stack[top++] = q - 1; }
+        if (qx < W - 1 && wh[q + 1] && !lab[q + 1]){ lab[q + 1] = 1; stack[top++] = q + 1; }
+        if (qy > 0 && wh[q - W] && !lab[q - W]){ lab[q - W] = 1; stack[top++] = q - W; }
+        if (qy < H - 1 && wh[q + W] && !lab[q + W]){ lab[q + W] = 1; stack[top++] = q + W; }
+      }
+      var bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+      if (area < amin || area > amax || area / (bw * bh) < .45 || Math.max(bw, bh) / Math.min(bw, bh) > 3.2) continue;
+      var e = 0;
+      for (var y = Math.max(1, y0); y <= y1; y++) for (var x = Math.max(1, x0); x <= x1; x++){
+        var o = y * W + x; if (Math.abs(gr[o] - gr[o - 1]) + Math.abs(gr[o] - gr[o - W]) > 30) e++;
+      }
+      if (e / (bw * bh) >= .10) out.push({x: x0, y: y0, w: bw, h: bh});
+    }
+    return out;
+  }
+  function labelsIn(src, sw, sh){
+    var k = 420 / Math.max(sw, sh), c = cropTo(src, {x: 0, y: 0, w: sw, h: sh}, k);
+    return findLabels(c.getContext("2d").getImageData(0, 0, c.width, c.height))
+      .map(function(b){ return {x: b.x / k, y: b.y / k, w: b.w / k, h: b.h / k}; });
+  }
+  function nextFrame(){ return new Promise(function(ok){ setTimeout(ok, 0); }); }
+  // ملصقٌ لم يُقرأ: قُصّ من دقّة الصورة الكاملة بهامش، وكبَّر حتى يصير عرضه ~900px (حتى 4 مرّات)
+  function zoomInto(detector, src, sw, sh, b, maxK){
+    var m = .25, r = {x: Math.max(0, b.x - b.w * m), y: Math.max(0, b.y - b.h * m)};
+    r.w = Math.min(sw - r.x, b.w * (1 + 2 * m)); r.h = Math.min(sh - r.y, b.h * (1 + 2 * m));
+    var k = Math.max(1, Math.min(maxK || 3, 900 / r.w));
+    return detectIn(detector, cropTo(src, r, k), r.x, r.y, k);
+  }
+  // تحليل صورةٍ ثابتة كاملة الدقّة: كلّها مصغّرة، ثم مربعات متداخلة بدقّتها، ثم تقريبٌ على كل ملصقٍ أبيض لم يُقرأ
+  function analyzeStill(detector, src, progress){
+    var W = src.width, H = src.height, hits = [], reds = [], jobs = [];
+    jobs.push({x: 0, y: 0, w: W, h: H, k: Math.min(1, 1600 / Math.max(W, H))});
+    var T = Math.round(Math.max(W, H) / 3), step = Math.round(T / 2), tk = Math.min(2, Math.max(1, 1100 / T));
+    for (var y = 0; y < H - step / 2; y += step) for (var x = 0; x < W - step / 2; x += step)
+      jobs.push({x: x, y: y, w: Math.min(T, W - x), h: Math.min(T, H - y), k: tk});
+    var i = 0, all = jobs.length + 2;
+    function next(){
+      if (i >= jobs.length) return finish();
+      var j = jobs[i++]; progress(i / all);
+      return detectIn(detector, cropTo(src, j, j.k), j.x, j.y, j.k).then(function(list){
+        list.forEach(function(h){ addHit(hits, h); });
+      }).then(nextFrame).then(next);
+    }
+    function finish(){
+      var cands = labelsIn(src, W, H).filter(function(b){ return !hits.some(function(h){ return covers(b, h); }); }).slice(0, 15);
+      var c = 0;
+      function one(){
+        if (c >= cands.length){ progress(1); return {hits: hits, reds: reds}; }
+        var b = cands[c++];
+        return zoomInto(detector, src, W, H, b, 4).then(function(list){
+          if (list.length) list.forEach(function(h){ addHit(hits, h); }); else reds.push(b);
+        }).then(nextFrame).then(one);
+      }
+      return one();
+    }
+    return next();
   }
   var beepCtx = null;
   function beep(ok){
@@ -1441,11 +1594,11 @@
   // العدّ يُحفظ في الجوال أولًا ثم يُرسل لأودو كاملًا كل بضع ثوانٍ — فلا يضيع بانقطاع النت،
   // وأودو يحدّث عدّ هذا الموظف وحده في جرد الموقع (زملاؤه يعدّون أرففًا أخرى في نفس الجرد).
   var CT = {open: ["جارٍ العدّ", "p-info"], review: ["بانتظار المراجعة", "p-warn"], done: ["طُبّق على المخزون", "p-good"], cancel: ["ملغي", "p-sub"]};
-  var jr = {count: null, qty: {}, order: [], ver: 0, sent: 0, timer: null, saving: false, offline: false, closed: false, undo: []};
+  var jr = {count: null, qty: {}, order: [], ver: 0, sent: 0, timer: null, saving: false, offline: false, closed: false, undo: [], stacks: []};
   var jrNames = (function(){ try { return JSON.parse(store("countNames") || "{}") || {}; } catch(e){ return {}; } })();
   function qn(n){ return String(Math.round(Number(n) || 0)); }
   function jrKeep(){
-    if (jr.count) store("count:" + jr.count.id, JSON.stringify({qty: jr.qty, order: jr.order, dirty: jr.ver !== jr.sent}));
+    if (jr.count) store("count:" + jr.count.id, JSON.stringify({qty: jr.qty, order: jr.order, dirty: jr.ver !== jr.sent, stacks: jr.stacks}));
   }
   function jrKeepNames(){
     if (Object.keys(jrNames).length > 3000) jrNames = {};
@@ -1464,6 +1617,18 @@
       jrKeepNames();
     }).catch(function(){});
   }
+  // الرصّات المحفوظة على هذا الجوال: {sig: {كود: عدد}, n, at, thumb}. رصّةٌ بنفس الأكواد والأعداد (80%) = اتعدّت.
+  function stackLike(a, b){
+    var inter = 0, sa = 0, sb = 0, k;
+    for (k in a){ sa += a[k]; inter += Math.min(a[k], b[k] || 0); }
+    for (k in b) sb += b[k];
+    return inter / Math.max(sa, sb, 1);
+  }
+  function findDup(sig){
+    for (var i = jr.stacks.length - 1; i >= 0; i--) if (stackLike(sig, jr.stacks[i].sig) >= .8) return jr.stacks[i];
+    return null;
+  }
+  function agoMs(t){ var m = Math.round((Date.now() - t) / 60000); return m < 1 ? "الآن" : m < 60 ? "منذ " + m + " د" : "منذ " + Math.round(m / 60) + " س"; }
   function jrPieces(){ return Object.keys(jr.qty).reduce(function(s, k){ return s + jr.qty[k]; }, 0); }
   function jrAdd(code, n){
     code = String(code || "").trim().slice(0, 64); if (!code || !n) return 0;
@@ -1505,10 +1670,11 @@
   // جرد من أودو ← الجوال. ما لم يُرسل بعد من هذا الجوال هو الأحدث، فيبقى ويُرسل.
   function jrOpen(c){
     var same = jr.count && jr.count.id === c.id, unsent = same && jr.ver !== jr.sent;
-    if (!same){ if (jr.timer){ clearTimeout(jr.timer); jr.timer = null; } jr = {count: c, qty: {}, order: [], ver: 0, sent: 0, timer: null, saving: false, offline: false, closed: false, undo: []}; }
+    if (!same){ if (jr.timer){ clearTimeout(jr.timer); jr.timer = null; } jr = {count: c, qty: {}, order: [], ver: 0, sent: 0, timer: null, saving: false, offline: false, closed: false, undo: [], stacks: []}; }
     jr.count = c; jr.closed = c.state !== "open"; jrMergeNames(c.mine);
     if (unsent) return;
     var local = null; try { local = JSON.parse(store("count:" + c.id) || "null"); } catch(e){}
+    jr.stacks = (local && local.stacks) || [];
     if (local && local.dirty && c.state === "open"){
       jr.qty = local.qty || {}; jr.order = local.order || []; jr.ver = jr.sent + 1; jrSchedule();
     } else {
@@ -1630,48 +1796,87 @@
 
   // الكاميرا: «قطعة قطعة» — كل ملصقٍ يدخل الإطار = قطعة؛ والملصق نفسه لا يُعدّ ثانيةً ما دام أمام الكاميرا
   // (القطع المتطابقة تحمل نفس الرقم، فالفاصل هو غياب الملصق عن الإطار). «بالعدد» — مسحة ثم عدد قطع الموديل.
+  // «الرصّة» — تُقرأ اللقطة كلها: كل ملصقٍ مقروء مربعٌ أخضر في مكانه، فثلاثة ملصقات بنفس الرقم في ثلاثة أماكن
+  // ثلاث قطع. الملصق الأبيض الذي لم يُقرأ أحمر: يقرّب عليه التطبيق من دقّة الكاميرا الكاملة، أو يضغطه الموظف.
+  // يُحفظ ما هو أخضر، والرصّة المحفوظة تُعرف إن عاد إليها (نفس الأكواد بنفس الأعداد) فلا تُحسب مرّتين.
+  // «📷 صورة دقيقة»: كاميرا الجوال نفسها (12 ميجا، تركيزها وتقريبها) ثم تحليل الصورة مربعًا مربعًا.
   var COUNT_GAP = 900;
+  var HINTS = {auto: "على بُعد شبر من الملصق، مرّر الكاميرا عليها واحدًا واحدًا — كل صوت = قطعة",
+    qty: "امسح ملصقًا واحدًا ثم اختر عدد قطع موديله أمامك",
+    rack: "وجّه الكاميرا على الرصّة واثبت — الأخضر اتقرا، والأحمر قرّب عليه أو اضغطه"};
+  function sigOf(items){ var s = {}; items.forEach(function(it){ s[it.code] = (s[it.code] || 0) + 1; }); return s; }
+  function sigText(sig){ return Object.keys(sig).map(function(c){ return c + " × " + sig[c]; }).join("، "); }
+  function thumbOf(src, sw, sh){
+    try { return cropTo(src, {x: 0, y: 0, w: sw, h: sh}, 120 / sw).toDataURL("image/jpeg", .6); } catch(e){ return ""; }
+  }
+  // مربعات الرصّة على لوحة: أخضر لكل ملصقٍ مقروء، وأحمر متقطّع لملصقٍ لم يُقرأ. P: بكسل الصورة ← اللوحة
+  function drawBoxes(g, items, reds, P){
+    g.lineWidth = 3; g.setLineDash([7, 5]); g.strokeStyle = "#FF5A5A";
+    reds.forEach(function(b){ var a = P(b.x, b.y), c = P(b.x + b.w, b.y + b.h); g.strokeRect(a.x, a.y, c.x - a.x, c.y - a.y); });
+    // الصفحة من اليمين: بلا هذا تُكتب أكواد المربعات معكوسة خارج مكانها
+    g.setLineDash([]); g.font = "bold 12px Tajawal, sans-serif"; g.direction = "ltr"; g.textAlign = "left";
+    items.forEach(function(it){
+      var a = P(it.x, it.y), c = P(it.x + it.w, it.y + it.h);
+      g.fillStyle = "rgba(43,212,122,.25)"; g.fillRect(a.x, a.y, c.x - a.x, c.y - a.y);
+      g.strokeStyle = "#2BD47A"; g.strokeRect(a.x, a.y, c.x - a.x, c.y - a.y);
+      var t = "✓ " + it.code, tw = g.measureText(t).width + 8;
+      g.fillStyle = "#2BD47A"; g.fillRect(a.x, a.y - 17, tw, 16); g.fillStyle = "#0B2915"; g.fillText(t, a.x + 4, a.y - 5);
+    });
+  }
   function openCountScanner(){
     closeSheets();
     var c = jr.count; if (!c || c.state !== "open" || jr.closed) return;
     // iOS يسمح بالصوت بعد لمسة المستخدم فقط: يُفتح هنا ليعمل صوت كل قراءة لاحقًا
     try { beepCtx = beepCtx || new (window.AudioContext || window.webkitAudioContext)(); if (beepCtx.resume) beepCtx.resume(); } catch(e){}
     var el = document.createElement("div"); el.className = "scan";
-    el.innerHTML = '<div id="reader"></div><div class="shade"><div class="frame"><i></i><i></i><i></i><i></i><span class="laser"></span></div></div><div class="flash" id="cfl"></div>'
+    el.innerHTML = '<div id="reader"></div><canvas class="ov" id="ov"></canvas><div class="shade"><div class="frame"><i></i><i></i><i></i><i></i><span class="laser"></span></div></div><div class="flash" id="cfl"></div>'
       + '<div class="tb"><button class="round" id="sx" aria-label="إغلاق">' + ICON.close + '</button><div class="grow"><b class="ellip" style="display:block">جرد ' + esc(c.location.name) + '</b><span class="sub"><span data-jrsync></span></span></div>'
       + '<button class="round" id="torch" aria-label="الفلاش" hidden>' + ICON.torch + '</button></div>'
-      + '<div class="hud"><b class="num" id="hudN"></b><span>قطعة عددتها</span></div>'
-      + '<div class="bottom"><div class="seg" id="cmode"><button data-m="auto">قطعة قطعة</button><button data-m="qty">بالعدد</button></div>'
-      + '<div class="hint" id="shint"></div><div id="slast"></div><div id="qpad"></div>'
+      + '<div class="hud"><b class="num" id="hudN"></b><span>قطعة عددتها</span></div><div class="zoomc" id="zoomc" hidden></div>'
+      + '<div class="bottom"><div class="seg" id="cmode"><button data-m="auto">قطعة قطعة</button><button data-m="qty">بالعدد</button><button data-m="rack">الرصّة</button></div>'
+      + '<div class="hint" id="shint"></div><div class="rackp" id="rackp" hidden></div><div id="slast"></div><div id="qpad"></div>'
       + '<div class="manual"><input id="mcode" dir="ltr" placeholder="أو اكتب الكود يدويًا"><button class="btn gold sm" id="mgo">إضافة</button></div>'
-      + '<button class="btn gold" id="sdone">تم — عرض عدّي ‹</button></div>';
+      + '<button class="btn gold" id="sdone">تم — عرض عدّي ‹</button><input type="file" id="rkFile" accept="image/*" capture="environment" hidden></div>';
     document.body.appendChild(el);
-    var cam = null, seen = {}, asking = false, mode = store("countMode") === "qty" ? "qty" : "auto";
+    var saved = store("countMode");
+    var cam = null, seen = {}, asking = false, mode = saved === "qty" || saved === "rack" ? saved : "auto";
+    var rack = {items: [], reds: [], finderAt: 0, zooming: false, turn: 0, shot: null, key: ""};
+    var ov = $("#ov", el), ovg = ov.getContext("2d");
     function hud(){ $("#hudN", el).textContent = qn(jrPieces()); }
+    function flash(){ var f = $("#cfl", el); f.classList.remove("on"); void f.offsetWidth; f.classList.add("on"); }
     function pickMode(m){
-      mode = m; store("countMode", m);
+      mode = m; store("countMode", m); el.classList.toggle("rack", m === "rack");
       $$("#cmode button", el).forEach(function(b){ b.classList.toggle("on", b.getAttribute("data-m") === m); });
-      $("#shint", el).textContent = m === "auto" ? "على بُعد شبر من الملصق، مرّر الكاميرا عليها واحدًا واحدًا — كل صوت = قطعة" : "امسح ملصقًا واحدًا ثم اختر عدد قطع موديله أمامك";
+      $("#shint", el).textContent = HINTS[m];
+      $("#rackp", el).hidden = m !== "rack";
+      rack.items = []; rack.reds = []; rack.key = ""; drawLive(); rackPanel();
     }
-    function showLast(code, n){
-      var p = jrNames[code], box = $("#slast", el); if (!box) return;
-      box.innerHTML = '<div class="last' + (p === false ? ' warn' : '') + '">' + (p ? thumbHtml(p.id) : '') + '<div class="grow"><div style="font-weight:800" class="ellip">'
-        + (p ? esc(p.name) : p === false ? 'كود غير معروف — يُعدّ ويُراجع في أودو' : '…') + '</div>'
-        + '<div class="num" style="font-size:12.5px" dir="ltr">' + esc(code) + ' · +' + n + ' · عندك منه: ' + qn(jr.qty[code] || 0) + '</div></div>'
-        + '<button class="undo" id="undo">تراجع</button></div>';
+    function undoCard(html, cls){
+      var box = $("#slast", el); if (!box) return;
+      box.innerHTML = '<div class="last' + (cls || '') + '">' + html + '<button class="undo" id="undo">تراجع</button></div>';
       wireThumbs(box);
       $("#undo", el).onclick = function(){
         var u = jr.undo.pop(); if (!u) return;
-        jrAdd(u.code, -u.n); beep(false); vibrate(30); hud();
-        box.innerHTML = '<div class="last err"><div class="grow"><b>أُلغيت آخر قراءة</b><div class="num" style="font-size:12.5px" dir="ltr">' + esc(u.code) + ' −' + u.n + '</div></div></div>';
+        if (u.stack){
+          Object.keys(u.stack.sig).forEach(function(k){ jrAdd(k, -u.stack.sig[k]); });
+          jr.stacks = jr.stacks.filter(function(s){ return s !== u.stack; }); jrKeep(); rack.key = ""; rackPanel();
+        } else jrAdd(u.code, -u.n);
+        beep(false); vibrate(30); hud();
+        box.innerHTML = '<div class="last err"><div class="grow"><b>' + (u.stack ? "أُلغيت الرصّة الأخيرة" : "أُلغيت آخر قراءة") + '</b><div class="num" style="font-size:12.5px" dir="ltr">'
+          + esc(u.stack ? sigText(u.stack.sig) : u.code + " −" + u.n) + '</div></div></div>';
       };
+    }
+    function showLast(code, n){
+      var p = jrNames[code];
+      undoCard((p ? thumbHtml(p.id) : '') + '<div class="grow"><div style="font-weight:800" class="ellip">'
+        + (p ? esc(p.name) : p === false ? 'كود غير معروف — يُعدّ ويُراجع في أودو' : '…') + '</div>'
+        + '<div class="num" style="font-size:12.5px" dir="ltr">' + esc(code) + ' · +' + n + ' · عندك منه: ' + qn(jr.qty[code] || 0) + '</div></div>', p === false ? ' warn' : '');
     }
     function hit(code, n){
       jrAdd(code, n); jr.undo.push({code: code, n: n}); if (jr.undo.length > 100) jr.undo.shift();
-      beep(true); vibrate(50); hud();
-      var f = $("#cfl", el); f.classList.remove("on"); void f.offsetWidth; f.classList.add("on");
+      beep(true); vibrate(50); hud(); flash();
       showLast(code, n);
-      if (!(code in jrNames)) jrLookup([code]).then(function(){ if (jr.undo.length && jr.undo[jr.undo.length - 1].code === code) showLast(code, n); });
+      if (!(code in jrNames)) jrLookup([code]).then(function(){ var u = jr.undo[jr.undo.length - 1]; if (u && u.code === code) showLast(code, n); });
     }
     function askQty(code){
       asking = true; beep(true); vibrate(40); el.classList.add("asking");
@@ -1698,7 +1903,171 @@
       if (asking || now - last < COUNT_GAP) return;     // الملصق نفسه ما زال أمام الكاميرا
       if (mode === "qty") askQty(code); else hit(code, 1);
     }
+
+    // ── الرصّة: بثٌّ مباشر ──
+    function onFrame(hits){
+      var now = Date.now();
+      hits.forEach(function(h){ h.seen = now; addHit(rack.items, h); });
+      if (now - rack.finderAt > 700){ rack.finderAt = now; scanReds(now); }
+      rack.items = rack.items.filter(function(it){ return now - it.seen < 1500; });
+      drawLive(); rackPanel();
+    }
+    function scanReds(now){
+      var v = cam.video, W = v.videoWidth, H = v.videoHeight, boxes = labelsIn(v, W, H);
+      // ملصقٌ أبيض ما زال في مكانه يُبقي ما قُرئ منه (ولو بالتقريب) أخضر
+      boxes.forEach(function(b){ rack.items.forEach(function(it){ if (covers(b, it)) it.seen = now; }); });
+      rack.reds = boxes.filter(function(b){ return !rack.items.some(function(it){ return covers(b, it); }); });
+      if (rack.reds.length && !rack.zooming) zoomRed(rack.reds[rack.turn++ % rack.reds.length], 3);
+    }
+    function zoomRed(b, maxK){
+      var v = cam.video; rack.zooming = true;
+      return zoomInto(cam.detector, v, v.videoWidth, v.videoHeight, b, maxK).then(function(list){
+        rack.zooming = false; var now = Date.now();
+        list.forEach(function(h){ h.seen = now; addHit(rack.items, h); });
+        if (list.length){ rack.reds = rack.reds.filter(function(r){ return !list.some(function(h){ return covers(r, h); }); }); drawLive(); rackPanel(); }
+        return list.length;
+      });
+    }
+    function drawLive(){
+      var r = el.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+      if (ov.width !== Math.round(r.width * dpr) || ov.height !== Math.round(r.height * dpr)){ ov.width = Math.round(r.width * dpr); ov.height = Math.round(r.height * dpr); }
+      ovg.setTransform(dpr, 0, 0, dpr, 0, 0); ovg.clearRect(0, 0, r.width, r.height);
+      if (mode !== "rack" || !cam || !cam.video.videoWidth) return;
+      drawBoxes(ovg, rack.items, rack.reds, function(x, y){ var s = cam.toScreen(x, y); return {x: s.x - r.left, y: s.y - r.top}; });
+    }
+    function rackPanel(){
+      if (mode !== "rack") return;
+      var sig = sigOf(rack.items), codes = Object.keys(sig), total = rack.items.length, dup = total >= 2 ? findDup(sig) : null;
+      var last = jr.undo[jr.undo.length - 1], lastStack = last && last.stack;
+      var key = JSON.stringify(sig) + "|" + rack.reds.length + "|" + (dup ? dup.at : "") + "|" + (lastStack ? lastStack.at : "");
+      if (key === rack.key) return;
+      rack.key = key;
+      $("#rackp", el).innerHTML = (dup ? '<div class="rk-dup">' + (dup.thumb ? '<img src="' + dup.thumb + '" alt="">' : '')
+          + '<div><b>اتعدّت قبل كده ✓</b> · ' + agoMs(dup.at) + ' · ' + dup.n + ' قطعة</div></div>' : '')
+        + (total || rack.reds.length ? '<div class="rk-sum"><span>✓ ' + total + ' ملصق مقروء</span>' + (rack.reds.length ? '<span class="rk-red">✗ ' + rack.reds.length + ' مش واضح — اضغطه</span>' : '') + '</div>'
+          : '<div class="rk-tip">' + HINTS.rack + '</div>')
+        + (codes.length ? '<div class="rk-chips">' + codes.map(function(k){ return '<span class="rk-chip' + (jrNames[k] === false ? ' warn' : '') + '" dir="ltr">' + esc(k) + ' × ' + sig[k] + '</span>'; }).join("") + '</div>' : '')
+        + '<div class="row"><button class="btn ' + (dup ? 'soft' : 'gold') + '" id="rkSave"' + (total ? '' : ' disabled') + '>' + (dup ? 'احسبها برضه (' + total + ')' : '✓ احفظ الرصّة (' + total + ')') + '</button>'
+        + '<button class="btn soft sm" id="rkShot" style="flex:0 0 auto">📷 صورة دقيقة</button></div>'
+        + (lastStack ? '<button class="rk-undo" id="rkUndo">↶ تراجع عن آخر رصّة (' + lastStack.n + ' قطعة)</button>' : '');
+      if ($("#rkUndo", el)) $("#rkUndo", el).onclick = function(){
+        var u = jr.undo.pop(); if (!u || !u.stack) return;
+        Object.keys(u.stack.sig).forEach(function(k){ jrAdd(k, -u.stack.sig[k]); });
+        jr.stacks = jr.stacks.filter(function(q){ return q !== u.stack; }); jrKeep();
+        beep(false); vibrate(30); hud(); rack.key = ""; rackPanel();
+      };
+      $("#rkSave", el).onclick = function(){ saveStack(sig, !!dup, thumbOf(cam.video, cam.video.videoWidth, cam.video.videoHeight)); };
+      $("#rkShot", el).onclick = takeShot;
+      jrLookup(codes);
+    }
+    function saveStack(sig, again, thumb){
+      var total = 0; Object.keys(sig).forEach(function(k){ total += sig[k]; });
+      if (!total) return false;
+      if (again && !confirm("الرصّة دي شكلها اتعدّت قبل كده. تحسبها رصّة جديدة؟")) return false;
+      Object.keys(sig).forEach(function(k){ jrAdd(k, sig[k]); });
+      var st = {sig: sig, n: total, at: Date.now(), thumb: thumb};
+      jr.stacks.push(st); if (jr.stacks.length > 150) jr.stacks.shift();
+      jr.undo.push({stack: st}); jrKeep();
+      beep(true); vibrate([60, 40, 60]); hud(); flash();
+      undoCard('<div class="grow"><div style="font-weight:800">✓ اتحفظت الرصّة: ' + total + ' قطعة</div><div class="num" style="font-size:12.5px" dir="ltr">' + esc(sigText(sig)) + '</div></div>');
+      rack.key = ""; rackPanel(); jrLookup(Object.keys(sig));
+      return true;
+    }
+    ov.addEventListener("click", function(e){
+      if (mode !== "rack" || !cam) return;
+      var p = cam.fromScreen(e.clientX, e.clientY);
+      var b = rack.reds.filter(function(r){ return p.x > r.x - r.w * .2 && p.x < r.x + r.w * 1.2 && p.y > r.y - r.h * .2 && p.y < r.y + r.h * 1.2; })[0];
+      if (!b) return;
+      zoomRed(b, 4).then(function(n){ if (n){ beep(true); vibrate(40); } else toast("لسه مش واضح — قرّب الكاميرا من الملصق ده"); });
+    });
+
+    // ── الرصّة: صورة دقيقة بكاميرا الجوال ──
+    var detP = null;
+    function getDetector(){ if (cam && cam.detector) return Promise.resolve(cam.detector); return detP || (detP = makeDetector(LINEAR)); }
+    // كاميرا الجوال لا تُفتح والبثّ شغّال على الآيفون: يتوقّف، ويعود عند الرجوع (أو إلغاء التصوير)
+    function takeShot(){ if (cam) cam.stop(); var inp = $("#rkFile", el); inp.value = ""; inp.click(); }
+    $("#rkFile", el).onchange = function(){ var f = this.files && this.files[0]; this.value = ""; if (f) analyzeShot(f); };
+    $("#rkFile", el).addEventListener("cancel", resumeLive);
+    function analyzeShot(file){
+      var url = URL.createObjectURL(file), img = new Image(), sh = document.createElement("div"), res = null, src = null;
+      sh.className = "shot";
+      sh.innerHTML = '<div class="shot-img"><img alt=""><canvas></canvas></div><div class="shot-bar">'
+        + '<div class="rk-sum" id="shSum"><span>يحلّل الصورة…</span></div><div class="meter"><i id="shBar" style="width:2%"></i></div>'
+        + '<div id="shDup"></div><div class="rk-chips" id="shChips"></div>'
+        + '<div class="row"><button class="btn gold" id="shSave" disabled>✓ احفظ الرصّة</button><button class="btn soft sm" id="shAgain" style="flex:0 0 auto">📷 تاني</button><button class="btn soft sm" id="shBack" style="flex:0 0 auto">الكاميرا</button></div></div>';
+      el.appendChild(sh); rack.shot = sh;
+      var shot = $(".shot-img", sh), cv = $("canvas", sh), g = cv.getContext("2d");
+      function close(){ URL.revokeObjectURL(url); sh.remove(); rack.shot = null; resumeLive(); }
+      function draw(){
+        if (!res) return;
+        var r = shot.getBoundingClientRect(), dpr = window.devicePixelRatio || 1, s = Math.min(r.width / src.width, r.height / src.height);
+        var ox = (r.width - src.width * s) / 2, oy = (r.height - src.height * s) / 2;
+        cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+        g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height);
+        drawBoxes(g, res.hits, res.reds, function(x, y){ return {x: ox + x * s, y: oy + y * s}; });
+        $(".meter", sh).hidden = true;
+        var sig = sigOf(res.hits), codes = Object.keys(sig), dup = res.hits.length >= 2 ? findDup(sig) : null;
+        $("#shSum", sh).innerHTML = '<span>✓ ' + res.hits.length + ' ملصق مقروء</span>' + (res.reds.length ? '<span class="rk-red">✗ ' + res.reds.length + ' مش واضح — اضغطه</span>' : '');
+        $("#shChips", sh).innerHTML = codes.map(function(k){ return '<span class="rk-chip" dir="ltr">' + esc(k) + ' × ' + sig[k] + '</span>'; }).join("");
+        $("#shDup", sh).innerHTML = dup ? '<div class="rk-dup">' + (dup.thumb ? '<img src="' + dup.thumb + '" alt="">' : '') + '<div><b>الرصّة دي اتعدّت قبل كده ✓</b><div style="font-size:12px">' + agoMs(dup.at) + ' · ' + dup.n + ' قطعة</div></div></div>' : '';
+        var btn = $("#shSave", sh); btn.disabled = !res.hits.length;
+        btn.textContent = dup ? 'احسبها برضه (' + res.hits.length + ')' : '✓ احفظ الرصّة (' + res.hits.length + ')';
+        btn.className = "btn " + (dup ? "soft" : "gold");
+        btn.onclick = function(){ if (saveStack(sig, !!dup, thumbOf(src, src.width, src.height))) close(); };
+        jrLookup(codes);
+      }
+      cv.addEventListener("click", function(e){
+        if (!res) return;
+        var r = shot.getBoundingClientRect(), s = Math.min(r.width / src.width, r.height / src.height);
+        var x = (e.clientX - r.left - (r.width - src.width * s) / 2) / s, y = (e.clientY - r.top - (r.height - src.height * s) / 2) / s;
+        var b = res.reds.filter(function(q){ return x > q.x - q.w * .2 && x < q.x + q.w * 1.2 && y > q.y - q.h * .2 && y < q.y + q.h * 1.2; })[0];
+        if (!b) return;
+        getDetector().then(function(d){ return zoomInto(d, src, src.width, src.height, b, 5); }).then(function(list){
+          if (!list.length){ toast("لسه مش واضح — صوّر الملصق ده من قريب"); return; }
+          list.forEach(function(h){ addHit(res.hits, h); }); res.reds = res.reds.filter(function(q){ return q !== b; });
+          beep(true); vibrate(40); draw();
+        });
+      });
+      $("#shBack", sh).onclick = close;
+      $("#shAgain", sh).onclick = function(){ close(); takeShot(); };
+      img.onerror = function(){ toast("تعذّر فتح الصورة"); close(); };
+      img.onload = function(){
+        $("img", sh).src = url;
+        var k = Math.min(1, 4032 / Math.max(img.naturalWidth, img.naturalHeight));
+        src = cropTo(img, {x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight}, k);
+        getDetector().then(function(d){
+          return analyzeStill(d, src, function(p){ var bar = $("#shBar", sh); if (bar) bar.style.width = Math.round(p * 100) + "%"; });
+        }).then(function(r){ res = r; beep(!!r.hits.length); draw(); })
+          .catch(function(){ toast("تعذّر تحليل الصورة"); close(); });
+      };
+      img.src = url;
+    }
+
+    function startCam(){
+      cam = startCamera(el, LINEAR, onRead, {full: function(){ return mode === "rack"; }, onFrame: onFrame,
+        paused: function(){ return !!rack.shot; }, onStart: camReady});
+    }
+    // الكاميرا تتوقّف حين تُفتح كاميرا الجوال للصورة الدقيقة — تُعاد عند الرجوع
+    function resumeLive(){
+      if (rack.shot || !el.isConnected) return;
+      if (!cam || cam.stopped || !cam.track || cam.track.readyState === "ended"){ if (cam) cam.stop(); startCam(); }
+    }
+    function onVis(){ if (document.visibilityState === "visible") resumeLive(); }
+    function onFocus(){ setTimeout(resumeLive, 600); }
+    document.addEventListener("visibilitychange", onVis); window.addEventListener("focus", onFocus);
+    function camReady(cm){
+      var z = cm.caps && cm.caps.zoom, box = $("#zoomc", el);
+      if (!z || !(z.max > 1)) return;
+      var lv = [1, 2, 3].filter(function(v){ return v >= (z.min || 1) && v <= z.max; }), on = 1;
+      box.innerHTML = lv.map(function(v){ return '<button data-z="' + v + '" class="' + (v === on ? "on" : "") + '">' + v + '×</button>'; }).join("");
+      box.hidden = lv.length < 2;
+      $$("[data-z]", box).forEach(function(b){ b.onclick = function(){
+        on = +b.getAttribute("data-z"); cm.setZoom(on).catch(function(){});
+        $$("[data-z]", box).forEach(function(x){ x.classList.toggle("on", +x.getAttribute("data-z") === on); });
+      }; });
+    }
     function done(){
+      document.removeEventListener("visibilitychange", onVis); window.removeEventListener("focus", onFocus);
       if (cam) cam.stop();
       el.remove(); jrSync(); if (view.name === "count") renderCount();
     }
@@ -1708,7 +2077,7 @@
     $("#mgo", el).onclick = function(){ var v = $("#mcode", el).value.trim(); $("#mcode", el).value = ""; if (!v || asking) return; if (mode === "qty") askQty(v); else hit(v, 1); };
     $("#mcode", el).onkeydown = function(e){ if (e.key === "Enter") $("#mgo", el).click(); };
     pickMode(mode); hud(); jrStatus();
-    cam = startCamera(el, LINEAR, onRead);
+    startCam();
   }
 
   // ════════════ قراءة جواز السفر ════════════
