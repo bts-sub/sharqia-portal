@@ -171,6 +171,14 @@ self.addEventListener("fetch", (e) => {
   if (url.pathname === "/support" || url.pathname === "/it"
       || url.pathname === "/support.html") return;
 
+  // ⚠️ وصفحةُ «جدولي» مثلُهما: ميزةٌ كاملةٌ خارج حزمة التطبيق (مهامُّ
+  // الأقسام واجتماعاتُها)، يصلها الموظفُ ببطاقةٍ في شاشة «حسابي». ولو
+  // لم تُستثنَ لخدَمه معالجُ التنقّل صفحةَ التطبيق فرأى الرئيسيّةَ مكانَ
+  // جدوله — ولا يدري لماذا. وسكربتُها وقشرتُها معها.
+  if (url.pathname === "/schedule" || url.pathname.startsWith("/schedule/")
+      || url.pathname === "/schedule.js" || url.pathname === "/schedule.html"
+      || url.pathname === "/schedule-entry.js") return;
+
   // ─── /api: مهلةٌ فلا تتعلّق، وكاشُ قراءاتٍ للعمل بلا اتصال ───
   if (url.pathname.startsWith("/api/")) {
     // الدخول/الخروج: يمرّ ثم يُمسح كاش القراءات — بيانات جلسةٍ لا تُقرأ لمن بعده.
