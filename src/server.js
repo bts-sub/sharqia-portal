@@ -271,7 +271,7 @@ if (fs.existsSync(frontendPath)) {
   // والميزةُ كلُّها في public/schedule.html و schedule.js لا هنا.
   const withSchedule = (src) => src.includes("/schedule-entry.js") ? src
     : src.replace("</body>",
-      '<script src="/schedule-entry.js" defer></script></body>');
+      `<script src="/schedule-entry.js?v=${config.version}" defer></script></body>`);
   const indexHtml = withSchedule(stamp(fs.readFileSync(frontendPath, "utf8")));
   const swSource = stamp(fs.readFileSync(path.join(publicDir, "sw.js"), "utf8"));
   console.log(`📦 نسخة التطبيق المنشورة: ${config.version}`);
