@@ -42,6 +42,7 @@ import iclockRoutes from "./routes/iclock.js";
 import joinRoutes from "./routes/join.js";
 import supportRoutes from "./routes/support.js";
 import salesRoutes from "./routes/sales.js";
+import scheduleRoutes from "./routes/schedule.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -234,6 +235,7 @@ app.use("/api", letterRoutes);
 app.use("/api", learningRoutes);
 app.use("/api", disciplineRoutes);
 app.use("/api", pushRoutes);
+app.use("/api", scheduleRoutes);
 app.use(certRoutes);
 // البطاقة المهنية: يحمل مساري /api/me/card و /c/:token — يُركّب قبل التقاط
 // الواجهة لكل المسارات (app.get("*")) وإلا ابتلعت الصفحةُ العامةَ الرابطَ.
