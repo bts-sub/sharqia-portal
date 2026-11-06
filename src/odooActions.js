@@ -1629,6 +1629,108 @@ async function resolveBeneficiary(params, ctx) {
 }
 
 // ---- تعريف الـ actions ----
+
+// ══════════════════════════════════════════════════════════════════════
+//  جدولي — أدواتٌ مشتركة بين إجراءات المهامّ والاجتماعات
+// ══════════════════════════════════════════════════════════════════════
+
+// ⚠️ المراحلُ تُقرأ بمعرّفها الخارجيّ لا باسمها: الاسمُ يُترجَم ويُعاد
+//    تسميتُه من شاشة أودو، والمعرّفُ لا يتبدّل. ويُحفظ الجوابُ لأنّ
+//    أرقامَها ثابتةٌ ما دامت القاعدةُ قائمة.
+let schedStagesCache = null;
+const SCHED_STAGE_KEYS = ["inbox", "new", "doing", "review", "done"];
+
+async function schedStages() {
+  if (schedStagesCache) return schedStagesCache;
+  const rows = await odoo.searchRead("ir.model.data",
+    [["module", "=", "sharqia_portal"], ["model", "=", "project.task.type"],
+      ["name", "in", SCHED_STAGE_KEYS.map((k) => `task_stage_${k}`)]],
+    ["name", "res_id"], { limit: 10 });
+  const out = { byId: new Map() };
+  for (const r of rows) {
+    const key = r.name.replace("task_stage_", "");
+    out[key] = r.res_id;
+    out.byId.set(r.res_id, key);
+  }
+  if (!out.done) throw new Error("مراحلُ المهامّ غير منصَّبة في أودو");
+  schedStagesCache = out;
+  return out;
+}
+
+/** حسابُ أودو لموظّف — بلا حسابٍ لا تُسنَد إليه مهمّة. */
+async function schedUserOf(empId) {
+  if (!empId) return 0;
+  const [e] = await odoo.searchRead("hr.employee", [["id", "=", Number(empId)]],
+    ["user_id"], { limit: 1 });
+  return e?.user_id?.[0] || 0;
+}
+
+/** بطاقةُ تواصل الموظّف — بها يُعرف في التقويم. */
+async function schedPartnerOf(empId) {
+  if (!empId) return 0;
+  const [e] = await odoo.searchRead("hr.employee", [["id", "=", Number(empId)]],
+    ["work_contact_id", "user_id"], { limit: 1 });
+  if (e?.work_contact_id?.[0]) return e.work_contact_id[0];
+  if (!e?.user_id?.[0]) return 0;
+  const [u] = await odoo.searchRead("res.users", [["id", "=", e.user_id[0]]],
+    ["partner_id"], { limit: 1 });
+  return u?.partner_id?.[0] || 0;
+}
+
+/** الأقسامُ التي يديرها — من بطاقة القسم لا من دور البوابة.
+ *
+ *  ⚠️ «مدير قسم» في البوابة صفةٌ لا تقول أيَّ قسم. ومن لم يُسنَد إلى
+ *     manager_id في بطاقة قسمٍ لا قسمَ له يوزّع فيه — ولو حمل الدور.
+ *  ⚠️ ومديرُ النظام يرى الأقسامَ كلَّها: هو من يُصلح ما يعلَق. */
+async function schedManagedDepts(empId, role) {
+  if (role === "admin") {
+    const all = await odoo.searchRead("hr.department", [], ["name"],
+      { limit: 100, order: "name" });
+    return all.map((d) => ({ id: d.id, name: d.name }));
+  }
+  if (!empId) return [];
+  const mine = await odoo.searchRead("hr.department",
+    [["manager_id", "=", Number(empId)]], ["name"], { limit: 50 });
+  return mine.map((d) => ({ id: d.id, name: d.name }));
+}
+
+/** مشروعُ مهامِّ القسم — يُنشئه أودو عند أوّل حاجة. */
+async function schedProjectOf(deptId) {
+  return odoo.execKw("hr.department", "sharqia_ensure_project_id",
+    [Number(deptId)]);
+}
+
+/** مهمّةٌ يملك هذا المديرُ أمرَها — وإلّا رُفض الطلب. */
+async function schedTaskForManager(id, empId, role) {
+  const depts = await schedManagedDepts(empId, role);
+  if (!depts.length) throw new Error("لستَ مديرَ قسم");
+  const [t] = await odoo.searchRead("project.task",
+    [["id", "=", Number(id)],
+      ["sharqia_department_id", "in", depts.map((d) => d.id)]],
+    ["id", "name"], { limit: 1 });
+  if (!t) throw new Error("ليست من مهامّ قسمك");
+  return t;
+}
+
+/** شكلُ المهمّة كما يقرؤها التطبيق. */
+function schedTaskOut(r, stages) {
+  const key = stages.byId.get(r.stage_id?.[0]) || "";
+  const due = r.date_deadline || null;
+  return {
+    id: r.id,
+    name: r.name,
+    description: r.description || "",
+    stage: key,
+    stageName: r.stage_id?.[1] || "",
+    deadline: due,
+    priority: r.priority === "1" ? "high" : "normal",
+    dept: r.sharqia_department_id?.[1] || "",
+    deptId: r.sharqia_department_id?.[0] || 0,
+    returnNote: r.sharqia_return_note || "",
+    assignedOn: r.sharqia_assigned_on || null,
+    late: !!(due && key !== "done" && new Date(due.replace(" ", "T") + "Z") < new Date()),
+  };
+}
 const actions = {
   // فحص الاتصال بأودو (يُستخدم في شاشة الإعدادات)
   async "connection.test"() {
@@ -4875,6 +4977,329 @@ const actions = {
         await odoo.callButton("sharqia.discipline.penalty",
           "action_hr_signed", [id]);
         return { ok: true, party: "hr" };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  // ══════════════════════════════════════════════════════════════════
+  //  جدولي — المهامّ
+  //
+  //  ⚠️ الصلاحيةُ تُقرأ من hr.department.manager_id لا من دور البوابة:
+  //     الدورُ «مدير قسم» صفةٌ، وإدارةُ القسم بعينه واقعةٌ مكتوبةٌ في
+  //     بطاقة القسم. ومن حمل الدورَ ولم يُسنَد إلى قسمٍ لا قسمَ له
+  //     يوزّع فيه.
+  // ══════════════════════════════════════════════════════════════════
+
+  /** مهامّي — المسنَدةُ إليّ وحدها، مرتَّبةً بالموعد ثمّ المرحلة. */
+  async "task.mine"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        if (!empId) return { records: [] };
+        const uid = await schedUserOf(empId);
+        if (!uid) return { records: [] };
+        const stages = await schedStages();
+        const recs = await odoo.searchRead("project.task",
+          [["sharqia_department_id", "!=", false], ["user_ids", "in", [uid]]],
+          ["name", "description", "stage_id", "date_deadline", "priority",
+            "sharqia_department_id", "sharqia_return_note", "sharqia_assigned_on"],
+          { limit: 200, order: "date_deadline asc, id desc" });
+        return { records: recs.map((r) => schedTaskOut(r, stages)) };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  /** مهامُّ قسمي — للمدير، ومعها «الوارد» غيرُ المسنَد. */
+  async "task.dept"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const depts = await schedManagedDepts(empId, ctx?.user?.role);
+        if (!depts.length) return { records: [], managed: [] };
+        const stages = await schedStages();
+        const recs = await odoo.searchRead("project.task",
+          [["sharqia_department_id", "in", depts.map((d) => d.id)]],
+          ["name", "description", "stage_id", "date_deadline", "priority",
+            "sharqia_department_id", "user_ids", "sharqia_return_note",
+            "sharqia_assigned_on"],
+          { limit: 400, order: "date_deadline asc, id desc" });
+        const uids = [...new Set(recs.flatMap((r) => r.user_ids || []))];
+        const names = uids.length
+          ? await odoo.searchRead("hr.employee", [["user_id", "in", uids]],
+            ["name", "user_id"], { limit: 300 })
+          : [];
+        const byUid = new Map(names.map((e) => [e.user_id?.[0], e.name]));
+        return {
+          managed: depts,
+          records: recs.map((r) => ({
+            ...schedTaskOut(r, stages),
+            assignees: (r.user_ids || []).map((u) => byUid.get(u) || "—"),
+          })),
+        };
+      },
+      async () => ({ records: [], managed: [] }),
+      { emptyOnError: () => ({ records: [], managed: [], unavailable: true }) }
+    );
+  },
+
+  /** موظّفو قسمي وعددُ مهامِّ كلٍّ منهم — ليكون التوزيعُ متوازنًا. */
+  async "task.team"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const depts = await schedManagedDepts(empId, ctx?.user?.role);
+        if (!depts.length) return { records: [] };
+        const recs = await odoo.searchRead("hr.employee",
+          [["department_id", "in", depts.map((d) => d.id)],
+            ["user_id", "!=", false]],
+          ["name", "job_title", "department_id", "sharqia_open_tasks"],
+          { limit: 300, order: "name" });
+        return {
+          records: recs.map((r) => ({
+            id: r.id, name: r.name, job: r.job_title || "",
+            dept: r.department_id?.[1] || "",
+            openTasks: Number(r.sharqia_open_tasks || 0),
+          })),
+        };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  /** إنشاءُ مهمّة — للمدير، مسنَدةً أو في «الوارد». */
+  async "task.create"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const depts = await schedManagedDepts(empId, ctx?.user?.role);
+        if (!depts.length) throw new Error("لستَ مديرَ قسم");
+        const deptId = Number(params.departmentId || depts[0].id);
+        if (!depts.some((d) => d.id === deptId))
+          throw new Error("ليس قسمَك");
+        const name = String(params.name || "").trim();
+        if (!name) throw new Error("اكتب عنوانَ المهمّة");
+
+        const projectId = await schedProjectOf(deptId);
+        const stages = await schedStages();
+        const toEmp = Number(params.employeeId || 0);
+        let uids = [];
+        if (toEmp) {
+          const uid = await schedUserOf(toEmp);
+          if (!uid) throw new Error("هذا الموظّف بلا حسابِ أودو");
+          uids = [uid];
+        }
+        const id = await odoo.create("project.task", {
+          name,
+          project_id: projectId,
+          // تُنشأ في «الوارد» دائمًا؛ فإن كان لها مسنَدٌ إليه نقلها
+          // الموديلُ إلى «جديدة» وأشعره — المنطقُ هناك لا هنا، فالإنشاءُ
+          // يجري أيضًا من شاشة أودو.
+          stage_id: stages.inbox,
+          description: params.description || "",
+          date_deadline: params.deadline || false,
+          priority: params.priority === "high" ? "1" : "0",
+          ...(uids.length ? { user_ids: [[6, 0, uids]] } : {}),
+        });
+        return { ok: true, id };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** إسنادُ مهمّةٍ من «الوارد» أو إعادةُ إسنادها. */
+  async "task.assign"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const id = Number(params.id);
+        const task = await schedTaskForManager(id, empId, ctx?.user?.role);
+        const toEmp = Number(params.employeeId || 0);
+        if (!toEmp) throw new Error("اختر الموظّف");
+        const uid = await schedUserOf(toEmp);
+        if (!uid) throw new Error("هذا الموظّف بلا حسابِ أودو");
+        await odoo.write("project.task", [task.id], {
+          user_ids: [[6, 0, [uid]]],
+        });
+        return { ok: true };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** نقلُ الموظّف لمهمّته داخل ما يُسمح به. */
+  async "task.move"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const id = Number(params.id);
+        const uid = await schedUserOf(empId);
+        const [task] = await odoo.searchRead("project.task",
+          [["id", "=", id], ["user_ids", "in", [uid]]], ["id"], { limit: 1 });
+        if (!task) throw new Error("ليست من مهامّك");
+        const map = {
+          doing: "sharqia_portal.task_stage_doing",
+          review: "sharqia_portal.task_stage_review",
+        };
+        const xmlid = map[String(params.to || "")];
+        if (!xmlid) throw new Error("مرحلةٌ غير مسموحة");
+        await odoo.execKw("project.task", "action_sharqia_move",
+          [[id], xmlid]);
+        return { ok: true };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** اعتمادُ المهمّة أو إرجاعُها بتعليق — للمدير. */
+  async "task.decide"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const id = Number(params.id);
+        const task = await schedTaskForManager(id, empId, ctx?.user?.role);
+        if (params.approve) {
+          await odoo.execKw("project.task", "action_sharqia_approve", [[task.id]]);
+          return { ok: true, state: "approved" };
+        }
+        const note = String(params.note || "").trim();
+        if (!note) throw new Error("اكتب سببَ الإرجاع");
+        await odoo.execKw("project.task", "action_sharqia_return",
+          [[task.id], note]);
+        return { ok: true, state: "returned" };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  // ══════════════════════════════════════════════════════════════════
+  //  جدولي — الاجتماعات
+  // ══════════════════════════════════════════════════════════════════
+
+  /** اجتماعاتي القادمة، ومعها ردّي على كلٍّ منها. */
+  async "meeting.mine"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const pid = await schedPartnerOf(empId);
+        if (!pid) return { records: [] };
+        const since = params.past
+          ? "1970-01-01 00:00:00"
+          : new Date(Date.now() - 36e5).toISOString().slice(0, 19).replace("T", " ");
+        const recs = await odoo.searchRead("calendar.event",
+          [["partner_ids", "in", [pid]], ["stop", ">=", since]],
+          ["name", "start", "stop", "allday", "location", "description",
+            "videocall_location", "sharqia_mode", "user_id", "partner_ids"],
+          { limit: 100, order: "start asc" });
+        if (!recs.length) return { records: [] };
+        const atts = await odoo.searchRead("calendar.attendee",
+          [["event_id", "in", recs.map((r) => r.id)]],
+          ["event_id", "partner_id", "state"], { limit: 600 });
+        const mine = new Map();
+        const people = new Map();
+        for (const a of atts) {
+          const ev = a.event_id?.[0];
+          if (a.partner_id?.[0] === pid) mine.set(ev, a.state);
+          if (!people.has(ev)) people.set(ev, []);
+          people.get(ev).push({ name: a.partner_id?.[1] || "—", state: a.state });
+        }
+        return {
+          records: recs.map((r) => ({
+            id: r.id,
+            title: r.name,
+            start: r.start, stop: r.stop, allday: !!r.allday,
+            mode: r.sharqia_mode || "onsite",
+            place: r.location || "",
+            link: r.videocall_location || "",
+            organizer: r.user_id?.[1] || "",
+            myState: mine.get(r.id) || "needsAction",
+            attendees: people.get(r.id) || [],
+          })),
+        };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
+
+  /** الأوقاتُ التي يفرغ فيها الحاضرون كلُّهم. */
+  async "meeting.slots"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const ids = [...new Set([
+          ...(Array.isArray(params.employeeIds) ? params.employeeIds : [])
+            .map(Number).filter(Boolean),
+          Number(empId) || 0,
+        ].filter(Boolean))];
+        if (ids.length < 2) throw new Error("اختر من تجتمع بهم");
+        const slots = await odoo.execKw("calendar.event",
+          "sharqia_free_slots",
+          [ids, params.from, params.to,
+            Number(params.minutes || 30), 30, 40]);
+        return { slots: slots || [] };
+      },
+      async () => ({ slots: [] }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** حجزُ اجتماع — حضوريٍّ أو أونلاين برابط أودو. */
+  async "meeting.create"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const title = String(params.title || "").trim();
+        if (!title) throw new Error("اكتب موضوعَ الاجتماع");
+        if (!params.start || !params.stop) throw new Error("حدّد الوقت");
+        const ids = [...new Set([
+          ...(Array.isArray(params.employeeIds) ? params.employeeIds : [])
+            .map(Number).filter(Boolean),
+          Number(empId) || 0,
+        ].filter(Boolean))];
+        const partners = [];
+        for (const id of ids) {
+          const p = await schedPartnerOf(id);
+          if (p) partners.push(p);
+        }
+        if (partners.length < 2) throw new Error("لا حاضرين لهذا الاجتماع");
+        const online = String(params.mode || "onsite") === "online";
+        const id = await odoo.create("calendar.event", {
+          name: title,
+          start: params.start, stop: params.stop,
+          duration: 0,
+          allday: false,
+          description: params.note || "",
+          location: online ? "" : (params.place || ""),
+          sharqia_mode: online ? "online" : "onsite",
+          sharqia_from_portal: true,
+          partner_ids: [[6, 0, partners]],
+        });
+        return { ok: true, id };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** قبولُ الدعوة أو الاعتذار. */
+  async "meeting.respond"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const pid = await schedPartnerOf(empId);
+        if (!pid) throw new Error("لا بطاقةَ تواصلٍ لك");
+        const state = await odoo.execKw("calendar.event", "sharqia_respond",
+          [[Number(params.id)], pid, !!params.accept]);
+        return { ok: true, state };
       },
       async () => ({ ok: false }),
       { forceLiveErrors: true }

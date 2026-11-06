@@ -42,6 +42,7 @@ import iclockRoutes from "./routes/iclock.js";
 import joinRoutes from "./routes/join.js";
 import supportRoutes from "./routes/support.js";
 import salesRoutes from "./routes/sales.js";
+import scheduleRoutes from "./routes/schedule.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -234,6 +235,7 @@ app.use("/api", letterRoutes);
 app.use("/api", learningRoutes);
 app.use("/api", disciplineRoutes);
 app.use("/api", pushRoutes);
+app.use("/api", scheduleRoutes);
 app.use(certRoutes);
 // البطاقة المهنية: يحمل مساري /api/me/card و /c/:token — يُركّب قبل التقاط
 // الواجهة لكل المسارات (app.get("*")) وإلا ابتلعت الصفحةُ العامةَ الرابطَ.
@@ -263,7 +265,14 @@ if (fs.existsSync(frontendPath)) {
     .replace(/window\.SQ_BUILD\s*=\s*"[^"]*"/, `window.SQ_BUILD = "${config.version}"`)
     .replace(/const VERSION = "[^"]*"/, `const VERSION = "v${config.version}"`);
 
-  const indexHtml = stamp(fs.readFileSync(frontendPath, "utf8"));
+  // ⚠️ مدخلُ «جدولي» يُحقَن عند الإقلاع ولا يُكتب في الحزمة: الحزمةُ
+  // مبنيّةٌ لا مصدرَ لها، وما يُكتب فيها يضيع يومَ تُعاد بناؤها. والحقنُ
+  // هنا سطرٌ واحدٌ في كودٍ مقروء، يبقى ولو استُبدلت الحزمةُ كلُّها.
+  // والميزةُ كلُّها في public/schedule.html و schedule.js لا هنا.
+  const withSchedule = (src) => src.includes("/schedule-entry.js") ? src
+    : src.replace("</body>",
+      '<script src="/schedule-entry.js" defer></script></body>');
+  const indexHtml = withSchedule(stamp(fs.readFileSync(frontendPath, "utf8")));
   const swSource = stamp(fs.readFileSync(path.join(publicDir, "sw.js"), "utf8"));
   console.log(`📦 نسخة التطبيق المنشورة: ${config.version}`);
 
@@ -322,6 +331,24 @@ if (fs.existsSync(frontendPath)) {
       (String(req.hostname || "").toLowerCase() === IT_HOST ? sendSupport(req, res) : next()));
   }
 
+
+  // ⚠️ صفحةُ «جدولي» قبل التقاط التطبيق لكلّ المسارات، كصفحتَي البيانات
+  // والدعم: هي ميزةٌ كاملةٌ بمصدرٍ مقروءٍ خارجَ الحزمة المُصغَّرة. ولو
+  // تُركت لالتقطها app.get("*") فعُرض التطبيقُ مكانها.
+  //
+  // ⚠️ ولا حارسَ جلسةٍ على الصفحة نفسِها: هي قشرةٌ فارغة، وكلُّ بيانةٍ
+  // فيها تأتي من /api/schedule/* وهي محروسةٌ بـrequireAuth. ومن فتحها
+  // بلا جلسةٍ يردُّه سكربتُها إلى الجذر عند أوّل نداء — وهذا أهونُ من
+  // حارسٍ يردُّ من فتح الرابط من إشعارٍ قبل أن تُحمَّل الكوكي.
+  const scheduleHtml = path.join(publicDir, "schedule.html");
+  if (fs.existsSync(scheduleHtml)) {
+    const sendSchedule = (req, res) => {
+      res.set("Cache-Control", "no-cache");
+      res.sendFile(scheduleHtml);
+    };
+    app.get("/schedule", sendSchedule);
+    app.get("/schedule/:view", sendSchedule);
+  }
   app.get("/", sendApp);
   app.get("/index.html", sendApp);
   app.use(express.static(publicDir, { index: false }));
