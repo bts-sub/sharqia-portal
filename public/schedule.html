@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="theme-color" content="#FAF8F4"/>
+<title>جدولي — بيت العباءة الشرقية</title>
+<link rel="icon" href="/logo-mark.png?v=2"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet"/>
+<style>
+  /* ⚠️ خطٌّ محليٌّ تحت القاهرة: من يفتح جدولَه في المصنع قد لا يصل خطُّ
+     جوجل إلى جهازه، فتُقرأ الصفحةُ بخطٍّ عربيٍّ من الخادم لا بخطّ النظام. */
+  @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+  @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-SemiBold.ttf") format("truetype"); font-weight: 600; font-display: swap; }
+  @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-Bold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
+
+  /* الألوانُ هي ألوانُ البوابة نفسُها (join.html) — لئلّا تبدو الصفحةُ
+     غريبةً عن التطبيق الذي فُتحت منه. */
+  :root {
+    --gold: #B8912A; --gold-2: #D4B155; --gold-tint: #F7F2E4;
+    --ink: #17150F; --ink-2: #3D3830; --mut: #7C756A; --faint: #A9A196;
+    --line: #E7E2D8; --line-2: #F1EDE5;
+    --bg: #FAF8F4; --card: #FFFFFF;
+    --ok: #16794A; --ok-bg: #EBF7F0; --bad: #B4232A; --bad-bg: #FBEDED;
+    --warn: #8A5A00; --warn-bg: #FBF2DF;
+    --sh-1: 0 1px 2px rgba(23,21,15,.04);
+    --sh-2: 0 2px 4px rgba(23,21,15,.04), 0 12px 32px rgba(23,21,15,.06);
+    --r: 14px;
+    --pick-bg: #17150F; --pick-fg: #FFFFFF;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121110; --card: #1A1917; --ink: #F3F0EA; --ink-2: #D5CFC5;
+      --mut: #948C81; --faint: #6E675E; --line: #2B2926; --line-2: #232120;
+      --gold-tint: #262014; --ok-bg: #16241D; --bad-bg: #2A1718; --warn-bg: #2A2110;
+      --sh-1: 0 1px 2px rgba(0,0,0,.4);
+      --sh-2: 0 2px 4px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.4);
+      --pick-bg: #D4B155; --pick-fg: #17150F; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "PlexAr", "Cairo", system-ui, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.7; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 14px 96px; }
+
+  /* الرأسُ ثابتٌ أعلى الشاشة: الصفحةُ طويلةٌ، والعودةُ يجب أن تُطال
+     بالإبهام في أيّ موضعٍ من التمرير. */
+  header { position: sticky; top: 0; z-index: 20; background: var(--bg);
+    border-bottom: 1px solid var(--line-2); }
+  .hbar { max-width: 720px; margin: 0 auto; padding: 12px 14px;
+    display: flex; align-items: center; gap: 10px; }
+  .hbar h1 { margin: 0; font-size: 18px; font-weight: 700; flex: 1; }
+  .back { width: 38px; height: 38px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); font-size: 18px; cursor: pointer;
+    display: grid; place-items: center; }
+
+  .seg { display: flex; gap: 6px; background: var(--line-2); padding: 4px;
+    border-radius: 12px; margin: 12px 0 4px; }
+  .seg button { flex: 1; border: 0; background: transparent; color: var(--ink-2);
+    font: inherit; font-weight: 600; padding: 9px 6px; border-radius: 9px; cursor: pointer; }
+  .seg button[aria-selected="true"] { background: var(--pick-bg); color: var(--pick-fg); }
+
+  .card { background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--r); box-shadow: var(--sh-1); padding: 14px; margin: 10px 0; }
+  .card h3 { margin: 0 0 4px; font-size: 16px; font-weight: 700; }
+  .meta { color: var(--mut); font-size: 13px; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .grow { flex: 1; }
+
+  .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
+    font-weight: 600; padding: 3px 9px; border-radius: 999px;
+    background: var(--gold-tint); color: var(--warn); }
+  .pill.late { background: var(--bad-bg); color: var(--bad); }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); }
+
+  .btn { border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 10px; cursor: pointer; }
+  .btn.pri { background: var(--pick-bg); color: var(--pick-fg); border-color: transparent; }
+  .btn.danger { color: var(--bad); border-color: var(--bad); }
+  .btn:disabled { opacity: .5; cursor: default; }
+
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--ink-2);
+    margin: 10px 0 4px; }
+  input, select, textarea { width: 100%; font: inherit; color: var(--ink);
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 9px 11px; }
+  textarea { min-height: 76px; resize: vertical; }
+
+  .empty { text-align: center; color: var(--mut); padding: 40px 10px; }
+  .err { background: var(--bad-bg); color: var(--bad); border-radius: 10px;
+    padding: 10px 12px; margin: 10px 0; font-weight: 600; }
+  .sk { height: 74px; border-radius: var(--r); margin: 10px 0;
+    background: linear-gradient(90deg, var(--line-2), var(--card), var(--line-2));
+    background-size: 200% 100%; animation: sh 1.2s infinite; }
+  @keyframes sh { to { background-position: -200% 0; } }
+
+  .sheet { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.45);
+    display: grid; align-items: end; }
+  .sheet > div { background: var(--bg); border-radius: 18px 18px 0 0;
+    padding: 16px 16px 28px; max-height: 88vh; overflow: auto;
+    max-width: 720px; margin: 0 auto; width: 100%; }
+  .slot { border: 1px solid var(--line); background: var(--card); border-radius: 10px;
+    padding: 8px 10px; font: inherit; font-weight: 600; cursor: pointer; }
+  .slot[aria-pressed="true"] { background: var(--pick-bg); color: var(--pick-fg); }
+</style>
+</head>
+<body>
+<header><div class="hbar">
+  <button class="back" id="sq-back" aria-label="رجوع">›</button>
+  <h1>جدولي</h1>
+</div></header>
+<div class="wrap">
+  <div class="seg" role="tablist" id="sq-seg"></div>
+  <div id="sq-body"></div>
+</div>
+<script src="/schedule.js?v=1" type="module"></script>
+</body>
+</html>
