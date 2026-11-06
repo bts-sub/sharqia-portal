@@ -130,13 +130,23 @@ self.addEventListener("notificationclick", (e) => {
   if (d.penaltyId) q.push("pid=" + encodeURIComponent(d.penaltyId));
   if (d.reqId) q.push("req=" + encodeURIComponent(d.reqId));
   if (d.letterId) q.push("lid=" + encodeURIComponent(d.letterId));
-  const url = "/" + (q.length ? "?" + q.join("&") : "");
+  // ⚠️ «جدولي» صفحةٌ مستقلّةٌ لا شاشةٌ داخل التطبيق: إشعارُ مهمّةٍ أو
+  //    اجتماعٍ يفتحها هي على تبويبها، وإلّا فُتح جذرُ التطبيق فرأى
+  //    المُشعَرُ الرئيسيّةَ ولم يجد ما أُشعر به.
+  const sched = d.link === "task" ? "/schedule?t=mine"
+    : d.link === "meeting" ? "/schedule?t=meetings" : "";
+  const url = sched || ("/" + (q.length ? "?" + q.join("&") : ""));
   e.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const w of wins) {
       if (new URL(w.url).origin !== self.location.origin) continue;
       // نافذةٌ مفتوحة: تُركَّز وتُبلَّغ بالوجهة بدل فتح نافذةٍ ثانية للتطبيق نفسه
       await w.focus();
+      // ونافذةُ التطبيق لا تعرف «جدولي»، فتُنقَل إليها نقلًا لا تُبلَّغ
+      if (sched) {
+        try { await w.navigate(sched); } catch { await self.clients.openWindow(sched); }
+        return;
+      }
       w.postMessage({ sq: "notif-open", data: d });
       return;
     }

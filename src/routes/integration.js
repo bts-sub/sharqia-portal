@@ -66,7 +66,7 @@ router.post("/integration/users/:login/reset-password", async (req, res, next) =
 router.post("/integration/notifications", (req, res, next) => {
   try {
     const { login, title, body = "", type = "system", reqId = "",
-      link = "", penaltyId = 0, letterId = 0 } = req.body || {};
+      link = "", penaltyId = 0, letterId = 0, taskId = 0, eventId = 0 } = req.body || {};
     if (!login || !title) throw badRequest("login و title مطلوبان");
     const user = findByLogin(login);
     if (!user) throw notFound("المستخدم غير موجود");
@@ -82,6 +82,11 @@ router.post("/integration/notifications", (req, res, next) => {
       ...(penaltyId ? { penaltyId: Number(penaltyId) } : {}),
       // letterId = رقم الخطاب في أودو؛ الضغط على الإشعار يفتح ملفه مباشرةً
       ...(letterId ? { letterId: Number(letterId) } : {}),
+      // taskId / eventId = مهمّةُ «جدولي» أو اجتماعُه؛ الضغطُ على الإشعار
+      // يفتح /schedule على تبويبها. والمفتاحان يُخزَّنان حين يصلان فقط،
+      // كأخويهما — فلا تحمل إشعاراتُ الطلبات مفاتيحَ فارغة.
+      ...(taskId ? { taskId: Number(taskId) } : {}),
+      ...(eventId ? { eventId: Number(eventId) } : {}),
       at: new Date().toISOString(), source: "odoo",
     });
     // الدفع إلى أجهزته: الإشعار يصل والتطبيق مغلق، وهو مقصود الإشعار أصلًا.
@@ -89,7 +94,7 @@ router.post("/integration/notifications", (req, res, next) => {
     // الدفع (جهازٌ قديم أو شبكةُ مزوّد) لا يُرجع خطأً إلى أودو فيُعيد إرساله.
     sendToUser(user.id, {
       title, body, tag: "sq-" + notif.id,
-      data: { id: notif.id, link, reqId, penaltyId, letterId },
+      data: { id: notif.id, link, reqId, penaltyId, letterId, taskId, eventId },
     }).catch(() => {});
     res.json({ ok: true, id: notif.id });
   } catch (e) { next(e); }
