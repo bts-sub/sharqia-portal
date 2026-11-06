@@ -43,6 +43,9 @@
     font-family: "PlexAr", "Cairo", system-ui, "Segoe UI", sans-serif;
     font-size: 15px; line-height: 1.7; -webkit-font-smoothing: antialiased; }
   .wrap { max-width: 720px; margin: 0 auto; padding: 0 14px 96px; }
+  /* مُضمَّنةٌ داخل التطبيق: شريطُ التبويبات خارجَ الإطار، فلا حاجةَ
+     إلى فراغٍ تحتَه داخلَه. */
+  .sq-embed .wrap { padding-bottom: 24px; }
 
   /* الرأسُ ثابتٌ أعلى الشاشة: الصفحةُ طويلةٌ، والعودةُ يجب أن تُطال
      بالإبهام في أيّ موضعٍ من التمرير. */

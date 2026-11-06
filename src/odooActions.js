@@ -1685,6 +1685,14 @@ async function schedManagedDepts(empId, role) {
   return mine.map((d) => ({ id: d.id, name: d.name }));
 }
 
+
+/** قسمُ الموظّف — تُكتب فيه مهمّتُه التي يكتبها لنفسه. */
+async function schedEmpDept(empId) {
+  if (!empId) return 0;
+  const [e] = await odoo.searchRead("hr.employee", [["id", "=", Number(empId)]],
+    ["department_id"], { limit: 1 });
+  return e?.department_id?.[0] || 0;
+}
 /** مشروعُ مهامِّ القسم — يُنشئه أودو عند أوّل حاجة. */
 async function schedProjectOf(deptId) {
   return odoo.execKw("hr.department", "sharqia_ensure_project_id",
@@ -5055,22 +5063,67 @@ const actions = {
     );
   },
 
-  /** إنشاءُ مهمّة — للمدير، مسنَدةً أو في «الوارد». */
+
+  /** كلُّ موظّفي الشركة — لدعوة الاجتماعات من أيِّ قسم.
+   *
+   *  ⚠️ لا يُقصَر على قسم الداعي: الاجتماعُ يُعقد بين الأقسام أكثرَ ممّا
+   *     يُعقد داخلها — والمبيعاتُ تحتاج التصنيعَ، والجودةُ تحتاجهما.
+   *  ⚠️ ولا يُرشَّح من لا بطاقةَ تواصلٍ له: الحاضرُ في تقويم أودو شريكٌ
+   *     (res.partner)، ومن لا بطاقةَ له لا يُدعى — وهم اليوم صفر.
+   */
+  async "schedule.people"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const q = String(params.q || "").trim();
+        const dom = [["active", "=", true], ["work_contact_id", "!=", false]];
+        if (q) dom.push(["name", "ilike", q]);
+        const recs = await odoo.searchRead("hr.employee", dom,
+          ["name", "job_title", "department_id"],
+          { limit: 400, order: "department_id, name" });
+        return {
+          me: Number(empId) || 0,
+          records: recs.map((r) => ({
+            id: r.id, name: r.name, job: r.job_title || "",
+            dept: r.department_id?.[1] || "— بلا قسم —",
+            deptId: r.department_id?.[0] || 0,
+          })),
+        };
+      },
+      async () => ({ records: [], me: 0 }),
+      { emptyOnError: () => ({ records: [], me: 0, unavailable: true }) }
+    );
+  },
+  /** إنشاءُ مهمّة — لنفسِك، أو لموظّفٍ من قسمك إن كنتَ مديرَه. */
   async "task.create"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
     return withOdoo(
       async () => {
-        const depts = await schedManagedDepts(empId, ctx?.user?.role);
-        if (!depts.length) throw new Error("لستَ مديرَ قسم");
-        const deptId = Number(params.departmentId || depts[0].id);
-        if (!depts.some((d) => d.id === deptId))
-          throw new Error("ليس قسمَك");
         const name = String(params.name || "").trim();
         if (!name) throw new Error("اكتب عنوانَ المهمّة");
+        const depts = await schedManagedDepts(empId, ctx?.user?.role);
+        const isMgr = depts.length > 0;
+
+        // ⚠️ كلُّ موظّفٍ يكتب مهمّةَ نفسِه، والمديرُ وحدَه يكتب لغيره:
+        //    «جدولي» جدولُ صاحبه قبل أن يكون لوحةَ توزيع. ومن لا يملك أن
+        //    يكتب لنفسه مهمّةً لا يفتح الشاشةَ إلّا ليُنفّذ ما أُملي عليه.
+        let deptId;
+        let toEmp;
+        if (isMgr) {
+          deptId = Number(params.departmentId || depts[0].id);
+          if (!depts.some((d) => d.id === deptId))
+            throw new Error("ليس قسمَك");
+          toEmp = Number(params.employeeId || 0);
+        } else {
+          deptId = await schedEmpDept(empId);
+          if (!deptId)
+            throw new Error("لا قسمَ في بطاقتك — راجع الموارد البشرية");
+          // ولا يكتب لغيره ولو أرسل رقمًا آخر
+          toEmp = Number(empId);
+        }
 
         const projectId = await schedProjectOf(deptId);
         const stages = await schedStages();
-        const toEmp = Number(params.employeeId || 0);
         const id = await odoo.create("project.task", {
           name,
           project_id: projectId,

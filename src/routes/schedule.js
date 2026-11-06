@@ -47,6 +47,14 @@ router.get("/schedule/team", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+
+router.get("/schedule/people", async (req, res, next) => {
+  try {
+    const { data } = await runAction("schedule.people",
+      { q: req.query.q || "" }, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
 router.post("/schedule/tasks", async (req, res, next) => {
   try {
     const { name } = req.body || {};

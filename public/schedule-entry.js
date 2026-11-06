@@ -77,10 +77,73 @@
     card.addEventListener("click", function (e) {
       e.preventDefault();
       e.stopPropagation();
-      location.href = "/schedule";
+      openSchedule();
     }, true);
     return card;
   }
+  // ══ الفتحُ داخل التطبيق لا في صفحةٍ أخرى ════════════════════════════
+  // ⚠️ كان الضغطُ يُغادر إلى /schedule، فيختفي شريطُ التبويبات ويبدو
+  //    كأنّه موقعٌ خارجيّ. والصفحةُ لا يمكن أن تُرسَم داخل شجرة React
+  //    (لا مصدرَ للحزمة)، فتُعرض في إطارٍ على نفس النطاق فوق التطبيق
+  //    وتحت الشريط — فيبقى الشريطُ ظاهرًا عاملًا كما في بقيّة الخدمات.
+  var OV = "sq-schedule-overlay";
+
+  // شريطُ التبويبات: عنصرٌ ثابتٌ أسفلَ الشاشة فيه «الرئيسية».
+  function findNav() {
+    var all = document.body.getElementsByTagName("div");
+    for (var i = all.length - 1; i >= 0; i--) {
+      var n = all[i], s;
+      if (n.offsetHeight < 34 || n.offsetHeight > 130) continue;
+      if (n.textContent.indexOf("الرئيسية") < 0) continue;
+      try { s = getComputedStyle(n); } catch (e) { continue; }
+      if (s.position === "fixed" && parseInt(s.bottom, 10) === 0) return n;
+    }
+    return null;
+  }
+
+  function closeSchedule() {
+    var ov = document.getElementById(OV);
+    if (ov) ov.remove();
+  }
+
+  function openSchedule() {
+    if (document.getElementById(OV)) return;
+    var nav = findNav();
+    var navH = nav ? nav.offsetHeight : 0;
+    var z = 900;
+    try {
+      var nz = nav ? parseInt(getComputedStyle(nav).zIndex, 10) : 0;
+      if (nz > 1) z = nz - 1;
+    } catch (e) { /* يبقى الافتراضيّ */ }
+    var bg = "#FAF8F4";
+    try { bg = getComputedStyle(document.body).backgroundColor || bg; } catch (e) {}
+
+    var ov = document.createElement("div");
+    ov.id = OV;
+    ov.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:" + navH
+      + "px;z-index:" + z + ";background:" + bg;
+    var fr = document.createElement("iframe");
+    fr.src = "/schedule";
+    fr.setAttribute("title", "جدولي");
+    fr.style.cssText = "width:100%;height:100%;border:0;display:block";
+    ov.appendChild(fr);
+    document.body.appendChild(ov);
+
+    // ⚠️ ضغطُ تبويبٍ في الشريط يُغلق الجدول: الشريطُ ظاهرٌ فوق الإطار،
+    //    ولو بقي الجدولُ مفتوحًا لانتقل التطبيقُ خلفه بلا أن يُرى.
+    if (nav && !nav.__sqBound) {
+      nav.__sqBound = true;
+      nav.addEventListener("click", function () { closeSchedule(); }, true);
+    }
+  }
+
+  window.addEventListener("message", function (e) {
+    if (e.origin !== location.origin) return;
+    if (e.data && e.data.sq === "schedule-close") closeSchedule();
+  });
+  // رجوعُ الجهاز يُغلق الجدولَ أيضًا — بلا لمسِ تاريخ المتصفّح، فالتطبيقُ
+  // يستعمله لـ«اضغط رجوع مرّةً أخرى للخروج».
+  window.addEventListener("popstate", function () { closeSchedule(); });
 
   var pending = false;
   function place() {

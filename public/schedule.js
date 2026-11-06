@@ -47,6 +47,7 @@ const api = {
   tasks: () => call("/api/schedule/tasks"),
   deptTasks: () => call("/api/schedule/tasks/dept"),
   team: () => call("/api/schedule/team"),
+  people: (q) => call("/api/schedule/people" + (q ? "?q=" + encodeURIComponent(q) : "")),
   createTask: (b) => call("/api/schedule/tasks", { method: "POST", body: JSON.stringify(b) }),
   assign: (id, employeeId) => call(`/api/schedule/tasks/${id}/assign`,
     { method: "POST", body: JSON.stringify({ employeeId }) }),
@@ -72,6 +73,19 @@ const fmtDay = (s) => (toDate(s) ? AR_DATE.format(toDate(s)) : "—");
 const fmtTime = (s) => (toDate(s) ? AR_TIME.format(toDate(s)) : "—");
 const fmtWhen = (s) => (toDate(s) ? `${fmtDay(s)} · ${fmtTime(s)}` : "—");
 
+// ⚠️ الصفحةُ تُفتح داخل التطبيق في إطارٍ لا في تبويبٍ جديد: فالرجوعُ
+//    يُغلق الإطارَ لا يُغادر الصفحة. ومن فتحها مباشرةً برابطها يرجع كما
+//    يرجع من أيّ صفحة.
+const EMBED = (function () {
+  try { return window.top !== window.self; } catch (e) { return true; }
+})();
+function goBack() {
+  if (EMBED) {
+    try { parent.postMessage({ sq: "schedule-close" }, location.origin); return; }
+    catch (e) { /* يسقط إلى الرجوع العاديّ */ }
+  }
+  if (history.length > 1) history.back(); else location.href = "/";
+}
 const STAGE_AR = { inbox: "وارد", new: "جديدة", doing: "قيد التنفيذ",
   review: "مراجعة", done: "منتهية" };
 
@@ -119,12 +133,24 @@ async function viewMine(host) {
   try { data = await api.tasks(); }
   catch (e) { host.replaceChildren(el("div", { class: "err" }, e.message)); return; }
   const recs = data.records || [];
+  const refresh = () => viewMine(host);
+
+  // ⚠️ زرُّ الإضافة لكلِّ موظّفٍ لا للمدير وحدَه: «جدولي» جدولُ صاحبه قبل
+  //    أن يكون لوحةَ توزيع، ومن لا يملك أن يكتب لنفسه سطرًا لا يفتحه إلّا
+  //    ليقرأ ما أُملي عليه.
+  const head = el("div", { class: "row", style: "margin:12px 0 4px" },
+    el("div", { class: "grow meta", style: "font-weight:700" },
+      recs.length ? `${recs.length} مهمّة` : ""),
+    el("button", { class: "btn pri",
+      onclick: () => newTaskSheet(null, [], refresh) }, "+ مهمّة"));
+
   if (!recs.length) {
-    host.replaceChildren(el("div", { class: "empty" }, "لا مهامَّ عليك الآن."));
+    host.replaceChildren(head,
+      el("div", { class: "empty" }, "لا مهامَّ عليك الآن."));
     return;
   }
   const onAct = async (t, to) => {
-    try { await api.move(t.id, to); toast("تمّ"); viewMine(host); }
+    try { await api.move(t.id, to); toast("تمّ"); refresh(); }
     catch (e) { toast(e.message, true); }
   };
   const byStage = new Map();
@@ -132,7 +158,7 @@ async function viewMine(host) {
     if (!byStage.has(t.stage)) byStage.set(t.stage, []);
     byStage.get(t.stage).push(t);
   }
-  const out = [];
+  const out = [head];
   for (const st of MY_ORDER) {
     const list = byStage.get(st);
     if (!list || !list.length) continue;
@@ -147,6 +173,9 @@ async function viewMine(host) {
 // ⚠️ «الوارد» أوّلًا ثمّ «المراجعة»: هذان ما ينتظران قرارَ المدير،
 //    وبقيّةُ المراحل تُقرأ ولا تُنتظر.
 const DEPT_ORDER = ["inbox", "review", "doing", "new", "done"];
+// ⚠️ «الوارد» عند المدير مسوّداتُه: ما كتبه ولم يوزّعه بعد — تذكيرٌ له
+//    لا طابورُ انتظار. والاسمُ يقول ذلك كي لا يظنّها مهامَّ ضائعة.
+const DEPT_STAGE_AR = { inbox: "مسوّدات وتذكيرات (وارد)" };
 
 function pickSheet(title, team, onPick) {
   // ⚠️ عددُ المهامّ بجانب كلِّ اسم: هذه هي الغايةُ من الشاشة — ألّا
@@ -219,7 +248,7 @@ async function viewDept(host) {
     const list = byStage.get(st);
     if (!list || !list.length) continue;
     out.push(el("div", { class: "meta", style: "margin:14px 2px 2px;font-weight:700" },
-      `${STAGE_AR[st] || st} (${list.length})`));
+      `${DEPT_STAGE_AR[st] || STAGE_AR[st] || st} (${list.length})`));
     for (const t of list) out.push(deptCard(t, team, refresh));
   }
   host.replaceChildren(...out);
@@ -267,27 +296,34 @@ function deptCard(t, team, refresh) {
       : null);
 }
 
+// depts = null → الموظّفُ يكتب لنفسه: لا اختيارَ قسمٍ ولا مسنَدٍ إليه.
 function newTaskSheet(depts, team, refresh) {
+  const mgr = Array.isArray(depts) && depts.length > 0;
   let name, dept, who, due, desc;
   const sheet = el("div", { class: "sheet", onclick: (e) => {
     if (e.target === sheet) sheet.remove();
   } },
     el("div", {},
-      el("h3", { style: "margin:4px 0 8px" }, "مهمّةٌ جديدة"),
+      el("h3", { style: "margin:4px 0 8px" },
+        mgr ? "مهمّةٌ جديدة" : "مهمّةٌ لي"),
+      !mgr ? el("div", { class: "meta", style: "margin-bottom:6px" },
+        "تُضاف إلى جدولك أنت.") : null,
       el("label", {}, "العنوان"),
       (name = el("input", { placeholder: "ما المطلوب؟" })),
-      depts.length > 1 ? el("label", {}, "القسم") : null,
-      depts.length > 1
+      mgr && depts.length > 1 ? el("label", {}, "القسم") : null,
+      mgr && depts.length > 1
         ? (dept = el("select", {}, ...depts.map((d) =>
           el("option", { value: d.id }, d.name))))
         : null,
-      el("label", {}, "المسنَد إليه"),
+      mgr ? el("label", {}, "المسنَد إليه") : null,
       // ⚠️ «اتركها في الوارد» خيارٌ أوّل لا استثناء: المديرُ يكتب المهمّةَ
-      //    حين تخطر له، ويوزّعها حين يرى الحِمل — وهذا هو سيرُ العمل.
-      (who = el("select", {},
-        el("option", { value: "" }, "اتركها في «الوارد» — أوزّعها لاحقًا"),
+      //    حين تخطر له ويوزّعها حين يرى الحِمل. وما بقي في «الوارد» هو
+      //    مسوّدتُه وتذكيرُه.
+      mgr ? (who = el("select", {},
+        el("option", { value: "" }, "اتركها في «الوارد» — مسوّدةٌ وتذكيرٌ لي"),
         ...[...team].sort((a, b) => a.openTasks - b.openTasks).map((m) =>
-          el("option", { value: m.id }, `${m.name} — ${m.openTasks} مهمّة`)))),
+          el("option", { value: m.id }, `${m.name} — ${m.openTasks} مهمّة`))))
+        : null,
       el("label", {}, "الموعد النهائي (اختياري)"),
       (due = el("input", { type: "date" })),
       el("label", {}, "تفصيل (اختياري)"),
@@ -300,8 +336,10 @@ function newTaskSheet(depts, team, refresh) {
           try {
             await api.createTask({
               name: title,
-              departmentId: dept ? Number(dept.value) : (depts[0] || {}).id,
-              employeeId: who.value ? Number(who.value) : 0,
+              ...(mgr ? {
+                departmentId: dept ? Number(dept.value) : depts[0].id,
+                employeeId: who && who.value ? Number(who.value) : 0,
+              } : {}),
               deadline: due.value ? due.value + " 12:00:00" : null,
               description: desc.value.trim(),
             });
@@ -351,20 +389,18 @@ function meetingCard(m, refresh) {
 
 async function viewMeetings(host) {
   host.replaceChildren(el("div", { class: "sk" }), el("div", { class: "sk" }));
-  let recs = [], team = [];
-  try {
-    recs = (await api.meetings()).records || [];
-    team = (await api.team()).records || [];
-  } catch (e) { host.replaceChildren(el("div", { class: "err" }, e.message)); return; }
+  let recs = [];
+  try { recs = (await api.meetings()).records || []; }
+  catch (e) { host.replaceChildren(el("div", { class: "err" }, e.message)); return; }
 
   const refresh = () => viewMeetings(host);
+  // ⚠️ الحجزُ متاحٌ للجميع: من يحتاج اجتماعًا مع قسمٍ آخر لا يحتاج إذنًا
+  //    ليطلبه — والمدعوُّ يقبل أو يعتذر، وهذا هو الإذن.
   const head = el("div", { class: "row", style: "margin:12px 0 4px" },
     el("div", { class: "grow meta", style: "font-weight:700" },
       recs.length ? `${recs.length} اجتماعًا قادمًا` : ""),
-    team.length
-      ? el("button", { class: "btn pri", onclick: () => bookSheet(team, refresh) },
-        "+ احجز")
-      : null);
+    el("button", { class: "btn pri", onclick: () => bookSheet(refresh) },
+      "+ احجز"));
   host.replaceChildren(head,
     ...(recs.length
       ? recs.map((m) => meetingCard(m, refresh))
@@ -375,31 +411,71 @@ async function viewMeetings(host) {
 // ⚠️ الوقتُ يُختار من الفراغ لا من تقويمٍ فارغ: الخادمُ يحسب ما يفرغ فيه
 //    الحاضرون كلُّهم (الدوام ناقص الاجتماعات ناقص الإجازات)، فلا يُحجز
 //    موعدٌ يعتذر عنه نصفُهم.
-function bookSheet(team, refresh) {
-  let title, mode, place, mins, from, to, note;
-  const picked = new Set();
+// ⚠️ والحاضرون من كلِّ الأقسام: الاجتماعُ يُعقد بين الأقسام أكثرَ ممّا
+//    يُعقد داخلها. وقائمةُ أربعةٍ وأربعين اسمًا لا تُعرض دفعةً — تُبحث.
+function bookSheet(refresh) {
+  let title, mode, place, mins, from, to, note, search;
+  const picked = new Map();          // id → name
   let slot = null;
+  let people = [];
+  const chips = el("div", { class: "row", style: "gap:6px;margin:6px 0" });
+  const list = el("div", { style: "max-height:190px;overflow:auto;margin-top:6px" });
   const slotBox = el("div", { class: "row", style: "gap:6px;margin-top:6px" });
+
+  const drawChips = () => {
+    chips.replaceChildren(...(picked.size
+      ? [...picked].map(([id, nm]) => el("button", {
+        class: "slot", "aria-pressed": "true",
+        onclick: () => { picked.delete(id); drawChips(); drawList(); loadSlots(); },
+      }, nm + " ×"))
+      : [el("div", { class: "meta" }, "لم تختر أحدًا بعد.")]));
+  };
+
+  const drawList = () => {
+    const q = (search.value || "").trim();
+    const shown = people.filter((p) => !picked.has(p.id)
+      && (!q || p.name.includes(q) || p.dept.includes(q)));
+    if (!shown.length) {
+      list.replaceChildren(el("div", { class: "meta" }, "لا أحدَ بهذا الاسم."));
+      return;
+    }
+    const out = [];
+    let dept = null;
+    for (const p of shown.slice(0, 60)) {
+      if (p.dept !== dept) {
+        dept = p.dept;
+        out.push(el("div", { class: "meta",
+          style: "font-weight:700;margin:8px 2px 2px" }, dept));
+      }
+      out.push(el("button", {
+        class: "btn", style: "width:100%;text-align:start;margin:3px 0",
+        onclick: () => {
+          picked.set(p.id, p.name);
+          search.value = "";
+          drawChips(); drawList(); loadSlots();
+        },
+      }, p.name + (p.job ? ` · ${p.job}` : "")));
 
   const loadSlots = async () => {
     slot = null;
     if (picked.size === 0) {
-      slotBox.replaceChildren(el("div", { class: "meta" }, "اختر من تجتمع بهم أوّلًا."));
+      slotBox.replaceChildren(el("div", { class: "meta" },
+        "اختر من تجتمع بهم أوّلًا."));
       return;
     }
     slotBox.replaceChildren(el("div", { class: "meta" }, "أبحث عن الفراغ…"));
     try {
       const r = await api.slots({
-        employeeIds: [...picked], from: from.value, to: to.value,
+        employeeIds: [...picked.keys()], from: from.value, to: to.value,
         minutes: Number(mins.value || 30),
       });
-      const list = r.slots || [];
-      if (!list.length) {
+      const items = r.slots || [];
+      if (!items.length) {
         slotBox.replaceChildren(el("div", { class: "meta" },
           "لا وقتَ يفرغ فيه الجميعُ في هذا المدى — وسّعه أو أنقِص الحاضرين."));
         return;
       }
-      slotBox.replaceChildren(...list.map((s) => {
+      slotBox.replaceChildren(...items.map((s) => {
         const b = el("button", { class: "slot", "aria-pressed": "false",
           onclick: () => {
             slot = s;
@@ -420,17 +496,11 @@ function bookSheet(team, refresh) {
       el("h3", { style: "margin:4px 0 8px" }, "احجز اجتماعًا"),
       el("label", {}, "الموضوع"),
       (title = el("input", { placeholder: "موضوع الاجتماع" })),
-      el("label", {}, "الحاضرون"),
-      el("div", { class: "row", style: "gap:6px" },
-        ...team.map((m) => {
-          const b = el("button", { class: "slot", "aria-pressed": "false",
-            onclick: () => {
-              if (picked.has(m.id)) { picked.delete(m.id); b.setAttribute("aria-pressed", "false"); }
-              else { picked.add(m.id); b.setAttribute("aria-pressed", "true"); }
-              loadSlots();
-            } }, m.name);
-          return b;
-        })),
+      el("label", {}, "الحاضرون — من أيِّ قسم"),
+      chips,
+      (search = el("input", { placeholder: "ابحث باسم الموظّف أو القسم…",
+        oninput: () => drawList() })),
+      list,
       el("label", {}, "النوع"),
       (mode = el("select", { onchange: () => {
         place.style.display = mode.value === "online" ? "none" : "";
@@ -458,12 +528,13 @@ function bookSheet(team, refresh) {
       el("div", { class: "row", style: "margin-top:12px" },
         el("button", { class: "btn pri grow", onclick: async (ev) => {
           if (!title.value.trim()) { toast("اكتب الموضوع", true); return; }
+          if (!picked.size) { toast("اختر من تجتمع بهم", true); return; }
           if (!slot) { toast("اختر وقتًا", true); return; }
           ev.target.disabled = true;
           try {
             await api.createMeeting({
               title: title.value.trim(), start: slot.start, stop: slot.stop,
-              mode: mode.value, employeeIds: [...picked],
+              mode: mode.value, employeeIds: [...picked.keys()],
               place: place.value.trim(), note: note.value.trim(),
             });
             sheet.remove(); toast("حُجز الاجتماع"); refresh();
@@ -471,8 +542,20 @@ function bookSheet(team, refresh) {
         } }, "احجز"),
         el("button", { class: "btn", onclick: () => sheet.remove() }, "إلغاء"))));
   document.body.append(sheet);
+  drawChips();
   loadSlots();
+  api.people().then((r) => {
+    // ⚠️ أنا لستُ في القائمة: الخادمُ يُضيفني إلى الحاضرين دائمًا، فلو
+    //    عُرضتُ لاختار المستخدمُ نفسَه ثمّ عدَّ نفسه مرّتين.
+    people = (r.records || []).filter((p) => p.id !== r.me);
+    drawList();
+  }).catch(() => {
+    list.replaceChildren(el("div", { class: "err" }, "تعذّر جلبُ الموظفين"));
+  });
 }
+    }
+    list.replaceChildren(...out);
+  };
 
 // ══ التبويبُ والإقلاع ═════════════════════════════════════════════════
 // ⚠️ تبويبُ «قسمي» لا يُعرض إلّا لمن يدير قسمًا فعلًا: يُسأل الخادمُ
@@ -485,14 +568,11 @@ const TABS = [
 ];
 
 async function boot() {
+  if (EMBED) document.documentElement.classList.add("sq-embed");
   const seg = $("#sq-seg");
   const body = $("#sq-body");
 
-  $("#sq-back").addEventListener("click", () => {
-    // ⚠️ رجوعُ المتصفّح إن كان ثَمّ تاريخ، وإلّا إلى جذر التطبيق:
-    //    من فتح الصفحةَ من إشعارٍ ليس له ما يرجع إليه.
-    if (history.length > 1) history.back(); else location.href = "/";
-  });
+  $("#sq-back").addEventListener("click", goBack);
 
   let managed = false;
   try { managed = ((await api.deptTasks()).managed || []).length > 0; }
