@@ -1656,15 +1656,6 @@ async function schedStages() {
   schedStagesCache = out;
   return out;
 }
-
-/** حسابُ أودو لموظّف — بلا حسابٍ لا تُسنَد إليه مهمّة. */
-async function schedUserOf(empId) {
-  if (!empId) return 0;
-  const [e] = await odoo.searchRead("hr.employee", [["id", "=", Number(empId)]],
-    ["user_id"], { limit: 1 });
-  return e?.user_id?.[0] || 0;
-}
-
 /** بطاقةُ تواصل الموظّف — بها يُعرف في التقويم. */
 async function schedPartnerOf(empId) {
   if (!empId) return 0;
@@ -4998,11 +4989,10 @@ const actions = {
     return withOdoo(
       async () => {
         if (!empId) return { records: [] };
-        const uid = await schedUserOf(empId);
-        if (!uid) return { records: [] };
+        // المسنَدُ إليه موظّفٌ لا حسابُ أودو — فلا حاجةَ إلى تحويل
         const stages = await schedStages();
         const recs = await odoo.searchRead("project.task",
-          [["sharqia_department_id", "!=", false], ["user_ids", "in", [uid]]],
+          [["sharqia_department_id", "!=", false], ["sharqia_assignee_id", "=", empId]],
           ["name", "description", "stage_id", "date_deadline", "priority",
             "sharqia_department_id", "sharqia_return_note", "sharqia_assigned_on"],
           { limit: 200, order: "date_deadline asc, id desc" });
@@ -5024,20 +5014,14 @@ const actions = {
         const recs = await odoo.searchRead("project.task",
           [["sharqia_department_id", "in", depts.map((d) => d.id)]],
           ["name", "description", "stage_id", "date_deadline", "priority",
-            "sharqia_department_id", "user_ids", "sharqia_return_note",
+            "sharqia_department_id", "sharqia_assignee_id", "sharqia_return_note",
             "sharqia_assigned_on"],
           { limit: 400, order: "date_deadline asc, id desc" });
-        const uids = [...new Set(recs.flatMap((r) => r.user_ids || []))];
-        const names = uids.length
-          ? await odoo.searchRead("hr.employee", [["user_id", "in", uids]],
-            ["name", "user_id"], { limit: 300 })
-          : [];
-        const byUid = new Map(names.map((e) => [e.user_id?.[0], e.name]));
         return {
           managed: depts,
           records: recs.map((r) => ({
             ...schedTaskOut(r, stages),
-            assignees: (r.user_ids || []).map((u) => byUid.get(u) || "—"),
+            assignees: r.sharqia_assignee_id ? [r.sharqia_assignee_id[1]] : [],
           })),
         };
       },
@@ -5055,7 +5039,7 @@ const actions = {
         if (!depts.length) return { records: [] };
         const recs = await odoo.searchRead("hr.employee",
           [["department_id", "in", depts.map((d) => d.id)],
-            ["user_id", "!=", false]],
+            ["active", "=", true]],
           ["name", "job_title", "department_id", "sharqia_open_tasks"],
           { limit: 300, order: "name" });
         return {
@@ -5087,12 +5071,6 @@ const actions = {
         const projectId = await schedProjectOf(deptId);
         const stages = await schedStages();
         const toEmp = Number(params.employeeId || 0);
-        let uids = [];
-        if (toEmp) {
-          const uid = await schedUserOf(toEmp);
-          if (!uid) throw new Error("هذا الموظّف بلا حسابِ أودو");
-          uids = [uid];
-        }
         const id = await odoo.create("project.task", {
           name,
           project_id: projectId,
@@ -5103,7 +5081,7 @@ const actions = {
           description: params.description || "",
           date_deadline: params.deadline || false,
           priority: params.priority === "high" ? "1" : "0",
-          ...(uids.length ? { user_ids: [[6, 0, uids]] } : {}),
+          ...(toEmp ? { sharqia_assignee_id: toEmp } : {}),
         });
         return { ok: true, id };
       },
@@ -5121,10 +5099,8 @@ const actions = {
         const task = await schedTaskForManager(id, empId, ctx?.user?.role);
         const toEmp = Number(params.employeeId || 0);
         if (!toEmp) throw new Error("اختر الموظّف");
-        const uid = await schedUserOf(toEmp);
-        if (!uid) throw new Error("هذا الموظّف بلا حسابِ أودو");
         await odoo.write("project.task", [task.id], {
-          user_ids: [[6, 0, [uid]]],
+          sharqia_assignee_id: toEmp,
         });
         return { ok: true };
       },
@@ -5139,9 +5115,8 @@ const actions = {
     return withOdoo(
       async () => {
         const id = Number(params.id);
-        const uid = await schedUserOf(empId);
         const [task] = await odoo.searchRead("project.task",
-          [["id", "=", id], ["user_ids", "in", [uid]]], ["id"], { limit: 1 });
+          [["id", "=", id], ["sharqia_assignee_id", "=", empId]], ["id"], { limit: 1 });
         if (!task) throw new Error("ليست من مهامّك");
         const map = {
           doing: "sharqia_portal.task_stage_doing",
