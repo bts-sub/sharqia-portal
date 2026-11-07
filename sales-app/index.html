@@ -1301,7 +1301,7 @@
     view = {name: "dash", user: userId || null}; setNav("dash"); updateCartUI();
     main.innerHTML = installCardHtml() + '<div class="h1">' + (userId ? '<button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button>' : '')
       + '<span class="grow" id="dashT">' + (userId ? "مبيعات الموظف" : "لوحتي") + '</span><button class="icon-btn" id="rf" aria-label="تحديث">' + ICON.refresh + '</button></div>'
-      + '<div id="dashTasks"></div><div class="seg" id="seg"><button data-p="today">اليوم</button><button data-p="week">الأسبوع</button><button data-p="month">الشهر</button></div>'
+      + '<div id="dashTasks"></div>' + (can("view_all") ? '<div class="seg" id="seg"><button data-p="today">اليوم</button><button data-p="week">الأسبوع</button><button data-p="month">الشهر</button></div>' : '')
       + '<div id="dashBody"><div class="spin"></div></div>';
     wireInstallCard();
     if ($("#bk")) $("#bk").onclick = function(){ screenDash(); };
@@ -1332,8 +1332,16 @@
       $("#goRc").onclick = screenReceipts;
     }).catch(function(){});
   }
+  function pendingHtml(pend){
+    return (pend.orders || pend.links) ? '<div class="card"><div class="h2">لم تُحصَّل بعد</div>'
+      + (pend.orders ? '<div class="kv"><span>طلبات المعرض المفتوحة</span><b class="num">' + pend.orders + '</b></div>' : '')
+      + (pend.links ? '<div class="kv"><span>لينكات بانتظار الدفع</span><b class="num">' + pend.links + '</b></div>' : '') + '</div>' : '';
+  }
   function renderDash(d, userId){
     var box = $("#dashBody"); if (!box) return;
+    var pend = d.pending || {};
+    // البائع لا يرى أرقام مبيعات: ما ينتظره فقط، والمبيعات والعمولات للإدارة في أودو
+    if (d.sales === false){ box.innerHTML = pendingHtml(pend) || '<div class="muted" style="text-align:center;padding:24px 0">لا طلبات ولا لينكات بانتظار الدفع</div>'; return; }
     if (userId) $("#dashT").textContent = d.user.name;
     var avg = d.count ? d.total / d.count : 0;
     var maxDay = Math.max.apply(null, d.days.map(function(x){ return x.amount; }).concat([0]));
@@ -1343,15 +1351,12 @@
       return '<button data-day="' + i + '" class="' + (i === d.days.length - 1 ? "on" : "") + '" aria-label="' + esc(dayName(x.date)) + ': ' + esc(money(x.amount)) + '"><i style="height:' + h + 'px"></i>' + esc(dayName(x.date)) + '</button>';
     }).join("");
     var sideStat = function(k, v, sub){ return '<div class="stat"><div class="k">' + k + '</div><div class="v num">' + v + '</div>' + (sub ? '<div class="muted num">' + sub + '</div>' : '') + '</div>'; };
-    var pend = d.pending || {};
     box.innerHTML = '<div class="hero"><div class="meta">إجمالي المبيعات المحصّلة</div><div class="big num">' + money(d.total) + '</div>'
       + '<div class="meta num">' + d.count + ' عملية · متوسط ' + money(avg) + '</div></div>'
       + '<div class="stats">' + sideStat("عملاء المعرض", money(d.internal.amount), d.internal.count + " طلب")
       + sideStat("عملاء خارجيون", money(d.external.amount), d.external.count + " فاتورة") + '</div>'
       + '<div class="card"><div class="h2">آخر 7 أيام</div><div class="bar-read"><span id="brD"></span><b class="num" id="brV"></b></div><div class="bars" id="bars">' + bars + '</div></div>'
-      + ((pend.orders || pend.links) ? '<div class="card"><div class="h2">لم تُحصَّل بعد</div>'
-        + (pend.orders ? '<div class="kv"><span>طلبات المعرض المفتوحة</span><b class="num">' + pend.orders + '</b></div>' : '')
-        + (pend.links ? '<div class="kv"><span>لينكات بانتظار الدفع</span><b class="num">' + pend.links + '</b></div>' : '') + '</div>' : '')
+      + pendingHtml(pend)
       + (d.top.length ? '<div class="card"><div class="h2">الأكثر مبيعًا</div>' + d.top.map(function(t, i){
           return '<div class="row ln-item"><span class="rank num">' + (i + 1) + '</span><div class="grow"><div class="ellip" style="font-weight:700;font-size:13.5px">' + esc(t.name) + '</div><div class="muted num">' + t.qty + ' قطعة</div></div><b class="num">' + money(t.amount) + '</b></div>';
         }).join("") + '</div>' : '')
