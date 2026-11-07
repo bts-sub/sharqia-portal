@@ -108,6 +108,20 @@
   .chip{border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:999px;padding:9px 14px;font-weight:700;
     font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
   .chip.on{background:var(--navy);color:#F3D97A;border-color:var(--navy)}
+  /* شريط تصفية المنتجات: «المتوفر فقط» وتصنيفات نقطة البيع بألوان أزرار شاشتها (o_colorlist_item_color_N) */
+  .pfilter{display:flex;gap:8px;margin:-4px 0 12px;margin-inline-end:-16px}
+  .pfilter .cats{flex:1;min-width:0;display:flex;gap:8px;overflow-x:auto;padding:2px 0;padding-inline:8px 16px;
+    border-inline-start:1px solid var(--line);scrollbar-width:none}
+  .pfilter .cats::-webkit-scrollbar{display:none}
+  .pfilter .chip{flex:none;white-space:nowrap;padding:8px 13px}
+  .chip.cat{background:var(--cb,var(--surface2));color:var(--cf,var(--text));border-color:var(--cb,var(--line))}
+  .chip.cat.on{border-color:var(--cd,var(--text));box-shadow:inset 0 0 0 1px var(--cd,var(--text))}
+  .cc1{--cb:#ff9c9c;--cf:#430c0c;--cd:#a70e0e} .cc2{--cb:#f7c698;--cf:#35210f;--cd:#915319}
+  .cc3{--cb:#fde388;--cf:#2f270a;--cd:#90740f} .cc4{--cb:#bbd7f8;--cf:#19324f;--cd:#2361ab}
+  .cc5{--cb:#d9a8cc;--cf:#1d181c;--cd:#603b56} .cc6{--cb:#f8d6c8;--cf:#552f1f;--cd:#b15129}
+  .cc7{--cb:#89e1db;--cf:#0b1313;--cd:#255f5b} .cc8{--cb:#97a6f9;--cf:#0e1436;--cd:#162994}
+  .cc9{--cb:#ff9ecc;--cf:#450c27;--cd:#a90e58} .cc10{--cb:#b7edbe;--cf:#1f3922;--cd:#348a40}
+  .cc11{--cb:#e6dbfc;--cf:#39206c;--cd:#5c24ce}
 
   /* ── ملخّص ── */
   .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
@@ -533,6 +547,7 @@
   }
   function signOut(expired){
     token = ""; store("salesToken", null); me = null; cart = []; customer = null; shipping = null; carriers = null; iorder = null;
+    posCats = {}; pfilter.categ = 0;
     showLogin(expired ? "انتهت الجلسة — سجّل الدخول من جديد." : "");
   }
   function openAccount(){
@@ -935,30 +950,103 @@
   // ════════════ المنتجات ════════════
   function productSearchHtml(id){
     return '<div class="search"><div class="field">' + ICON.search + '<input id="' + id + '" placeholder="ابحث بالاسم أو الكود أو الباركود"></div>'
-      + '<button class="scan-btn" data-scan aria-label="مسح الباركود بالكاميرا">' + ICON.scan + '</button></div>';
+      + '<button class="scan-btn" data-scan aria-label="مسح الباركود بالكاميرا">' + ICON.scan + '</button></div><div class="pfilter" data-pfilter></div>';
   }
-  function loadProducts(target, q, limit){
-    return api("/products?q=" + encodeURIComponent(q || "") + "&limit=" + limit + scopeQ("&")).then(function(rows){
-      target.innerHTML = rows.length ? '<div class="grid">' + rows.map(productCard).join("") + '</div>' : '<div class="empty"><b>لا نتائج</b>جرّب اسمًا آخر أو امسح الباركود.</div>';
+  // التصفية: «المتوفر فقط» يبقى على الجهاز، والتصنيف طوال الجلسة كشاشة نقطة البيع
+  var pfilter = {stock: store("salesInStock") === "1", categ: 0};
+  var posCats = {};      // تصنيفات كل نوع عميل، تُجلب مرة في الجلسة
+  function catsFor(){
+    var k = isInt() ? "pos" : "ext";
+    return posCats[k] || (posCats[k] = api("/categories" + scopeQ("?")).catch(function(){ delete posCats[k]; return []; }));
+  }
+  // كشاشة نقطة البيع: التصنيفات العليا، وفروع كل تصنيفٍ على مسار المختار (هنا بعده مباشرة لا آخر الشريط)
+  function catsShown(cats){
+    var by = {}, kids = {}, path = {}, out = [];
+    cats.forEach(function(c){ by[c.id] = c; if (c.parent_id) (kids[c.parent_id] = kids[c.parent_id] || []).push(c); });
+    for (var c = by[pfilter.categ]; c; c = by[c.parent_id]) path[c.id] = true;
+    (function walk(list){ list.forEach(function(c){ out.push(c); if (path[c.id] && kids[c.id]) walk(kids[c.id]); }); })
+      (cats.filter(function(c){ return !c.parent_id; }));
+    return out;
+  }
+  function filterHtml(cats){
+    function chip(on, attr, label, cls){ return '<button class="chip' + (cls || "") + (on ? " on" : "") + '" aria-pressed="' + on + '" ' + attr + '>' + (on ? ICON.check : "") + esc(label) + '</button>'; }
+    // «المتوفر فقط» ثابت والتصنيفات وحدها تتمرّر، فلا يُبعد لمسُه التصنيفَ المختار عن الشاشة
+    return chip(pfilter.stock, "data-stock", "المتوفر فقط") + (cats.length ? '<div class="cats">' + chip(!pfilter.categ, 'data-cat="0"', "الكل")
+      + catsShown(cats).map(function(c){ return chip(c.id === pfilter.categ, 'data-cat="' + c.id + '"', c.name, " cat" + (c.color ? " cc" + c.color : "")); }).join("") + '</div>' : "");
+  }
+  // يرسم الشريط ويعيد تحميل القائمة بعد كل اختيار؛ يعيد دالة الرسم
+  function wireFilter(root, reload){
+    var box = $("[data-pfilter]", root), cats = [];
+    function draw(){
+      var s = $(".cats", box), x = s ? s.scrollLeft : 0;
+      box.innerHTML = filterHtml(cats);
+      if (!(s = $(".cats", box))) return;
+      s.scrollLeft = x;
+      var on = $(".chip.cat.on", s);       // المختار ظاهرٌ كاملًا (علامته تزيد عرضه)
+      if (on){ var a = s.getBoundingClientRect(), r = on.getBoundingClientRect();
+        s.scrollLeft += r.right > a.right ? r.right - a.right + 8 : r.left < a.left ? r.left - a.left - 8 : 0; }
+    }
+    draw();
+    catsFor().then(function(c){
+      cats = c; if (!box.isConnected) return;
+      var stale = pfilter.categ && !c.some(function(x){ return x.id === pfilter.categ; });   // تصنيفٌ ليس لهذا النوع من العملاء
+      if (stale) pfilter.categ = 0;
+      draw();
+      if (stale) reload();
+    });
+    box.onclick = function(e){
+      var b = e.target.closest("button"); if (!b) return;
+      if (b.hasAttribute("data-stock")){ pfilter.stock = !pfilter.stock; store("salesInStock", pfilter.stock ? "1" : null); }
+      else {
+        var id = +b.getAttribute("data-cat"), c = cats.filter(function(x){ return x.id === id; })[0];
+        pfilter.categ = id && id === pfilter.categ ? (c && c.parent_id) || 0 : id;    // لمس المختار يعود إلى أبيه أو «الكل»
+      }
+      draw(); reload();
+    };
+    return draw;
+  }
+  var loadSeq = 0;
+  function loadProducts(target, q, limit, offset){
+    var seq = ++loadSeq; offset = offset || 0;
+    var f = (pfilter.stock ? "&stock=1" : "") + (pfilter.categ ? "&categ=" + pfilter.categ : "") + (offset ? "&offset=" + offset : "");
+    return api("/products?q=" + encodeURIComponent(q || "") + "&limit=" + limit + f + scopeQ("&")).then(function(rows){
+      if (seq !== loadSeq) return;        // ردٌّ متأخر: بعده بحثٌ أو تصفيةٌ أحدث
+      var cards = rows.map(productCard).join(""), more = rows.length === limit ? '<button class="linkbtn" data-more>عرض المزيد</button>' : "";
+      if (offset){ $("[data-more]", target).remove(); $(".grid", target).insertAdjacentHTML("beforeend", cards); target.insertAdjacentHTML("beforeend", more); }
+      else target.innerHTML = rows.length ? '<div class="grid">' + cards + '</div>' + more : '<div class="empty"><b>لا نتائج</b>'
+        + (pfilter.stock ? "ألغِ «المتوفر فقط» لترى النافد أيضًا." : pfilter.categ ? "جرّب «الكل» أو تصنيفًا آخر." : "جرّب اسمًا آخر أو امسح الباركود.") + '</div>';
+      var m = $("[data-more]", target);
+      if (m) m.onclick = function(){ m.disabled = true; loadProducts(target, q, limit, offset + limit); };
       wireThumbs(target);
-    }).catch(function(e){ target.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+    }).catch(function(e){
+      if (seq !== loadSeq) return;
+      if (!offset) target.innerHTML = '<div class="empty">' + esc(e.message) + '</div>';
+      else { toast(e.message); $("[data-more]", target).disabled = false; }
+    });
+  }
+  // البحث والتصفية وقائمة النتائج
+  function wireProductList(root, res, limit){
+    var input = $("#pq", root), t, typed = false;
+    function reload(){ loadProducts(res, input.value, limit); }
+    input.oninput = function(){
+      clearTimeout(t);
+      var now = !!this.value.trim();
+      if (now && !typed && pfilter.categ){ pfilter.categ = 0; draw(); }   // كنقطة البيع: البحث يبدأ من «الكل»
+      typed = now; t = setTimeout(reload, 300);
+    };
+    var draw = wireFilter(root, function(){ res.innerHTML = gridSkeleton(4); reload(); });
+    wireSteppers(res); reload(); updateCartUI();
   }
   function openProductPicker(){
     var ov = sheet("إضافة منتجات", productSearchHtml("pq") + '<div id="pres">' + gridSkeleton(4) + '</div><div data-cartbar></div>');
     $("[data-scan]", ov).onclick = function(){ ov.remove(); openScanner(); };
-    var res = $("#pres", ov); wireSteppers(res);
-    var t;
-    $("#pq", ov).oninput = function(){ clearTimeout(t); var v = this.value; t = setTimeout(function(){ loadProducts(res, v, 40); }, 300); };
-    loadProducts(res, "", 40); updateCartUI();
+    wireProductList(ov, $("#pres", ov), 40);
   }
   function screenProducts(){
     view = {name: "products"}; setNav("products");
     main.innerHTML = '<div class="h1"><span class="grow">' + (isInt() && me.pos ? "مخزون " + esc(me.pos.name) : "المنتجات") + '</span></div>' + productSearchHtml("pq") + '<div id="pwrap">' + gridSkeleton(6) + '</div>';
     $("[data-scan]", main).onclick = openScanner;
-    var res = $("#pwrap"); wireSteppers(res);
-    var t;
-    $("#pq").oninput = function(){ clearTimeout(t); var v = this.value; t = setTimeout(function(){ loadProducts(res, v, 50); }, 300); };
-    loadProducts(res, "", 50); updateCartUI();
+    wireProductList(main, $("#pwrap", main), 50);
   }
 
   // ════════════ الكاميرا وقارئ الباركود ════════════

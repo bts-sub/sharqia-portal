@@ -129,15 +129,25 @@ r.get("/api/sales/products", run(async (req, res) => {
   const q = String(req.query.q || "").trim();
   const limit = Math.min(num(req.query.limit, 40), 100);
   const offset = Math.max(num(req.query.offset, 0), 0);
+  const stock = req.query.stock === "1";            // المتوفر فقط
+  const categ = num(req.query.categ, 0);            // تصنيف نقطة البيع بفروعه
   // ?scope=pos: منتجات نقطة بيع الموظف بكميات مخزونها (أودو يحدّد نقطته من جلسته)
   if (req.query.scope === "pos") {
-    return res.json(await execKw(APP, "app_pos_products", [req.appToken, q, limit, offset, req.query.stock === "1"]));
+    return res.json(await execKw(APP, "app_pos_products", [req.appToken, q, limit, offset, stock],
+      categ ? { categ_id: categ } : {}));          // لا يُرسل بلا تصنيف: أودو قبل 19.0.1.4.0 لا يعرفه
   }
   const domain = [["sale_ok", "=", true], ["type", "!=", "service"]];
   if (q) domain.push("|", "|", ["name", "ilike", q], ["default_code", "ilike", q], ["barcode", "ilike", q]);
+  if (stock) domain.push(["qty_available", ">", 0]);
+  if (categ) domain.push(["pos_categ_ids", "child_of", categ]);
   const rows = await searchRead("product.product", domain, PRODUCT_FIELDS,
     { limit, offset, order: q ? "name" : "id desc" });   // بلا بحث: الأحدث أولًا
   res.json(await productsOut(rows));
+}));
+
+// تصنيفات شريط التصفية كشاشة نقطة البيع: تصنيفات نقطة الموظف (?scope=pos) أو كلّها للعميل الخارجي
+r.get("/api/sales/categories", run(async (req, res) => {
+  res.json(await execKw(APP, "app_pos_categories", [req.appToken, req.query.scope === "pos" ? "pos" : false]));
 }));
 
 // منتجٌ بالباركود أو الكود (مسح كاميرا الجوال) — مطابقة تامّة
