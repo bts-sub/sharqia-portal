@@ -634,6 +634,7 @@
         // فيها يُرجع الحوالة. وصورةُ الهوية تُطلب ولا تُشترط.
         { k: "iban_copy", ar: "شهادة الآيبان", en: "IBAN letter", req: true },
         { k: "id_copy", ar: "الهوية / الإقامة", en: "ID / Iqama" },
+        { k: "addr_copy", ar: "العنوان الوطني", en: "National address" },
         { k: "cv_copy", ar: "السيرة الذاتية", en: "CV / Résumé" },
         { k: "qual_copy", ar: "المؤهل العلمي", en: "Qualification certificate" },
         { k: "certs_copy", ar: "الشهادات", en: "Certificates" },

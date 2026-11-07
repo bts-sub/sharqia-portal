@@ -246,11 +246,12 @@ function buildIntakeVals(b) {
     photo: "الصورة الشخصية", id_copy: "صورة الهوية / الإقامة",
     iban_copy: "شهادة الآيبان", cv_copy: "السيرة الذاتية",
     qual_copy: "المؤهل العلمي", certs_copy: "الشهادات",
+    addr_copy: "العنوان الوطني",
     other_copy: "مرفقات أخرى", signature: "التوقيع",
   };
   // والتوقيعُ منها: صورةٌ تُحفظ في الملفّ ويُطبع بها نموذجُ الموظف
   for (const key of ["photo", "id_copy", "iban_copy", "cv_copy", "qual_copy",
-                     "certs_copy", "other_copy", "signature"]) {
+                     "certs_copy", "addr_copy", "other_copy", "signature"]) {
     // المرفقُ يصل بإحدى صورتين: معرّفًا لملفٍّ رُفع قبلُ (الطريقُ المعتاد)،
     // أو base64 في الطلب نفسه (توافقٌ مع نسخةٍ قديمة من الصفحة).
     let data = "";
