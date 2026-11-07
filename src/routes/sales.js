@@ -110,7 +110,7 @@ r.post("/api/sales/logout", run(async (req, res) => {
 }));
 
 // ───────────────────────── المنتجات ─────────────────────────
-const PRODUCT_FIELDS = ["name", "default_code", "barcode", "list_price", "qty_available", "uom_id"];
+const PRODUCT_FIELDS = ["name", "default_code", "barcode", "list_price", "qty_available", "is_storable", "uom_id"];
 // أسعار شاملة الضريبة من أودو؛ وإن تعذّر: فارغة (الواجهة تعرض السعر الأساسي).
 async function mfPrices(ids) {
   if (!ids.length) return {};
@@ -120,7 +120,7 @@ async function productsOut(rows) {
   const incl = await mfPrices(rows.map((p) => p.id));
   return rows.map((p) => ({
     id: p.id, name: p.name, code: p.default_code || "", barcode: p.barcode || "",
-    price: p.list_price, qty: p.qty_available, uom: m2o(p.uom_id)?.name || "",
+    price: p.list_price, qty: p.qty_available, stock: !!p.is_storable, uom: m2o(p.uom_id)?.name || "",
     price_incl: incl[String(p.id)] ?? null,     // ما يدفعه العميل في لينك ماي فاتورة
   }));
 }
@@ -138,7 +138,7 @@ r.get("/api/sales/products", run(async (req, res) => {
   }
   const domain = [["sale_ok", "=", true], ["type", "!=", "service"]];
   if (q) domain.push("|", "|", ["name", "ilike", q], ["default_code", "ilike", q], ["barcode", "ilike", q]);
-  if (stock) domain.push(["qty_available", ">", 0]);
+  if (stock) domain.push("|", ["is_storable", "=", false], ["qty_available", ">", 0]);   // ما لا يُتتبّع متاحٌ دائمًا
   if (categ) domain.push(["pos_categ_ids", "child_of", categ]);
   const rows = await searchRead("product.product", domain, PRODUCT_FIELDS,
     { limit, offset, order: q ? "name" : "id desc" });   // بلا بحث: الأحدث أولًا
@@ -266,8 +266,13 @@ r.get("/api/sales/pos-orders/counts", run(async (req, res) => {
   res.json(await execKw(APP, "app_order_counts", [req.appToken]));
 }));
 r.post("/api/sales/pos-orders", run(async (req, res) => {
-  const { partner_id, lines, note } = req.body || {};
-  res.json(await execKw(APP, "app_order_create", [req.appToken, num(partner_id) || false, orderLines(lines), note ? String(note) : false]));
+  const { partner_id, lines, note, phone } = req.body || {};
+  res.json(await execKw(APP, "app_order_create", [req.appToken, num(partner_id) || false, orderLines(lines), note ? String(note) : false],
+    phone ? { phone: String(phone) } : {}));
+}));
+// عميلٌ بدأ طلبه مع زميل: يفتحه الموظف بكوده اليومي أو بجواله فينتقل إليه ويكمل عليه
+r.post("/api/sales/pos-orders/claim", run(async (req, res) => {
+  res.json(await execKw(APP, "app_order_claim", [req.appToken, String((req.body || {}).key || "")]));
 }));
 r.get("/api/sales/pos-orders/:id", run(async (req, res) => {
   res.json(await execKw(APP, "app_order_get", [req.appToken, num(req.params.id)]));
@@ -277,9 +282,10 @@ r.get("/api/sales/pos-orders/:id/receipt", run(async (req, res) => {
   res.json(await execKw(APP, "app_order_receipt", [req.appToken, num(req.params.id)]));
 }));
 r.put("/api/sales/pos-orders/:id", run(async (req, res) => {
-  const { partner_id, lines, note } = req.body || {};
+  const { partner_id, lines, note, phone } = req.body || {};
   res.json(await execKw(APP, "app_order_save", [req.appToken, num(req.params.id), orderLines(lines),
-    partner_id === undefined ? null : (num(partner_id) || false), note === undefined ? null : String(note || "")]));
+    partner_id === undefined ? null : (num(partner_id) || false), note === undefined ? null : String(note || "")],
+    phone === undefined ? {} : { phone: String(phone || "") }));
 }));
 // إجراءات الطلب: كل واحدٍ يقابل دالة في أودو تتحقّق من الصلاحية بنفسها
 const ORDER_ACTIONS = { open: "app_order_open", release: "app_order_release", receive: "app_order_receive",

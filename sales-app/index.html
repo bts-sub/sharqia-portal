@@ -281,6 +281,8 @@
   .spin{width:26px;height:26px;border:3px solid rgba(201,162,39,.25);border-top-color:var(--gold);border-radius:50%;animation:sp .7s linear infinite;margin:28px auto}
   @keyframes sp{to{transform:rotate(360deg)}}
   .note{background:var(--warn-soft);color:var(--warn);border-radius:12px;padding:10px 12px;font-size:13px;font-weight:600;margin-bottom:12px}
+  .dcode{display:flex;align-items:center;gap:12px}
+  .dcode>b{font-size:30px;font-weight:800;color:var(--gold-t);background:var(--gold-soft);border-radius:14px;padding:4px 14px;min-width:64px;text-align:center}
   .ios-steps li{margin-bottom:10px;line-height:1.7}
 
   /* ── لوحة المبيعات ── */
@@ -486,6 +488,7 @@
   var shipping = null;     // {carrier_id,name,price,def}
   var carriers = null;
   var note = "";
+  var custPhone = "";      // جوال عميل المعرض على الطلب: به (أو بكود الطلب) يفتحه بائعٌ آخر ويكمل عليه
   var invFilter = "all";
   var boxFilter = "incoming";
   var boxReq = 0;     // أحدث طلب صندوق: ردٌّ متأخّر من تبويبٍ سابق لا يكتب فوق الحالي
@@ -547,7 +550,7 @@
   }
   function signOut(expired){
     token = ""; store("salesToken", null); me = null; cart = []; customer = null; shipping = null; carriers = null; iorder = null;
-    posCats = {}; pfilter.categ = 0;
+    posCats = {}; pfilter.categ = 0; custPhone = "";
     showLogin(expired ? "انتهت الجلسة — سجّل الدخول من جديد." : "");
   }
   function openAccount(){
@@ -582,7 +585,7 @@
   function setMode(m){
     if (m === mode) return;
     if (cart.length && !confirm("تغيير نوع العميل يفرّغ السلة (الأسعار والمخزون مختلفان). متابعة؟")) return;
-    cart = []; customer = null; shipping = null; mode = m; iorder = null; updateCartUI(); screenNew();
+    cart = []; customer = null; shipping = null; mode = m; iorder = null; custPhone = ""; updateCartUI(); screenNew();
   }
 
   // ════════════ السلة ════════════
@@ -625,8 +628,9 @@
     remember(p);
     var incl = (p.price_incl != null) ? p.price_incl : p.price;
     var q = Number(p.qty) || 0;
-    return '<div class="pc"><div class="img">' + thumbHtml(p.id, "") + '<span class="stock' + (q <= 0 ? " out" : "") + '">'
-      + (q <= 0 ? "نفد" : (isInt() ? "مخزوني " : "متاح ") + q) + '</span></div><div class="body"><div class="nm">' + esc(p.name) + '</div>'
+    // منتجٌ لا يُتتبّع مخزونه (stock: false) يُباع بلا حد: لا «نفد» عليه
+    var badge = p.stock === false ? "" : '<span class="stock' + (q <= 0 ? " out" : "") + '">' + (q <= 0 ? "نفد" : (isInt() ? "مخزوني " : "متاح ") + q) + '</span>';
+    return '<div class="pc"><div class="img">' + thumbHtml(p.id, "") + badge + '</div><div class="body"><div class="nm">' + esc(p.name) + '</div>'
       + '<div class="row between"><span class="pr num">' + money(incl) + '</span>' + (p.code ? '<span class="code ellip">' + esc(p.code) + '</span>' : "") + '</div>'
       + '<div class="step" data-step="' + p.id + '">' + stepperHtml(p.id) + '</div></div></div>';
   }
@@ -796,6 +800,12 @@
       box.innerHTML = '<button class="btn soft" id="pickCust" style="border-style:dashed;padding:18px">' + ICON.user + ' اختر العميل' + (can("create_customer") ? ' أو أضف جديدًا' : '') + (isInt() ? ' (اختياري)' : '') + '</button>';
       $("#pickCust").onclick = openCustomerPicker;
     }
+    // عميل المعرض بلا جوالٍ مسجّل: جواله على الطلب، فيفتحه به بائعٌ آخر كما بالكود
+    if (isInt() && !(customer && customer.phone)){
+      box.insertAdjacentHTML("beforeend", '<div class="lbl" style="margin-top:12px">جوال العميل (اختياري)</div>'
+        + '<input id="custPhone" type="tel" inputmode="tel" dir="ltr" style="text-align:right" placeholder="05xxxxxxxx" value="' + esc(custPhone) + '">');
+      $("#custPhone").oninput = function(){ custPhone = this.value; };
+    }
   }
   function renderCart(){
     var box = $("#cartBox"); if (!box) return;
@@ -859,7 +869,7 @@
     if (isInt()){
       var others = iorder ? iorder.lines.filter(function(l){ return !l.mine; }).reduce(function(s, l){ return s + l.subtotal; }, 0) : 0;
       box.innerHTML = '<div class="kv"><span>منتجاتي (' + cartCount() + ' قطعة)</span><span class="num">' + money(itemsTotal()) + '</span></div>'
-        + (others ? '<div class="kv"><span>أقسام أخرى</span><span class="num">' + money(others) + '</span></div>' : '')
+        + (others ? '<div class="kv"><span>أصناف زملائك</span><span class="num">' + money(others) + '</span></div>' : '')
         + '<div class="tot-row"><b>الإجمالي (شامل الضريبة)</b><b class="num" style="font-size:19px" id="cartTotal">' + money(itemsTotal() + others) + '</b></div>'
         + '<div class="muted" style="margin-top:6px">يحصّله الكاشير من نقطة البيع في أودو.</div>';
       return;
@@ -1467,9 +1477,10 @@
   function screenInternal(){
     view = {name: "internal"}; setNav("invoices"); updateCartUI(); refreshIncoming();
     main.innerHTML = hubHtml("int") + '<div class="h1"><span class="grow">طلبات المعرض</span><button class="icon-btn" id="rf" aria-label="تحديث">' + ICON.refresh + '</button></div>'
+      + (can("internal") ? claimHtml() : '')
       + '<div class="seg" id="seg"><button data-b="incoming">الوارد</button><button data-b="open">مفتوحة</button><button data-b="cashier">عند الكاشير</button><button data-b="done">انتهت</button></div>'
       + '<div id="boxWrap"><div class="spin"></div></div>';
-    wireHub();
+    wireHub(); wireClaim(main);
     $("#rf").onclick = screenInternal;
     $$("#seg button").forEach(function(b){ b.classList.toggle("on", b.getAttribute("data-b") === boxFilter);
       b.onclick = function(){ boxFilter = b.getAttribute("data-b"); screenInternal(); }; });
@@ -1480,12 +1491,37 @@
       wrap.innerHTML = '<div class="list">' + rows.map(function(o){
         var who = o.partner ? o.partner.name : "عميل معرض";
         return '<div class="li" data-po="' + o.id + '"><div class="avatar">' + esc(initials(who)) + '</div><div class="grow"><div class="ellip" style="font-weight:800">' + esc(who) + '</div>'
-          + '<div class="muted num ellip">' + esc(o.name) + ' · ' + esc(o.pos.name) + (o.from_pos && o.state === "transfer" ? ' · من ' + esc(o.from_pos) : '') + ' · ' + esc(ago(o.updated)) + '</div>'
+          + '<div class="muted num ellip">' + (o.code ? 'كود ' + o.code + ' · ' : '') + esc(o.name) + ' · ' + esc(o.pos.name) + (o.from_pos && o.state === "transfer" ? ' · من ' + esc(o.from_pos) : '') + ' · ' + esc(ago(o.updated)) + '</div>'
           + (o.locked_by ? '<div class="muted" style="color:var(--warn)">مفتوح عند ' + esc(o.locked_by) + '</div>' : '') + '</div>'
           + '<div style="text-align:left"><div class="amt num">' + money(o.amount) + '</div><div style="margin-top:4px">' + pill(PO, o.state) + '</div></div></div>';
       }).join("") + '</div>';
       $$("[data-po]").forEach(function(el){ el.onclick = function(){ screenPosOrder(+el.getAttribute("data-po")); }; });
     }).catch(function(e){ if (req === boxReq && $("#boxWrap")) $("#boxWrap").innerHTML = '<div class="empty"><b>تعذّر الجلب</b>' + esc(e.message) + '</div>'; });
+  }
+  // عميلٌ بدأ طلبه مع زميل: يفتحه هذا الموظف بكوده اليومي أو بجواله، فينتقل إليه ويكمل عليه
+  function claimHtml(){
+    return '<div class="card"><div class="lbl">عميل بدأ طلبه مع زميل؟ افتحه بكوده أو بجواله وكمّل عليه</div>'
+      + '<div class="row"><input id="claimKey" inputmode="numeric" dir="ltr" style="text-align:right" placeholder="الكود أو الجوال" autocomplete="off">'
+      + '<button class="btn gold sm" id="claimGo">فتح</button></div></div>';
+  }
+  function wireClaim(root){
+    var input = $("#claimKey", root), go = $("#claimGo", root); if (!input) return;
+    go.onclick = function(){ claimOrder(input.value, go); };
+    input.onkeydown = function(e){ if (e.key === "Enter") go.click(); };
+  }
+  // أودو يقرأ الأرقام الهندية أيضًا. وما في سلة طلبٍ جديد لم يُحفظ يصير من أصناف الموظف في طلب العميل.
+  function claimOrder(key, btn){
+    key = String(key || "").trim();
+    if (!key){ toast("اكتب كود العميل أو جواله"); return; }
+    var keep = iorder ? [] : cart.slice();
+    btn.disabled = true;
+    api("/pos-orders/claim", {method: "POST", body: {key: key}}).then(function(o){
+      if (iorder && iorder.id !== o.id) api("/pos-orders/" + iorder.id + "/release", {method: "POST"}).catch(function(){});
+      toast("فُتح طلب العميل — أضف منتجاتك");
+      startEditing(o);
+      keep.forEach(function(l){ if (!cartLine(l.product_id)) cart.push(l); });
+      if (keep.length) updateCartUI();
+    }).catch(function(e){ toast(e.message); btn.disabled = false; });
   }
   function posLinesHtml(o){
     var groups = [];
@@ -1512,6 +1548,8 @@
       + '<div class="hero"><div class="row between"><span style="font-weight:700">' + esc(who) + '</span>' + pill(PO, o.state) + '</div><div class="big num">' + money(o.amount) + '</div>'
       + '<div class="meta num">' + o.count + ' قطعة · بدأه ' + esc(o.seller) + (o.ticket ? ' · رقم الكاشير ' + esc(o.ticket) : '') + '</div>'
       + '<div class="route">' + o.route.map(function(r){ return '<span class="' + (r.current ? "on" : "") + '">' + esc(r.name) + '</span>'; }).join("") + '</div></div>'
+      + (o.code && (o.state === "open" || o.state === "transfer") ? '<div class="card dcode"><div class="grow"><b>كود العميل</b><div class="muted">قُله للعميل: أي بائعٍ في الفرع يفتح طلبه بالكود'
+        + (o.phone ? ' أو بجواله' : '') + ' ويكمل عليه.</div></div><b class="num">' + o.code + '</b></div>' : '')
       + (o.locked_by ? '<div class="note">مفتوح الآن عند ' + esc(o.locked_by) + ' — للعرض فقط حتى ينتهي.</div>' : '')
       + (o.state === "cashier" ? '<div class="note">عند كاشير ' + esc(o.cashier) + ' — يظهر في طلبات نقطة البيع برقم ' + esc(o.ticket) + '.</div>' : '')
       + '<div class="card"><div class="h2">الأصناف</div>' + (o.lines.length ? posLinesHtml(o) : '<div class="muted">لا أصناف بعد</div>')
@@ -1611,24 +1649,26 @@
   // فتح الطلب للتعديل: السلة = أصناف هذا الموظف فقط، وأصناف زملائه تُعرض ولا تُمسّ
   function startEditing(o){
     if (!o.can.edit){ renderPosOrder(o); return; }
-    mode = "int"; iorder = o; note = o.note || ""; shipping = null;
+    mode = "int"; iorder = o; note = o.note || ""; shipping = null; custPhone = o.phone || "";
     customer = o.partner ? {id: o.partner.id, name: o.partner.name, phone: o.partner.phone} : null;
     cart = o.lines.filter(function(l){ return l.mine; }).map(function(l){
       return {product_id: l.product_id, name: l.name, code: l.code, price: l.price, base: l.price, incl0: l.price, qty: l.qty, max: null}; });
     updateCartUI(); screenNewInternal();
   }
   function leaveEditing(){
-    var o = iorder; iorder = null; cart = []; customer = null; note = ""; updateCartUI();
+    var o = iorder; iorder = null; cart = []; customer = null; note = ""; custPhone = ""; updateCartUI();
     return o;
   }
   function screenNewInternal(){
     view = {name: "new"}; setNav("new");
     var others = iorder ? iorder.lines.filter(function(l){ return !l.mine; }) : [];
     main.innerHTML = '<div class="h1">' + (iorder ? '<button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button>' : '') + '<span class="grow">' + (iorder ? esc(iorder.name) : "طلب جديد") + '</span>'
+      + (iorder && iorder.code ? '<span class="pill p-warn num">كود ' + iorder.code + '</span>' : '')
       + (me.pos ? '<span class="pill p-info">' + esc(me.pos.name) + '</span>' : '') + '</div>' + modeSegHtml()
       + (can("internal") ? '' : '<div class="note">حسابك غير مربوط بنقطة بيع — اطلب ربطه من مدير المبيعات.</div>')
+      + (iorder || !can("internal") ? '' : claimHtml())
       + '<div class="card" id="custBox"></div>'
-      + (others.length ? '<div class="card"><div class="h2">أصناف الأقسام الأخرى</div>' + posLinesHtml({lines: others}) + '</div>' : '')
+      + (others.length ? '<div class="card"><div class="h2">أصناف زملائك</div>' + posLinesHtml({lines: others}) + '</div>' : '')
       + '<div class="card"><div class="h2"><span class="grow">منتجاتي</span><button class="icon-btn" id="scanHere" aria-label="مسح باركود">' + ICON.scan + '</button>'
       + '<button class="btn gold sm" id="addProd">' + ICON.plus + ' منتجات</button></div><div id="cartBox"></div></div>'
       + '<div class="card"><div class="lbl">ملاحظة داخلية (اختياري)</div><textarea id="note" rows="2">' + esc(note) + '</textarea></div>'
@@ -1638,9 +1678,11 @@
       + '<button class="btn soft" id="toSave">حفظ وإكمال لاحقًا</button>';
     wireNewCommon();
     wireThumbs(main);
+    wireClaim(main);
     if ($("#bk")) $("#bk").onclick = function(){ var o = leaveEditing(); api("/pos-orders/" + o.id + "/release", {method: "POST"}).catch(function(){}); screenPosOrder(o.id); };
     $("#toCash").onclick = function(){ saveInternal(function(o){ return orderAction(api("/pos-orders/" + o.id + "/cashier", {method: "POST"}), "أُرسل للكاشير"); }); };
-    $("#toSave").onclick = function(){ saveInternal(function(o){ return api("/pos-orders/" + o.id + "/release", {method: "POST"}).then(function(){ toast("حُفظ الطلب"); return o; }); }); };
+    $("#toSave").onclick = function(){ saveInternal(function(o){ return api("/pos-orders/" + o.id + "/release", {method: "POST"}).then(function(){
+      toast(o.code ? "حُفظ الطلب — كود العميل " + o.code : "حُفظ الطلب"); return o; }); }); };
     $("#toMove").onclick = function(){ saveInternal(function(o){
       if (o.route.length < 2){ toast("لا أقسام أخرى في فرعك"); return o; }
       return new Promise(function(ok){ openTransfer(o, ok); }); }); };
@@ -1651,7 +1693,8 @@
     var others = iorder ? iorder.lines.some(function(l){ return !l.mine; }) : false;
     if (!cart.length && !others){ toast("أضف منتجًا واحدًا على الأقل"); return; }
     var lines = cart.map(function(l){ return {product_id: l.product_id, qty: l.qty, price_unit: l.price}; });
-    var body = {partner_id: customer ? customer.id : false, lines: lines, note: note};
+    var body = {partner_id: customer ? customer.id : false, lines: lines, note: note,
+      phone: customer && customer.phone ? customer.phone : custPhone.trim()};
     var btns = ["#toCash", "#toMove", "#toSave"].map(function(s){ return $(s); });
     btns.forEach(function(b){ b.disabled = true; });
     var save = iorder ? api("/pos-orders/" + iorder.id, {method: "PUT", body: body}) : api("/pos-orders", {method: "POST", body: body});
