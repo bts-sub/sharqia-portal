@@ -369,14 +369,16 @@ async function checkQuotePrices(lines, perms) {
   }
 }
 
+// البائع يرى عروضه فقط، ومن يرى الكل عروض شيفته: أودو يحدّد القائمة، ويُسأل قبل فتح عرضٍ أو تأكيده أو رابطه أو حذفه
+const ownQuote = (req, id) => execKw(APP, "app_quote_access", [req.appToken, id]);
+
 r.get("/api/sales/orders", quote, run(async (req, res) => {
-  const limit = Math.min(num(req.query.limit, 25), 50);
-  const rows = await searchRead("sale.order", [], ["name", "partner_id", "state", "amount_total", "date_order"], { limit, order: "id desc" });
-  res.json(rows.map((o) => ({ id: o.id, name: o.name, partner: m2o(o.partner_id), state: o.state, amount_total: o.amount_total, date: o.date_order })));
+  res.json(await execKw(APP, "app_quotes", [req.appToken, Math.min(num(req.query.limit, 25), 50)]));
 }));
 
 r.get("/api/sales/orders/:id", quote, run(async (req, res) => {
   const id = num(req.params.id);
+  await ownQuote(req, id);
   const o = (await searchRead("sale.order", [["id", "=", id]],
     ["name", "partner_id", "state", "amount_total", "amount_tax", "amount_untaxed", "date_order"]))[0];
   if (!o) return res.status(404).json({ error: "الطلب غير موجود" });
@@ -400,12 +402,13 @@ r.post("/api/sales/orders", quote, run(async (req, res) => {
     if (l.price_unit != null && l.price_unit !== "") vals.price_unit = num(l.price_unit);
     return [0, 0, vals];
   });
-  const vals = { partner_id: num(partner_id), order_line, require_payment: true };
+  const vals = { partner_id: num(partner_id), order_line, require_payment: true, sales_app_user_id: req.appUser.id };
   vals.note = [note ? String(note) : "", `من تطبيق المبيعات — ${req.appUser.name}`].filter(Boolean).join("\n");
   res.json({ id: await create("sale.order", vals) });
 }));
 
 r.post("/api/sales/orders/:id/confirm", quote, run(async (req, res) => {
+  await ownQuote(req, num(req.params.id));
   await callButton("sale.order", "action_confirm", [num(req.params.id)]);
   res.json({ ok: true });
 }));
@@ -413,6 +416,7 @@ r.post("/api/sales/orders/:id/confirm", quote, run(async (req, res) => {
 // لينك المعاينة/الدفع في بوّابة أودو (نفس زرار Preview في أمر البيع)
 r.get("/api/sales/orders/:id/payment-link", quote, run(async (req, res) => {
   const id = num(req.params.id);
+  await ownQuote(req, id);
   const rel = await execKw("sale.order", "get_portal_url", [[id]]);
   const o = (await searchRead("sale.order", [["id", "=", id]], ["name", "amount_total", "state", "partner_id"]))[0];
   if (!o) return res.status(404).json({ error: "الطلب غير موجود" });
@@ -428,6 +432,7 @@ r.get("/api/sales/orders/:id/payment-link", quote, run(async (req, res) => {
 // مندوبًا: عندها يُلغى العرض بدل حذفه.
 r.delete("/api/sales/orders/:id", quote, run(async (req, res) => {
   const id = num(req.params.id);
+  await ownQuote(req, id);
   const o = (await searchRead("sale.order", [["id", "=", id]], ["state"]))[0];
   if (!o) return res.status(404).json({ error: "الطلب غير موجود" });
   if (!["draft", "sent", "cancel"].includes(o.state)) throw badRequest("لا يمكن حذف طلب مؤكَّد — ألغِه من أودو");

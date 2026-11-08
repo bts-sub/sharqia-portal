@@ -1367,13 +1367,14 @@
   // ════════════ عروض الأسعار (أودو) ════════════
   function screenOrders(){
     view = {name: "orders"}; setNav("invoices"); updateCartUI();
-    main.innerHTML = hubHtml("quotes") + '<div class="h1"><span class="grow">عروض الأسعار</span></div><div id="ordWrap"><div class="spin"></div></div>';
+    main.innerHTML = hubHtml("quotes") + '<div class="h1"><span class="grow">' + (can("view_all") ? "عروض الأسعار" : "عروضي") + '</span></div><div id="ordWrap"><div class="spin"></div></div>';
     wireHub();
     api("/orders?limit=25").then(function(rows){
       if (!rows.length){ $("#ordWrap").innerHTML = '<div class="empty"><b>لا عروض أسعار بعد</b>تُنشأ من «فاتورة جديدة» ← «أو إنشاء عرض سعر في أودو».</div>'; return; }
       $("#ordWrap").innerHTML = '<div class="list">' + rows.map(function(o){
         return '<div class="li" data-open="' + o.id + '"><div class="avatar">' + esc(initials(o.partner ? o.partner.name : "؟")) + '</div>'
-          + '<div class="grow"><div style="font-weight:800">' + esc(o.name) + '</div><div class="muted ellip">' + esc(o.partner ? o.partner.name : "—") + '</div></div>'
+          + '<div class="grow"><div style="font-weight:800">' + esc(o.name) + '</div><div class="muted ellip">' + esc(o.partner ? o.partner.name : "—")
+          + (can("view_all") && o.seller ? ' · ' + esc(o.seller) : '') + '</div></div>'
           + '<div style="text-align:left"><div class="amt num">' + money(o.amount_total) + '</div><div style="margin-top:4px">' + pill(SO, o.state) + '</div></div></div>';
       }).join("") + '</div>';
       $$("[data-open]").forEach(function(el){ el.onclick = function(){ screenOrder(+el.getAttribute("data-open")); }; });
