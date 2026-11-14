@@ -528,6 +528,7 @@
   var carriers = null;
   var note = "";
   var custPhone = "";      // جوال عميل المعرض على الطلب: به (أو بكود الطلب) يفتحه بائعٌ آخر ويكمل عليه
+  var taxFree = {on: false, gb: ""};   // سائحٌ يسترد الضريبة عبر Global Blue، وباركود تطبيقه (اختياري)
   var invFilter = "all";
   var boxFilter = "incoming";
   var boxReq = 0;     // أحدث طلب صندوق: ردٌّ متأخّر من تبويبٍ سابق لا يكتب فوق الحالي
@@ -589,7 +590,7 @@
   }
   function signOut(expired){
     token = ""; store("salesToken", null); me = null; cart = []; customer = null; shipping = null; carriers = null; iorder = null;
-    posCats = {}; pfilter.categ = 0; custPhone = "";
+    posCats = {}; pfilter.categ = 0; custPhone = ""; taxFree = {on: false, gb: ""};
     showLogin(expired ? "انتهت الجلسة — سجّل الدخول من جديد." : "");
   }
   function openAccount(){
@@ -624,7 +625,7 @@
   function setMode(m){
     if (m === mode) return;
     if (cart.length && !confirm("تغيير نوع العميل يفرّغ السلة (الأسعار والمخزون مختلفان). متابعة؟")) return;
-    cart = []; customer = null; shipping = null; mode = m; iorder = null; custPhone = ""; updateCartUI(); screenNew();
+    cart = []; customer = null; shipping = null; mode = m; iorder = null; custPhone = ""; taxFree = {on: false, gb: ""}; updateCartUI(); screenNew();
   }
 
   // ════════════ السلة ════════════
@@ -850,6 +851,34 @@
         + '<input id="custPhone" type="tel" inputmode="tel" dir="ltr" style="text-align:right" placeholder="05xxxxxxxx" value="' + esc(custPhone) + '">');
       $("#custPhone").oninput = function(){ custPhone = this.value; };
     }
+    renderTaxFree();
+  }
+  // سائحٌ يسترد الضريبة عبر Global Blue: علامة على الطلب، وأودو يفحص استحقاقه من جوازه وحدّ الفاتورة.
+  // البيع بضريبته كأي بيع، والسائح يستردها من Global Blue بنموذجٍ يُكتب رقمه بعد الدفع.
+  function renderTaxFree(){
+    var box = $("#tfBox"); if (!box) return;
+    box.innerHTML = '<label class="row" style="gap:10px;cursor:pointer"><input type="checkbox" id="tfOn"' + (taxFree.on ? " checked" : "") + ' style="width:20px;height:20px;flex:none">'
+      + '<span class="grow"><b>سائح يسترد الضريبة (Global Blue)</b><span class="muted" style="display:block">غير سعودي ومش مقيم، والفاتورة 500 ر.س أو أكتر</span></span></label>'
+      + (taxFree.on ? '<div id="tfInfo" class="muted" style="margin-top:10px"></div>'
+        + '<div class="lbl" style="margin-top:10px">باركود تطبيق Global Blue (اختياري)</div>'
+        + '<div class="row"><input id="tfGb" dir="ltr" inputmode="numeric" style="text-align:right" placeholder="3086…" autocomplete="off" value="' + esc(taxFree.gb) + '">'
+        + '<button class="icon-btn" id="tfScan" aria-label="مسح باركود Global Blue">' + ICON.scan + '</button></div>' : '');
+    $("#tfOn", box).onchange = function(){ taxFree.on = this.checked; renderTaxFree(); };
+    if (!taxFree.on) return;
+    $("#tfGb", box).oninput = function(){ taxFree.gb = this.value.trim(); };
+    $("#tfScan", box).onclick = function(){
+      openCodeScanner("امسح باركود Global Blue", "وجّه الكاميرا لباركود صفحة Profile في تطبيق Global Blue عند العميل",
+        function(code){ taxFree.gb = code; renderTaxFree(); });
+    };
+    var info = $("#tfInfo", box);
+    if (!customer){ info.innerHTML = '<span style="color:var(--bad)">اختر العميل من جوازه (قراءة الجواز بالكاميرا).</span>'; return; }
+    info.textContent = "يتحقق من الجواز…";
+    var cid = customer.id;
+    api("/customers/" + cid + "/tourist").then(function(t){
+      var el = $("#tfInfo"); if (!el || !customer || customer.id !== cid) return;
+      el.innerHTML = t.ok ? '<span style="color:var(--good)">✓ مؤهّل: جواز ' + esc(t.nationality) + ' ‎…' + esc(t.passport) + ' · أقل فاتورة ' + money(t.minimum) + '</span>'
+        : '<span style="color:var(--bad)">' + t.problems.map(esc).join(" ") + '</span>';
+    }).catch(function(e){ if ($("#tfInfo")) $("#tfInfo").textContent = e.message; });
   }
   function renderCart(){
     var box = $("#cartBox"); if (!box) return;
@@ -1634,7 +1663,7 @@
     return '<div class="li" data-po="' + o.id + '"><div class="avatar">' + esc(initials(who)) + '</div><div class="grow"><div class="ellip" style="font-weight:800">' + esc(who) + '</div>'
       + '<div class="muted num ellip">' + (o.code ? 'كود ' + o.code + ' · ' : '') + esc(o.name) + ' · ' + esc(o.pos.name) + (o.from_pos && o.state === "transfer" ? ' · من ' + esc(o.from_pos) : '') + ' · ' + esc(ago(o.updated)) + '</div>'
       + (o.locked_by ? '<div class="muted" style="color:var(--warn)">مفتوح عند ' + esc(o.locked_by) + '</div>' : '') + '</div>'
-      + '<div style="text-align:left"><div class="amt num">' + money(o.amount) + '</div><div style="margin-top:4px">' + pill(KIND, o.kind) + ' ' + pill(PO, o.state) + '</div></div></div>';
+      + '<div style="text-align:left"><div class="amt num">' + money(o.amount) + '</div><div style="margin-top:4px">' + (o.tax_free ? '<span class="pill p-info">Tax Free</span> ' : '') + pill(KIND, o.kind) + ' ' + pill(PO, o.state) + '</div></div></div>';
   }
   function wirePosRows(root){ $$("[data-po]", root).forEach(function(el){ el.onclick = function(){ screenPosOrder(+el.getAttribute("data-po")); }; }); }
   // عميلٌ بدأ طلبه مع زميل: يفتحه هذا الموظف بكوده اليومي أو بجواله، فينتقل إليه ويكمل عليه
@@ -1684,7 +1713,7 @@
   function renderPosOrder(o){
     var can2 = o.can, who = o.partner ? o.partner.name : "عميل معرض";
     main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow num">' + esc(o.name) + '</span><button class="icon-btn" id="rf" aria-label="تحديث">' + ICON.refresh + '</button></div>'
-      + '<div class="hero"><div class="row between"><span style="font-weight:700">' + esc(who) + '</span><span>' + pill(KIND, o.kind) + ' ' + pill(PO, o.state) + '</span></div><div class="big num">' + money(o.amount) + '</div>'
+      + '<div class="hero"><div class="row between"><span style="font-weight:700">' + esc(who) + '</span><span>' + (o.tax_free ? '<span class="pill p-info">Tax Free</span> ' : '') + pill(KIND, o.kind) + ' ' + pill(PO, o.state) + '</span></div><div class="big num">' + money(o.amount) + '</div>'
       + '<div class="meta num">' + (o.returned ? 'يرجع ' + o.returned + (o.count ? ' · بديل ' + o.count : '') : o.count + ' قطعة') + ' · بدأه ' + esc(o.seller) + (o.origin ? ' · من الفاتورة ' + esc(o.origin) : '') + (o.ticket ? ' · رقم الكاشير ' + esc(o.ticket) : '') + '</div>'
       + '<div class="route">' + o.route.map(function(r){ return '<span class="' + (r.current ? "on" : "") + '">' + esc(r.name) + '</span>'; }).join("") + '</div></div>'
       + (o.code && (o.state === "open" || o.state === "transfer") ? '<div class="card dcode"><div class="grow"><b>كود العميل</b><div class="muted">قُله للعميل: أي بائعٍ في الفرع يفتح طلبه بالكود'
@@ -1693,6 +1722,13 @@
       + (o.state === "cashier" ? '<div class="note">عند كاشير ' + esc(o.cashier) + ' — يظهر في طلبات نقطة البيع برقم ' + esc(o.ticket) + '.</div>' : '')
       + '<div class="card"><div class="h2">الأصناف</div>' + (o.lines.length ? posLinesHtml(o) : '<div class="muted">لا أصناف بعد</div>')
       + '<div class="tot-row"><b>' + totLabel(o.amount, o.kind) + '</b><b class="num" style="font-size:17px">' + money(Math.abs(o.amount)) + '</b></div></div>'
+      + (o.tax_free ? '<div class="card"><div class="h2">استرداد ضريبة السائح (Global Blue)</div>'
+        + (o.tourist && !o.tourist.ok ? '<div class="note" style="margin:0 0 10px">' + o.tourist.problems.map(esc).join(" ") + '</div>' : '')
+        + (o.gb_shopper_id ? '<div class="kv"><span>باركود Global Blue</span><span class="num">' + esc(o.gb_shopper_id) + '</span></div>' : '')
+        + (o.state === "paid"
+          ? '<div class="lbl">رقم نموذج Global Blue</div><div class="row"><input id="tfForm" dir="ltr" style="text-align:right" autocomplete="off" placeholder="رقم النموذج" value="' + esc(o.tax_free_form) + '">'
+            + '<button class="btn gold sm" id="tfSave">حفظ</button></div><div class="muted" style="margin-top:6px">يُطبع في الإيصال ويظهر في تقرير مبيعات السياح في أودو.</div>'
+          : '<div class="muted">بعد الدفع: أصدِر نموذج Global Blue للعميل، واكتب رقمه هنا فيُطبع في الإيصال.</div>') + '</div>' : '')
       + (can2.receive ? '<button class="btn gold" id="aRecv" style="margin-bottom:10px">' + ICON.check + ' استلام الطلب</button>' : '')
       + (can2.edit ? '<button class="btn gold" id="aEdit" style="margin-bottom:10px">' + ICON.plus + ' إضافة منتجاتي</button>' : '')
       + (can2.cashier ? '<button class="btn dark" id="aCash" style="margin-bottom:10px">' + ICON.store + ' إرسال للكاشير</button>' : '')
@@ -1714,6 +1750,8 @@
     if ($("#aMove")) $("#aMove").onclick = function(){ openTransfer(o, again); };
     if ($("#aBack")) $("#aBack").onclick = function(){ if (confirm("يُلغى من شاشة الكاشير ويعود مفتوحًا للتعديل. متابعة؟")) post("recall", "عاد الطلب للتعديل").then(again, function(){}); };
     if ($("#aPrint")) $("#aPrint").onclick = function(){ openReceipt(o); };
+    if ($("#tfSave")) $("#tfSave").onclick = function(){
+      orderAction(api("/pos-orders/" + o.id + "/tax-free-form", {method: "POST", body: {form: $("#tfForm").value}}), "حُفظ رقم النموذج").then(again, function(){}); };
     if ($("#aCancel")) $("#aCancel").onclick = function(){
       var reason = prompt("سبب الإلغاء (اختياري):", ""); if (reason === null) return;
       orderAction(api("/pos-orders/" + o.id + "/cancel", {method: "POST", body: {reason: reason}}), "أُلغي الطلب").then(again, function(){}); };
@@ -1789,13 +1827,14 @@
   function startEditing(o){
     if (!o.can.edit){ renderPosOrder(o); return; }
     mode = "int"; iorder = o; note = o.note || ""; shipping = null; custPhone = o.phone || "";
+    taxFree = {on: !!o.tax_free, gb: o.gb_shopper_id || ""};
     customer = o.partner ? {id: o.partner.id, name: o.partner.name, phone: o.partner.phone} : null;
     cart = o.lines.filter(function(l){ return l.mine; }).map(function(l){
       return {product_id: l.product_id, name: l.name, code: l.code, price: l.price, base: l.price, incl0: l.price, qty: l.qty, max: null}; });
     updateCartUI(); screenNewInternal();
   }
   function leaveEditing(){
-    var o = iorder; iorder = null; cart = []; customer = null; note = ""; custPhone = ""; updateCartUI();
+    var o = iorder; iorder = null; cart = []; customer = null; note = ""; custPhone = ""; taxFree = {on: false, gb: ""}; updateCartUI();
     return o;
   }
   function screenNewInternal(){
@@ -1808,6 +1847,7 @@
       + (can("internal") ? '' : '<div class="note">حسابك غير مربوط بنقطة بيع — اطلب ربطه من مدير المبيعات.</div>')
       + (iorder || !can("internal") ? '' : claimHtml())
       + '<div class="card" id="custBox"></div>'
+      + (rets.length ? '' : '<div class="card" id="tfBox"></div>')
       + (rets.length ? '<div class="card"><div class="h2"><span class="grow">المرتجع من الفاتورة</span><span class="pill p-bad num">' + esc(iorder.origin) + '</span></div>' + posLinesHtml({lines: rets})
         + (iorder.returns && !iorder.returns.can_return ? '<div class="note" style="margin:10px 0 0">انتهت مدة الاسترجاع: البديل لازم يكون بـ ' + money(iorder.returns.value) + ' أو أكتر.</div>' : '') + '</div>' : '')
       + (others.length ? '<div class="card"><div class="h2">أصناف زملائك</div>' + posLinesHtml({lines: others}) + '</div>' : '')
@@ -1836,7 +1876,7 @@
     if (!cart.length && !others){ toast("أضف منتجًا واحدًا على الأقل"); return; }
     var lines = cart.map(function(l){ return {product_id: l.product_id, qty: l.qty, price_unit: l.price}; });
     var body = {partner_id: customer ? customer.id : false, lines: lines, note: note,
-      phone: customer && customer.phone ? customer.phone : custPhone.trim()};
+      phone: customer && customer.phone ? customer.phone : custPhone.trim(), tax_free: taxFree.on, gb_shopper_id: taxFree.gb};
     var btns = ["#toCash", "#toMove", "#toSave"].map(function(s){ return $(s); });
     btns.forEach(function(b){ b.disabled = true; });
     var save = iorder ? api("/pos-orders/" + iorder.id, {method: "PUT", body: body}) : api("/pos-orders", {method: "POST", body: body});
@@ -1870,7 +1910,9 @@
     var input = $("#retKey"), go = $("#retGo");
     go.onclick = function(){ lookupReturn(input.value); };
     input.onkeydown = function(e){ if (e.key === "Enter") go.click(); };
-    $("#retScan").onclick = function(){ openInvoiceScanner(function(code){ input.value = code; lookupReturn(code); }); };
+    $("#retScan").onclick = function(){
+      openCodeScanner("امسح باركود الإيصال", "وجّه الكاميرا لباركود رقم الفاتورة أعلى الإيصال", function(code){ input.value = code; lookupReturn(code); });
+    };
   }
   function lookupReturn(key){
     key = String(key || "").trim();
@@ -1894,7 +1936,9 @@
     var value = picked.reduce(function(s, l){ return s + ret.qty[l.id] * l.price; }, 0);
     var pieces = picked.reduce(function(s, l){ return s + ret.qty[l.id]; }, 0);
     box.innerHTML = '<div class="card"><div class="row between"><b class="num">' + esc(inv.name) + '</b><span class="muted num">' + esc(fmtDate(inv.date)) + '</span></div>'
-      + '<div class="muted num" style="margin:4px 0 8px">' + esc(inv.partner ? inv.partner.name : "عميل معرض") + ' · ' + money(inv.amount) + '</div>' + retTermsHtml(inv) + '</div>'
+      + '<div class="muted num" style="margin:4px 0 8px">' + esc(inv.partner ? inv.partner.name : "عميل معرض") + ' · ' + money(inv.amount) + '</div>' + retTermsHtml(inv)
+      + (inv.tax_free ? '<div class="note num" style="margin:8px 0 0">فاتورة سائح (Tax Free)' + (inv.tax_free_form ? ' — نموذج Global Blue ' + esc(inv.tax_free_form) : '')
+        + ': ألغِ النموذج أو عدّله في Global Blue بعد المرتجع.</div>' : '') + '</div>'
       + '<div class="card"><div class="h2">ما يرجع من الفاتورة</div>' + inv.lines.map(function(l){
           var n = ret.qty[l.id] || 0, back = l.qty - l.left;
           return '<div class="ln-item"><div class="row">' + thumbHtml(l.product_id) + '<div class="grow"><div style="font-weight:700;font-size:14px">' + esc(l.name) + '</div>'
@@ -1925,14 +1969,14 @@
         .then(function(n){ screenPosOrder(n.id); }, function(){ screenPosOrder(o.id); });
     }).catch(function(e){ toast(e.message); btn.disabled = false; });
   }
-  // باركود الإيصال (Code128 برقم الفاتورة): أول قراءة تفتح الفاتورة
-  function openInvoiceScanner(onCode){
+  // كودٌ واحد بالكاميرا (باركود الإيصال، أو باركود تطبيق Global Blue): أول قراءة تُرجَع لـonCode
+  function openCodeScanner(title, hint, onCode){
     closeSheets();
     var el = document.createElement("div"); el.className = "scan";
     el.innerHTML = '<div id="reader"></div><div class="shade"><div class="frame"><i></i><i></i><i></i><i></i><span class="laser"></span></div></div>'
-      + '<div class="tb"><button class="round" id="sx" aria-label="إغلاق">' + ICON.close + '</button><b>امسح باركود الإيصال</b>'
+      + '<div class="tb"><button class="round" id="sx" aria-label="إغلاق">' + ICON.close + '</button><b>' + esc(title) + '</b>'
       + '<button class="round" id="torch" aria-label="الفلاش" hidden>' + ICON.torch + '</button></div>'
-      + '<div class="bottom"><div class="hint" id="shint">وجّه الكاميرا لباركود رقم الفاتورة أعلى الإيصال</div></div>';
+      + '<div class="bottom"><div class="hint" id="shint">' + esc(hint) + '</div></div>';
     document.body.appendChild(el);
     var cam = null, done = false;
     function close(){ if (cam) cam.stop(); el.remove(); }

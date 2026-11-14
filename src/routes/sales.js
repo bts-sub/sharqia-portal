@@ -265,10 +265,22 @@ r.get("/api/sales/pos-orders", run(async (req, res) => {
 r.get("/api/sales/pos-orders/counts", run(async (req, res) => {
   res.json(await execKw(APP, "app_order_counts", [req.appToken]));
 }));
+// سائحٌ يسترد الضريبة (Global Blue): العلامة وباركود تطبيقه، وأودو يفحص استحقاقه من جوازه
+const taxFreeKw = (body, out = {}) => {
+  if (body.tax_free !== undefined) out.tax_free = !!body.tax_free;
+  if (body.gb_shopper_id !== undefined) out.gb_shopper_id = String(body.gb_shopper_id || "").trim().slice(0, 64);
+  return out;
+};
 r.post("/api/sales/pos-orders", run(async (req, res) => {
   const { partner_id, lines, note, phone } = req.body || {};
   res.json(await execKw(APP, "app_order_create", [req.appToken, num(partner_id) || false, orderLines(lines), note ? String(note) : false],
-    phone ? { phone: String(phone) } : {}));
+    taxFreeKw(req.body || {}, phone ? { phone: String(phone) } : {})));
+}));
+r.get("/api/sales/customers/:id/tourist", run(async (req, res) => {
+  res.json(await execKw(APP, "app_tourist_check", [req.appToken, num(req.params.id)]));
+}));
+r.post("/api/sales/pos-orders/:id/tax-free-form", run(async (req, res) => {
+  res.json(await execKw(APP, "app_order_tax_free_form", [req.appToken, num(req.params.id), String((req.body || {}).form || "").slice(0, 64)]));
 }));
 // عميلٌ بدأ طلبه مع زميل: يفتحه الموظف بكوده اليومي أو بجواله فينتقل إليه ويكمل عليه
 r.post("/api/sales/pos-orders/claim", run(async (req, res) => {
@@ -285,7 +297,7 @@ r.put("/api/sales/pos-orders/:id", run(async (req, res) => {
   const { partner_id, lines, note, phone } = req.body || {};
   res.json(await execKw(APP, "app_order_save", [req.appToken, num(req.params.id), orderLines(lines),
     partner_id === undefined ? null : (num(partner_id) || false), note === undefined ? null : String(note || "")],
-    phone === undefined ? {} : { phone: String(phone || "") }));
+    taxFreeKw(req.body || {}, phone === undefined ? {} : { phone: String(phone || "") })));
 }));
 // إجراءات الطلب: كل واحدٍ يقابل دالة في أودو تتحقّق من الصلاحية بنفسها
 const ORDER_ACTIONS = { open: "app_order_open", release: "app_order_release", receive: "app_order_receive",
