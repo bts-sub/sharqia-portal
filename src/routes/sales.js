@@ -301,6 +301,19 @@ r.post("/api/sales/pos-orders/:id/cancel", run(async (req, res) => {
   res.json(await execKw(APP, "app_order_cancel", [req.appToken, num(req.params.id), reason || false]));
 }));
 
+// ── المرتجع والاستبدال: فاتورة الفرع برقمها أو بباركود إيصالها، ثم طلبٌ يمرّ للكاشير كأي طلب ──
+//   أودو يفرض المدة (الاسترجاع ثم الاستبدال) وما بقي من كل صنف، وفرع الموظف.
+r.get("/api/sales/returns/lookup", run(async (req, res) => {
+  res.json(await execKw(APP, "app_return_lookup", [req.appToken, String(req.query.key || "")]));
+}));
+r.post("/api/sales/returns", run(async (req, res) => {
+  const { origin_id, returns, lines, note, phone } = req.body || {};
+  const back = (Array.isArray(returns) ? returns : []).map((x) => ({ line_id: num(x.line_id), qty: Math.floor(num(x.qty)) }))
+    .filter((x) => x.line_id && x.qty > 0);
+  res.json(await execKw(APP, "app_return_create", [req.appToken, num(origin_id), back, orderLines(lines), note ? String(note) : false],
+    phone ? { phone: String(phone) } : {}));
+}));
+
 // ───────────────────────── لوحة مبيعات الموظف ─────────────────────────
 r.get("/api/sales/dashboard", run(async (req, res) => {
   res.json(await execKw(APP, "app_dashboard", [req.appToken, String(req.query.period || "month"), num(req.query.user) || false]));

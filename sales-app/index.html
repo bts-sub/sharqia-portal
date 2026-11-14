@@ -517,6 +517,7 @@
   var SO = {draft: ["مسودّة", "p-warn"], sent: ["مُرسل", "p-info"], sale: ["مؤكّد", "p-good"], done: ["منجز", "p-good"], cancel: ["ملغي", "p-bad"]};
   function pill(map, s){ var m = map[s]; return m ? '<span class="pill ' + m[1] + '">' + esc(m[0]) + '</span>' : ""; }
   var PO = {open: ["مفتوح", "p-info"], transfer: ["وارد لقسم", "p-warn"], cashier: ["عند الكاشير", "p-warn"], paid: ["مدفوع", "p-good"], cancel: ["ملغي", "p-sub"]};
+  var KIND = {"return": ["مرتجع", "p-bad"], exchange: ["استبدال", "p-warn"]};
   var me = null;           // البائع: {id,name,login,role,pos:{id,name,stock},section,shift,perms:{create_link,edit_price,max_discount,edit_shipping,create_customer,create_quotation,view_all,internal,receive_stock}}
   var view = {name: "dash"};
   var mode = "ext";        // نوع العميل في الطلب الجاري: int عميل المعرض (نقطة البيع)، ext عميل خارجي (لينك دفع وشحن)
@@ -910,11 +911,14 @@
   function renderSum(){
     var box = $("#sumBox"); if (!box) return;
     if (isInt()){
-      var others = iorder ? iorder.lines.filter(function(l){ return !l.mine; }).reduce(function(s, l){ return s + l.subtotal; }, 0) : 0;
+      var sum = function(keep){ return iorder ? iorder.lines.filter(keep).reduce(function(s, l){ return s + l.subtotal; }, 0) : 0; };
+      var others = sum(function(l){ return !l.mine && !l.refund; }), back = sum(function(l){ return l.refund; });
+      var total = itemsTotal() + others + back;
       box.innerHTML = '<div class="kv"><span>منتجاتي (' + cartCount() + ' قطعة)</span><span class="num">' + money(itemsTotal()) + '</span></div>'
         + (others ? '<div class="kv"><span>أصناف زملائك</span><span class="num">' + money(others) + '</span></div>' : '')
-        + '<div class="tot-row"><b>الإجمالي (شامل الضريبة)</b><b class="num" style="font-size:19px" id="cartTotal">' + money(itemsTotal() + others) + '</b></div>'
-        + '<div class="muted" style="margin-top:6px">يحصّله الكاشير من نقطة البيع في أودو.</div>';
+        + (back ? '<div class="kv"><span>المرتجع</span><span class="num" style="color:var(--bad)">' + money(back) + '</span></div>' : '')
+        + '<div class="tot-row"><b>' + totLabel(total, back ? "return" : "sale") + '</b><b class="num" style="font-size:19px" id="cartTotal">' + money(Math.abs(total)) + '</b></div>'
+        + '<div class="muted" style="margin-top:6px">' + (total < 0 ? "يرجّعه الكاشير للعميل" : "يحصّله الكاشير") + ' من نقطة البيع في أودو.</div>';
       return;
     }
     box.innerHTML = '<div class="kv"><span>المنتجات (' + cartCount() + ' قطعة)</span><span class="num">' + money(itemsTotal()) + '</span></div>'
@@ -1531,7 +1535,7 @@
     if (can("internal")) b.push('<button class="btn gold" data-new="int">' + ICON.plus + ' طلب معرض جديد</button>');
     if (can("create_link")) b.push('<button class="btn ' + (b.length ? "soft" : "gold") + '" data-new="ext">' + ICON.wa + ' فاتورة بلينك دفع</button>');
     var quick = b.length ? '<div class="quick' + (b.length === 1 ? " one" : "") + '">' + b.join("") + '</div>' : "";
-    return can("internal") ? claimHtml(quick) : (quick ? '<div class="card">' + quick + '</div>' : "");
+    return can("internal") ? claimHtml(quick + retBtnHtml()) : (quick ? '<div class="card">' + quick + '</div>' : "");
   }
   function homeTasksHtml(){
     var t = [];
@@ -1610,7 +1614,7 @@
   function screenInternal(){
     view = {name: "internal"}; setNav("invoices"); updateCartUI(); refreshIncoming();
     main.innerHTML = hubHtml("int") + '<div class="h1"><span class="grow">طلبات المعرض</span><button class="icon-btn" id="rf" aria-label="تحديث">' + ICON.refresh + '</button></div>'
-      + (can("internal") ? claimHtml() : '')
+      + (can("internal") ? claimHtml(retBtnHtml()) : '')
       + '<div class="seg" id="seg"><button data-b="incoming">الوارد</button><button data-b="open">مفتوحة</button><button data-b="cashier">عند الكاشير</button><button data-b="done">انتهت</button></div>'
       + '<div id="boxWrap"><div class="spin"></div></div>';
     wireHub(); wireClaim(main);
@@ -1630,7 +1634,7 @@
     return '<div class="li" data-po="' + o.id + '"><div class="avatar">' + esc(initials(who)) + '</div><div class="grow"><div class="ellip" style="font-weight:800">' + esc(who) + '</div>'
       + '<div class="muted num ellip">' + (o.code ? 'كود ' + o.code + ' · ' : '') + esc(o.name) + ' · ' + esc(o.pos.name) + (o.from_pos && o.state === "transfer" ? ' · من ' + esc(o.from_pos) : '') + ' · ' + esc(ago(o.updated)) + '</div>'
       + (o.locked_by ? '<div class="muted" style="color:var(--warn)">مفتوح عند ' + esc(o.locked_by) + '</div>' : '') + '</div>'
-      + '<div style="text-align:left"><div class="amt num">' + money(o.amount) + '</div><div style="margin-top:4px">' + pill(PO, o.state) + '</div></div></div>';
+      + '<div style="text-align:left"><div class="amt num">' + money(o.amount) + '</div><div style="margin-top:4px">' + pill(KIND, o.kind) + ' ' + pill(PO, o.state) + '</div></div></div>';
   }
   function wirePosRows(root){ $$("[data-po]", root).forEach(function(el){ el.onclick = function(){ screenPosOrder(+el.getAttribute("data-po")); }; }); }
   // عميلٌ بدأ طلبه مع زميل: يفتحه هذا الموظف بكوده اليومي أو بجواله، فينتقل إليه ويكمل عليه
@@ -1663,7 +1667,7 @@
     o.lines.forEach(function(l){ var g = groups.filter(function(x){ return x.pos === l.pos; })[0]; if (!g){ g = {pos: l.pos, items: []}; groups.push(g); } g.items.push(l); });
     return groups.map(function(g){
       return '<div class="sec-h">' + ICON.store.replace('class="i"', 'class="i" style="width:16px;height:16px;color:var(--gold-t)"') + esc(g.pos) + '</div>' + g.items.map(function(l){
-        return '<div class="row ln-item">' + thumbHtml(l.product_id) + '<div class="grow"><div style="font-weight:700;font-size:14px">' + esc(l.name) + '</div><div class="muted num">' + l.qty + ' × ' + money(l.price) + ' · ' + esc(l.seller) + '</div></div><div class="num" style="font-weight:800">' + money(l.subtotal) + '</div></div>';
+        return '<div class="row ln-item">' + thumbHtml(l.product_id) + '<div class="grow"><div style="font-weight:700;font-size:14px">' + (l.refund ? '<span class="pill p-bad">مرتجع</span> ' : '') + esc(l.name) + '</div><div class="muted num">' + l.qty + ' × ' + money(l.price) + ' · ' + esc(l.seller) + '</div></div><div class="num" style="font-weight:800' + (l.subtotal < 0 ? ';color:var(--bad)' : '') + '">' + money(l.subtotal) + '</div></div>';
       }).join("");
     }).join("");
   }
@@ -1680,15 +1684,15 @@
   function renderPosOrder(o){
     var can2 = o.can, who = o.partner ? o.partner.name : "عميل معرض";
     main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow num">' + esc(o.name) + '</span><button class="icon-btn" id="rf" aria-label="تحديث">' + ICON.refresh + '</button></div>'
-      + '<div class="hero"><div class="row between"><span style="font-weight:700">' + esc(who) + '</span>' + pill(PO, o.state) + '</div><div class="big num">' + money(o.amount) + '</div>'
-      + '<div class="meta num">' + o.count + ' قطعة · بدأه ' + esc(o.seller) + (o.ticket ? ' · رقم الكاشير ' + esc(o.ticket) : '') + '</div>'
+      + '<div class="hero"><div class="row between"><span style="font-weight:700">' + esc(who) + '</span><span>' + pill(KIND, o.kind) + ' ' + pill(PO, o.state) + '</span></div><div class="big num">' + money(o.amount) + '</div>'
+      + '<div class="meta num">' + (o.returned ? 'يرجع ' + o.returned + (o.count ? ' · بديل ' + o.count : '') : o.count + ' قطعة') + ' · بدأه ' + esc(o.seller) + (o.origin ? ' · من الفاتورة ' + esc(o.origin) : '') + (o.ticket ? ' · رقم الكاشير ' + esc(o.ticket) : '') + '</div>'
       + '<div class="route">' + o.route.map(function(r){ return '<span class="' + (r.current ? "on" : "") + '">' + esc(r.name) + '</span>'; }).join("") + '</div></div>'
       + (o.code && (o.state === "open" || o.state === "transfer") ? '<div class="card dcode"><div class="grow"><b>كود العميل</b><div class="muted">قُله للعميل: أي بائعٍ في الفرع يفتح طلبه بالكود'
         + (o.phone ? ' أو بجواله' : '') + ' ويكمل عليه.</div></div><b class="num">' + o.code + '</b></div>' : '')
       + (o.locked_by ? '<div class="note">مفتوح الآن عند ' + esc(o.locked_by) + ' — للعرض فقط حتى ينتهي.</div>' : '')
       + (o.state === "cashier" ? '<div class="note">عند كاشير ' + esc(o.cashier) + ' — يظهر في طلبات نقطة البيع برقم ' + esc(o.ticket) + '.</div>' : '')
       + '<div class="card"><div class="h2">الأصناف</div>' + (o.lines.length ? posLinesHtml(o) : '<div class="muted">لا أصناف بعد</div>')
-      + '<div class="tot-row"><b>الإجمالي (شامل الضريبة)</b><b class="num" style="font-size:17px">' + money(o.amount) + '</b></div></div>'
+      + '<div class="tot-row"><b>' + totLabel(o.amount, o.kind) + '</b><b class="num" style="font-size:17px">' + money(Math.abs(o.amount)) + '</b></div></div>'
       + (can2.receive ? '<button class="btn gold" id="aRecv" style="margin-bottom:10px">' + ICON.check + ' استلام الطلب</button>' : '')
       + (can2.edit ? '<button class="btn gold" id="aEdit" style="margin-bottom:10px">' + ICON.plus + ' إضافة منتجاتي</button>' : '')
       + (can2.cashier ? '<button class="btn dark" id="aCash" style="margin-bottom:10px">' + ICON.store + ' إرسال للكاشير</button>' : '')
@@ -1796,15 +1800,18 @@
   }
   function screenNewInternal(){
     view = {name: "new"}; setNav("new");
-    var others = iorder ? iorder.lines.filter(function(l){ return !l.mine; }) : [];
+    var others = iorder ? iorder.lines.filter(function(l){ return !l.mine && !l.refund; }) : [];
+    var rets = iorder ? iorder.lines.filter(function(l){ return l.refund; }) : [];
     main.innerHTML = '<div class="h1">' + (iorder ? '<button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button>' : '') + '<span class="grow">' + (iorder ? esc(iorder.name) : "طلب جديد") + '</span>'
       + (iorder && iorder.code ? '<span class="pill p-warn num">كود ' + iorder.code + '</span>' : '')
       + (me.pos ? '<span class="pill p-info">' + esc(me.pos.name) + '</span>' : '') + '</div>' + modeSegHtml()
       + (can("internal") ? '' : '<div class="note">حسابك غير مربوط بنقطة بيع — اطلب ربطه من مدير المبيعات.</div>')
       + (iorder || !can("internal") ? '' : claimHtml())
       + '<div class="card" id="custBox"></div>'
+      + (rets.length ? '<div class="card"><div class="h2"><span class="grow">المرتجع من الفاتورة</span><span class="pill p-bad num">' + esc(iorder.origin) + '</span></div>' + posLinesHtml({lines: rets})
+        + (iorder.returns && !iorder.returns.can_return ? '<div class="note" style="margin:10px 0 0">انتهت مدة الاسترجاع: البديل لازم يكون بـ ' + money(iorder.returns.value) + ' أو أكتر.</div>' : '') + '</div>' : '')
       + (others.length ? '<div class="card"><div class="h2">أصناف زملائك</div>' + posLinesHtml({lines: others}) + '</div>' : '')
-      + '<div class="card"><div class="h2"><span class="grow">منتجاتي</span><button class="icon-btn" id="scanHere" aria-label="مسح باركود">' + ICON.scan + '</button>'
+      + '<div class="card"><div class="h2"><span class="grow">' + (rets.length ? "البديل (منتجاتي)" : "منتجاتي") + '</span><button class="icon-btn" id="scanHere" aria-label="مسح باركود">' + ICON.scan + '</button>'
       + '<button class="btn gold sm" id="addProd">' + ICON.plus + ' منتجات</button></div><div id="cartBox"></div></div>'
       + '<div class="card"><div class="lbl">ملاحظة داخلية (اختياري)</div><textarea id="note" rows="2">' + esc(note) + '</textarea></div>'
       + '<div class="card" id="sumBox"></div>'
@@ -1836,6 +1843,101 @@
     save.then(function(o){ iorder = o; return then(o); }).then(function(o){
       leaveEditing(); screenPosOrder(o.id);
     }).catch(function(e){ toast(e.message); btns.forEach(function(b){ if (b) b.disabled = false; }); });
+  }
+  // عنوان الإجمالي: مرتجعٌ يرجع فيه المال للعميل، واستبدالٌ يدفع فيه الفرق
+  function totLabel(amount, kind){
+    if (amount < 0) return "يرجع للعميل";
+    return kind && kind !== "sale" ? "يدفع العميل الفرق" : "الإجمالي (شامل الضريبة)";
+  }
+
+  // ════════════ المرتجع والاستبدال ════════════
+  // البائع يفتح فاتورة العميل برقمها أو بباركود إيصالها ويختار ما يرجع منها، ثم يضيف البديل إن كان استبدالًا،
+  // ويرسله للكاشير كأي طلب. أودو يفرض المدة (الاسترجاع ثم الاستبدال) وما بقي من كل صنف.
+  var ret = null;
+  function retBtnHtml(){
+    return can("returns") ? '<button class="btn soft" data-ret style="margin-top:8px">' + ICON.swap + ' مرتجع أو استبدال من فاتورة</button>' : '';
+  }
+  document.addEventListener("click", function(e){ if (e.target.closest("[data-ret]")){ closeSheets(); screenReturn(); } });
+  function screenReturn(){
+    view = {name: "return"}; setNav("new"); updateCartUI(); ret = null;
+    main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">مرتجع / استبدال</span></div>'
+      + '<div class="card"><div class="lbl">رقم الفاتورة كما في الإيصال، أو امسح باركود الإيصال</div>'
+      + '<div class="row"><input id="retKey" dir="ltr" style="text-align:right" placeholder="260-3-000087" autocomplete="off">'
+      + '<button class="icon-btn" id="retScan" aria-label="مسح باركود الإيصال">' + ICON.scan + '</button>'
+      + '<button class="btn gold sm" id="retGo">فتح</button></div></div>'
+      + '<div id="retBox"></div>';
+    $("#bk").onclick = screenHome;
+    var input = $("#retKey"), go = $("#retGo");
+    go.onclick = function(){ lookupReturn(input.value); };
+    input.onkeydown = function(e){ if (e.key === "Enter") go.click(); };
+    $("#retScan").onclick = function(){ openInvoiceScanner(function(code){ input.value = code; lookupReturn(code); }); };
+  }
+  function lookupReturn(key){
+    key = String(key || "").trim();
+    if (!key){ toast("اكتب رقم الفاتورة أو امسح باركود الإيصال"); return; }
+    var box = $("#retBox"); if (box) box.innerHTML = '<div class="spin"></div>';
+    api("/returns/lookup?key=" + encodeURIComponent(key)).then(function(inv){
+      if (view.name !== "return") return;
+      ret = {inv: inv, qty: {}}; renderReturn();
+    }).catch(function(e){ if ($("#retBox")) $("#retBox").innerHTML = '<div class="empty"><b>تعذّر فتح الفاتورة</b>' + esc(e.message) + '</div>'; });
+  }
+  function retLine(id){ return ret.inv.lines.filter(function(l){ return l.id === id; })[0]; }
+  function retPicked(){ return ret.inv.lines.filter(function(l){ return ret.qty[l.id] > 0; }); }
+  function retTermsHtml(inv){
+    if (inv.can_return) return '<div class="muted num">الاسترجاع حتى ' + esc(inv.return_until) + ' · الاستبدال حتى ' + esc(inv.exchange_until) + '</div>';
+    if (inv.can_exchange) return '<div class="note num" style="margin:0">انتهت مدة الاسترجاع (' + esc(inv.return_until) + '): استبدال فقط حتى ' + esc(inv.exchange_until) + '، والبديل بنفس القيمة أو أكتر.</div>';
+    return '<div class="note num" style="margin:0;background:var(--bad-soft);color:var(--bad)">انتهت مدة الاستبدال (' + esc(inv.exchange_until) + '): لا مرتجع ولا استبدال لهذه الفاتورة.</div>';
+  }
+  function renderReturn(){
+    var box = $("#retBox"); if (!box || !ret) return;
+    var inv = ret.inv, open = inv.can_exchange, picked = retPicked();
+    var value = picked.reduce(function(s, l){ return s + ret.qty[l.id] * l.price; }, 0);
+    var pieces = picked.reduce(function(s, l){ return s + ret.qty[l.id]; }, 0);
+    box.innerHTML = '<div class="card"><div class="row between"><b class="num">' + esc(inv.name) + '</b><span class="muted num">' + esc(fmtDate(inv.date)) + '</span></div>'
+      + '<div class="muted num" style="margin:4px 0 8px">' + esc(inv.partner ? inv.partner.name : "عميل معرض") + ' · ' + money(inv.amount) + '</div>' + retTermsHtml(inv) + '</div>'
+      + '<div class="card"><div class="h2">ما يرجع من الفاتورة</div>' + inv.lines.map(function(l){
+          var n = ret.qty[l.id] || 0, back = l.qty - l.left;
+          return '<div class="ln-item"><div class="row">' + thumbHtml(l.product_id) + '<div class="grow"><div style="font-weight:700;font-size:14px">' + esc(l.name) + '</div>'
+            + '<div class="muted num">' + (l.code ? esc(l.code) + ' · ' : '') + money(l.price) + ' · اتباع ' + l.qty + (back ? ' · رجع ' + back : '') + '</div></div></div>'
+            + (open && l.left > 0
+              ? '<div class="row between" style="margin-top:8px"><span class="muted">يرجع</span><div class="stepper sm"><button data-rdec="' + l.id + '" aria-label="أنقص">−</button><b class="num">' + n + '</b><button data-rinc="' + l.id + '" aria-label="زِد">+</button></div></div>'
+              : '<div class="muted" style="margin-top:6px">' + (l.left > 0 ? "خارج المدة" : "رجع كله") + '</div>') + '</div>';
+        }).join("") + '</div>'
+      + (open ? '<div class="card"><div class="kv"><span>المرتجع (' + pieces + ' قطعة)</span><span class="num">' + money(value) + '</span></div>'
+        + '<div class="muted" style="margin-top:6px">' + (inv.can_return ? "مرتجع فقط: يرجّع الكاشير المبلغ. استبدال: أضف البديل ويحسب الكاشير الفرق." : "أضف البديل بقيمة المرتجع أو أكثر، ويحصّل الكاشير الفرق.") + '</div></div>'
+        + '<button class="btn gold" id="retSwap" style="margin-bottom:10px">' + ICON.plus + ' استبدال: أضف البديل</button>'
+        + (inv.can_return ? '<button class="btn dark" id="retCash" style="margin-bottom:10px">' + ICON.store + ' مرتجع فقط: أرسل للكاشير</button>' : '') : '');
+    wireThumbs(box);
+    $$("[data-rinc]", box).forEach(function(b){ b.onclick = function(){ var id = +b.getAttribute("data-rinc"); ret.qty[id] = Math.min(retLine(id).left, (ret.qty[id] || 0) + 1); renderReturn(); }; });
+    $$("[data-rdec]", box).forEach(function(b){ b.onclick = function(){ var id = +b.getAttribute("data-rdec"); ret.qty[id] = Math.max(0, (ret.qty[id] || 0) - 1); renderReturn(); }; });
+    if ($("#retSwap")) $("#retSwap").onclick = function(){ createReturn(false, this); };
+    if ($("#retCash")) $("#retCash").onclick = function(){ createReturn(true, this); };
+  }
+  // ينشئ طلب المرتجع: «مرتجع فقط» يرسله للكاشير في الحال، و«استبدال» يفتحه لإضافة البديل كإضافة منتجات الموظف
+  function createReturn(toCashier, btn){
+    var picks = retPicked().map(function(l){ return {line_id: l.id, qty: ret.qty[l.id]}; });
+    if (!picks.length){ toast("اختر القطع اللي راجعة"); return; }
+    btn.disabled = true;
+    api("/returns", {method: "POST", body: {origin_id: ret.inv.id, returns: picks}}).then(function(o){
+      ret = null;
+      if (!toCashier){ toast("أضف البديل ثم أرسله للكاشير"); startEditing(o); return; }
+      return orderAction(api("/pos-orders/" + o.id + "/cashier", {method: "POST"}), "أُرسل المرتجع للكاشير")
+        .then(function(n){ screenPosOrder(n.id); }, function(){ screenPosOrder(o.id); });
+    }).catch(function(e){ toast(e.message); btn.disabled = false; });
+  }
+  // باركود الإيصال (Code128 برقم الفاتورة): أول قراءة تفتح الفاتورة
+  function openInvoiceScanner(onCode){
+    closeSheets();
+    var el = document.createElement("div"); el.className = "scan";
+    el.innerHTML = '<div id="reader"></div><div class="shade"><div class="frame"><i></i><i></i><i></i><i></i><span class="laser"></span></div></div>'
+      + '<div class="tb"><button class="round" id="sx" aria-label="إغلاق">' + ICON.close + '</button><b>امسح باركود الإيصال</b>'
+      + '<button class="round" id="torch" aria-label="الفلاش" hidden>' + ICON.torch + '</button></div>'
+      + '<div class="bottom"><div class="hint" id="shint">وجّه الكاميرا لباركود رقم الفاتورة أعلى الإيصال</div></div>';
+    document.body.appendChild(el);
+    var cam = null, done = false;
+    function close(){ if (cam) cam.stop(); el.remove(); }
+    $("#sx", el).onclick = close;
+    cam = startCamera(el, LINEAR, function(code){ if (done) return; done = true; beep(true); vibrate(60); close(); onCode(code); });
   }
 
   // ════════════ استلام مخزن الفرع واعتماد الجودة ════════════
