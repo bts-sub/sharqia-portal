@@ -166,6 +166,11 @@
   .stepper button{width:42px;height:40px;border:none;background:none;color:#F3D97A;font-size:22px;font-weight:700;cursor:pointer;line-height:1}
   .stepper b{font-size:15px;min-width:24px;text-align:center}
   .stepper.sm{height:34px;border-radius:10px;width:118px} .stepper.sm button{height:34px;width:36px;font-size:19px}
+  /* العدد في الجرد يُكتب: الرقم زرٌّ يفتح خانة العدد، وفي «بالعدد» خانةٌ داخل العدّاد */
+  .stepper button.qset{width:auto;min-width:40px;padding:0 4px;color:#fff;font-size:15px;font-weight:800;text-decoration:underline dotted rgba(243,217,122,.7);text-underline-offset:4px}
+  .stepper input{flex:1;min-width:0;width:60px;height:100%;padding:0;margin:0;border:none;border-radius:0;background:none;color:#fff;font-family:inherit;font-size:17px;font-weight:800;text-align:center;-moz-appearance:textfield;appearance:textfield}
+  .stepper input::-webkit-inner-spin-button,.stepper input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+  .stepper input:focus{outline:none;box-shadow:none;background:rgba(255,255,255,.08)}
 
   /* ── شريط السلة ── */
   .bar{position:fixed;left:0;right:0;bottom:calc(var(--tabbar) + 10px + var(--safe-b));z-index:25;max-width:600px;margin:0 auto;padding:0 12px;display:none}
@@ -2216,7 +2221,10 @@
       if ($("#ctClose")) $("#ctClose").onclick = closeCountSheet;
     }
     $("#ctList").addEventListener("click", function(e){
-      var b = e.target.closest("[data-d]"); if (!b || !open) return;
+      if (!open) return;
+      var s = e.target.closest("[data-set]");
+      if (s) return countQtySheet(s.closest("[data-code]").getAttribute("data-code"));
+      var b = e.target.closest("[data-d]"); if (!b) return;
       var code = b.closest("[data-code]").getAttribute("data-code"), d = +b.getAttribute("data-d");
       if (d < 0 && (jr.qty[code] || 0) <= 1 && !confirm("حذف هذا الموديل من عدّك؟")) return;
       jrAdd(code, d); vibrate(15); renderCountList();
@@ -2236,10 +2244,30 @@
       return '<div class="ct-row" data-code="' + esc(code) + '">' + (p ? thumbHtml(p.id) : '<span class="thumb thumb-ph">' + ICON.bag + '</span>')
         + '<div class="grow"><div style="font-weight:700;font-size:14px" class="ellip">' + (p ? esc(p.name) : p === false ? '<span class="pill p-warn">كود غير معروف</span>' : '…') + '</div>'
         + '<div class="muted num" dir="ltr" style="text-align:right">' + esc(code) + '</div></div>'
-        + (open ? '<div class="stepper sm"><button data-d="-1" aria-label="أنقص">−</button><b class="num">' + qn(jr.qty[code]) + '</b><button data-d="1" aria-label="زد">+</button></div>'
+        + (open ? '<div class="stepper sm"><button data-d="-1" aria-label="أنقص">−</button><button class="num qset" data-set aria-label="اكتب العدد">' + qn(jr.qty[code]) + '</button><button data-d="1" aria-label="زد">+</button></div>'
           : '<b class="num">' + qn(jr.qty[code]) + '</b>') + '</div>';
     }).join("");
     wireThumbs(box);
+  }
+  // العدد الكبير (500 قطعة) يُكتب ولا يُضغط «+» مرّةً مرّة. 0 يحذف الموديل من عدّي.
+  var COUNT_MAX = 99999;
+  function countQtySheet(code){
+    var p = jrNames[code];
+    var ov = sheet("عدد القطع", '<div style="font-weight:800" class="ellip">' + (p ? esc(p.name) : esc(code)) + '</div>'
+      + '<div class="muted num" dir="ltr" style="text-align:right;margin-bottom:10px">' + esc(code) + '</div>'
+      + '<input id="cqN" class="num" type="number" inputmode="numeric" min="0" max="' + COUNT_MAX + '" dir="ltr" value="' + (jr.qty[code] || 0) + '" style="font-size:24px;text-align:center;font-weight:800">'
+      + '<button class="btn gold" id="cqOk" style="margin-top:12px">' + ICON.check + ' حفظ العدد</button>');
+    var inp = $("#cqN", ov);
+    inp.focus(); inp.select();
+    var save = function(){
+      var n = Math.floor(+inp.value);
+      if (inp.value === "" || !(n >= 0)){ inp.focus(); return; }
+      n = Math.min(n, COUNT_MAX);
+      if (!n && !confirm("حذف هذا الموديل من عدّك؟")) return;
+      jrAdd(code, n - (jr.qty[code] || 0)); ov.remove(); vibrate(15); renderCountList();
+    };
+    $("#cqOk", ov).onclick = save;
+    inp.onkeydown = function(e){ if (e.key === "Enter") save(); };
   }
   function renderCountTeam(){
     var box = $("#ctTeam"); if (!box || !jr.count) return;
@@ -2365,10 +2393,19 @@
         pad.innerHTML = '<div class="qpad"><div style="font-weight:800" class="ellip">' + (p ? esc(p.name) : p === false ? 'كود غير معروف' : '…') + '</div>'
           + '<div class="num" style="font-size:12.5px;opacity:.7" dir="ltr">' + esc(code) + (jr.qty[code] ? ' · عندك منه: ' + qn(jr.qty[code]) : '') + '</div>'
           + '<div class="qchips">' + [1, 2, 3, 5, 10].map(function(k){ return '<button data-k="' + k + '" class="' + (k === n ? "on" : "") + '">' + k + '</button>'; }).join("") + '</div>'
-          + '<div class="row"><div class="stepper" style="flex:1"><button data-s="-1" aria-label="أنقص">−</button><b class="num">' + n + '</b><button data-s="1" aria-label="زد">+</button></div>'
+          + '<div class="row"><div class="stepper" style="flex:1"><button data-s="-1" aria-label="أنقص">−</button>'
+          + '<input id="qn" class="num" type="number" inputmode="numeric" min="1" max="' + COUNT_MAX + '" dir="ltr" value="' + n + '" aria-label="عدد القطع — اكتبه"><button data-s="1" aria-label="زد">+</button></div>'
           + '<button class="btn gold sm" id="qok">أضف ' + n + '</button><button class="btn soft sm" id="qno">إلغاء</button></div></div>';
         $$("[data-k]", pad).forEach(function(b){ b.onclick = function(){ n = +b.getAttribute("data-k"); draw(); }; });
-        $$("[data-s]", pad).forEach(function(b){ b.onclick = function(){ n = Math.max(1, Math.min(999, n + +b.getAttribute("data-s"))); draw(); }; });
+        $$("[data-s]", pad).forEach(function(b){ b.onclick = function(){ n = Math.max(1, Math.min(COUNT_MAX, n + +b.getAttribute("data-s"))); draw(); }; });
+        // العدد يُكتب أيضًا (500 قطعة) لا بالأزرار وحدها
+        $("#qn", pad).oninput = function(){
+          var v = Math.floor(+this.value), ok = this.value !== "" && v >= 1;
+          if (ok) n = Math.min(v, COUNT_MAX);
+          $("#qok", pad).disabled = !ok; $("#qok", pad).textContent = ok ? "أضف " + n : "أضف";
+          $$("[data-k]", pad).forEach(function(b){ b.classList.toggle("on", ok && +b.getAttribute("data-k") === n); });
+        };
+        $("#qn", pad).onkeydown = function(e){ if (e.key === "Enter" && !$("#qok", pad).disabled) $("#qok", pad).click(); };
         $("#qok", pad).onclick = function(){ close(); hit(code, n); };
         $("#qno", pad).onclick = close;
       };
