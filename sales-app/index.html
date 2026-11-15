@@ -334,14 +334,17 @@
   .mini-empty{background:var(--surface);border:1px dashed var(--line);border-radius:var(--r);padding:16px;text-align:center;color:var(--sub);font-size:13px}
   .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .tiles.one{grid-template-columns:1fr}
-  .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;box-shadow:var(--shadow);text-align:right;
-    cursor:pointer;font-family:inherit;color:var(--text);display:flex;flex-direction:column;align-items:flex-start;gap:6px;position:relative}
-  .tile .avatar{width:38px;height:38px;border-radius:12px;margin-bottom:2px}
-  .tile .avatar svg{width:20px;height:20px}
-  .tile b{font-size:14px}
-  .tile .muted{font-size:12px}
-  .tile .badge{position:absolute;top:12px;inset-inline-end:12px;min-width:24px;height:24px;padding:0 7px;border-radius:999px;
-    background:var(--bad);color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+  /* مهام المخزن (الاستلام والجرد) أعلى «المنتجات»: صفٌّ مضغوط فوق البحث */
+  .tiles.stask{margin:0 0 12px}
+  .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;box-shadow:var(--shadow);text-align:right;
+    cursor:pointer;font-family:inherit;color:var(--text);display:flex;align-items:center;gap:10px;position:relative;min-width:0}
+  .tile .avatar{width:36px;height:36px;border-radius:11px;flex:none}
+  .tile .avatar svg{width:19px;height:19px}
+  .tile .grow{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .tile b{font-size:13.5px}
+  .tile .muted{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tile .badge{position:absolute;top:-7px;inset-inline-end:-5px;min-width:22px;height:22px;padding:0 6px;border-radius:999px;
+    background:var(--bad);color:#fff;font-size:11.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--bg)}
 
   /* ── الطلب الداخلي ── */
   .sec-h{display:flex;align-items:center;gap:8px;font-weight:800;font-size:13px;margin:12px 0 2px}
@@ -439,8 +442,9 @@
     <button data-nav="new" class="fab" aria-label="طلب جديد"><span class="ring">
       <svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
       <span class="nbadge" id="navCart" hidden>0</span></span>جديد</button>
-    <button data-nav="products">
-      <svg class="i" viewBox="0 0 24 24"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 016 0"/></svg>المنتجات</button>
+    <button data-nav="products" style="position:relative">
+      <svg class="i" viewBox="0 0 24 24"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 016 0"/></svg>المنتجات
+      <span class="nbadge" id="navRc" hidden style="top:6px;inset-inline-end:calc(50% - 22px)">0</span></button>
     <button data-nav="scan">
       <svg class="i" viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 011-1h2M17 4h2a1 1 0 011 1v2M20 17v2a1 1 0 01-1 1h-2M7 20H5a1 1 0 01-1-1v-2"/><path d="M8 8v8M11 8v8M14 8v8M17 8v8"/></svg>باركود</button>
   </nav>
@@ -1134,9 +1138,31 @@
   }
   function screenProducts(){
     view = {name: "products"}; setNav("products");
-    main.innerHTML = '<div class="h1"><span class="grow">' + (isInt() && me.pos ? "مخزون " + esc(me.pos.name) : "المنتجات") + '</span></div>' + productSearchHtml("pq") + '<div id="pwrap">' + gridSkeleton(6) + '</div>';
+    main.innerHTML = '<div class="h1"><span class="grow">' + (isInt() && me.pos ? "مخزون " + esc(me.pos.name) : "المنتجات") + '</span></div>'
+      + stockTasksHtml() + productSearchHtml("pq") + '<div id="pwrap">' + gridSkeleton(6) + '</div>';
     $("[data-scan]", main).onclick = openScanner;
+    if ($("#goRc", main)) $("#goRc", main).onclick = screenReceipts;
+    if ($("#goCt", main)) $("#goCt", main).onclick = screenCounts;
+    refreshReceipts();
     wireProductList(main, $("#pwrap", main), 50);
+  }
+  // مهام المخزن مع منتجات الفرع ومخزونه، لا في الرئيسية (وهي للبيع): الاستلام بعدد ما ينتظر، والجرد.
+  function stockTasksHtml(){
+    var t = [];
+    if (can("receive_stock")) t.push('<button class="tile" id="goRc"><span class="avatar">' + ICON.box + '</span><span class="grow"><b>استلام المخزن</b>'
+      + '<span class="muted" id="rcSub">…</span></span><span class="badge num" id="rcN" hidden></span></button>');
+    if (can("count")) t.push('<button class="tile" id="goCt"><span class="avatar">' + ICON.scan + '</span><span class="grow"><b>جرد المخزون</b>'
+      + '<span class="muted">بالكاميرا</span></span></button>');
+    return t.length ? '<div class="tiles stask' + (t.length === 1 ? " one" : "") + '">' + t.join("") + '</div>' : '';
+  }
+  // ما وصل مخزن الفرع وينتظر العدّ واعتماد الجودة: شارة «المنتجات» وزرّ الاستلام
+  function refreshReceipts(){
+    if (!can("receive_stock")) return;
+    api("/receipts").then(function(rows){ setReceiptsBadge(rows.length); }).catch(function(){});
+  }
+  function setReceiptsBadge(n){
+    [$("#navRc"), $("#rcN")].forEach(function(b){ if (b){ b.textContent = n; b.hidden = !n; } });
+    if ($("#rcSub")) $("#rcSub").textContent = n ? "بانتظار العدّ والجودة" : "لا شيء ينتظر";
   }
 
   // ════════════ الكاميرا وقارئ الباركود ════════════
@@ -1508,15 +1534,13 @@
     main.innerHTML = installCardHtml() + homeHeroHtml() + homeActionsHtml()
       + (can("internal") ? '<div id="hIn"></div><div id="hOpen">' + homeSkeleton(can("view_all") ? "الطلبات المفتوحة" : "طلباتي المفتوحة") + '</div>' : '')
       + (can("create_link") ? '<div id="hLinks">' + homeSkeleton("لينكات بانتظار الدفع") + '</div>' : '')
-      + (stock ? homeTasksHtml() : '')
       + (can("view_all") ? '<div class="shead"><b>أداء المبيعات</b></div>' + periodSegHtml() + '<div id="dashBody"><div class="spin"></div></div>' : '')
-      + (can("internal") || can("create_link") || stock || can("view_all") ? '' : '<div class="mini-empty">لا مهام لك الآن.</div>');
+      + (can("internal") || can("create_link") || can("view_all") ? ''
+        : '<div class="mini-empty">' + (stock ? "الاستلام والجرد في «المنتجات»." : "لا مهام لك الآن.") + '</div>');
     wireInstallCard(); wireClaim(main);
     $("#rf").onclick = screenHome;
     $$("[data-new]", main).forEach(function(b){ b.onclick = function(){ var m = b.getAttribute("data-new"); if (m === mode) screenNew(); else setMode(m); }; });
     $$("[data-k]", main).forEach(function(b){ b.onclick = function(){ homeGo(b.getAttribute("data-k")); }; });
-    if ($("#goCt")) $("#goCt").onclick = screenCounts;
-    if ($("#goRc")) $("#goRc").onclick = screenReceipts;
     if (can("view_all")) wirePeriodSeg(function(){ if ($("#dashBody")) $("#dashBody").innerHTML = '<div class="spin"></div>'; loadDash(null); });
 
     if (can("internal")){
@@ -1537,11 +1561,7 @@
       var pend = rows.filter(function(v){ return v.status === "pending"; });
       if (live()) homeList("#hLinks", "لينكات بانتظار الدفع", 0, "links", pend.slice(0, 5).map(linkRowHtml), "لا لينكات بانتظار الدفع.", wireLinkRows);
     }).catch(function(e){ if (live()) homeList("#hLinks", "لينكات بانتظار الدفع", 0, "", [], esc(e.message)); });
-    if (can("receive_stock")) api("/receipts").then(function(rows){
-      if (!live() || !$("#rcSub")) return;
-      $("#rcSub").textContent = rows.length ? "بانتظار العدّ واعتماد الجودة" : "لا شيء بانتظار الاستلام";
-      $("#rcN").textContent = rows.length; $("#rcN").hidden = !rows.length;
-    }).catch(function(){});
+    refreshReceipts();       // شارة «المنتجات»: ما وصل مخزن الفرع
     // عدد اللينكات من اللوحة (كل ما بانتظار الدفع لا آخر 40 فقط)، وأرقام المبيعات لمن يراها
     (can("view_all") ? loadDash(null) : api("/dashboard?period=" + dashPeriod)).then(function(d){
       if (live() && d && d.pending) setKpi("links", d.pending.links);
@@ -1569,14 +1589,6 @@
     if (can("create_link")) b.push('<button class="btn ' + (b.length ? "soft" : "gold") + '" data-new="ext">' + ICON.wa + ' فاتورة بلينك دفع</button>');
     var quick = b.length ? '<div class="quick' + (b.length === 1 ? " one" : "") + '">' + b.join("") + '</div>' : "";
     return can("internal") ? claimHtml(quick + retBtnHtml()) : (quick ? '<div class="card">' + quick + '</div>' : "");
-  }
-  function homeTasksHtml(){
-    var t = [];
-    if (can("receive_stock")) t.push('<button class="tile" id="goRc"><span class="avatar">' + ICON.box + '</span><b>استلام مخزن الفرع</b>'
-      + '<span class="muted" id="rcSub">…</span><span class="badge num" id="rcN" hidden></span></button>');
-    if (can("count")) t.push('<button class="tile" id="goCt"><span class="avatar">' + ICON.scan + '</span><b>جرد بالكاميرا</b>'
-      + '<span class="muted">امسح ملصقات القطع فيُعدّ كل موديل</span></button>');
-    return '<div class="shead"><b>مهام المخزن</b></div><div class="tiles' + (t.length === 1 ? " one" : "") + '">' + t.join("") + '</div>';
   }
   function homeSkeleton(title){
     var row = '<div class="li"><div class="avatar skel"></div><div class="grow"><div class="skel" style="height:13px;width:50%"></div>'
@@ -1990,10 +2002,11 @@
 
   // ════════════ استلام مخزن الفرع واعتماد الجودة ════════════
   function screenReceipts(){
-    view = {name: "receipts"}; setNav("dash"); updateCartUI();
+    view = {name: "receipts"}; setNav("products"); updateCartUI();
     main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">استلام مخزن الفرع</span></div><div id="rcWrap"><div class="spin"></div></div>';
-    $("#bk").onclick = function(){ screenDash(); };
+    $("#bk").onclick = function(){ screenProducts(); };
     api("/receipts").then(function(rows){
+      setReceiptsBadge(rows.length);
       var wrap = $("#rcWrap"); if (!wrap) return;
       if (!rows.length){ wrap.innerHTML = '<div class="empty">' + ICON.box.replace('class="i"', 'class="i big-i"') + '<b>لا شيء بانتظار الاستلام</b>ما يُحوَّل لمخزن فرعك يظهر هنا.</div>'; return; }
       wrap.innerHTML = '<div class="list">' + rows.map(function(p){
@@ -2006,7 +2019,7 @@
     }).catch(function(e){ if ($("#rcWrap")) $("#rcWrap").innerHTML = '<div class="empty"><b>تعذّر الجلب</b>' + esc(e.message) + '</div>'; });
   }
   function screenReceipt(id){
-    view = {name: "receipt", id: id}; setNav("dash");
+    view = {name: "receipt", id: id}; setNav("products");
     main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">العدّ واعتماد الجودة</span></div><div class="spin"></div>';
     $("#bk").onclick = screenReceipts;
     api("/receipts/" + id).then(function(p){
@@ -2155,11 +2168,11 @@
   // موظف الفرع له موقعٌ واحد (مخزون نقطة بيعه): «جرد المخزون» يدخله جرد فرعه مباشرةً. ومن له مواقع أكثر
   // (مدير المخزون بـ«مواقع الجرد») يختار من قائمتها.
   var ctSingle = false;
-  function countBack(){ jrSync(); if (ctSingle) screenDash(); else screenCounts(); }
+  function countBack(){ jrSync(); if (ctSingle) screenProducts(); else screenCounts(); }
   function screenCounts(){
-    view = {name: "counts"}; setNav("dash"); updateCartUI();
+    view = {name: "counts"}; setNav("products"); updateCartUI();
     main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow" id="ctTitle">جرد المخزون</span></div><div id="ctWrap"><div class="spin"></div></div>';
-    $("#bk").onclick = function(){ screenDash(); };
+    $("#bk").onclick = function(){ screenProducts(); };
     api("/counts").then(function(d){
       var wrap = $("#ctWrap"); if (!wrap || view.name !== "counts") return;
       ctSingle = d.locations.length === 1;
@@ -2197,7 +2210,7 @@
     if (last) $("#ctLast").onclick = function(){ screenCount(last.id); };
   }
   function screenCount(id, loaded){
-    view = {name: "count", id: id}; setNav("dash"); updateCartUI();
+    view = {name: "count", id: id}; setNav("products"); updateCartUI();
     if (loaded) return renderCount();
     main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">الجرد</span></div><div class="spin"></div>';
     $("#bk").onclick = countBack;
