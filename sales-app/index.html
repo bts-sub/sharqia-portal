@@ -2211,7 +2211,8 @@
       + '<div class="hero"><div class="big num" id="ctBig" style="position:relative;z-index:1"></div><div class="meta" id="ctMeta" style="position:relative;z-index:1"></div>'
       + '<div style="margin-top:10px;position:relative;z-index:1"><span data-jrsync></span></div></div>'
       + (open ? '<button class="btn gold" id="ctScan" style="margin-bottom:12px">' + ICON.scan + ' امسح بالكاميرا</button>'
-        : '<div class="note">' + (c.state === "review" ? "انتهى العدّ — بانتظار مراجعة مدير المخزون وتطبيقه في أودو." : c.state === "done" ? "طُبّق هذا الجرد على المخزون." : "أُلغي هذا الجرد.") + '</div>')
+        : '<div class="note">' + (c.state === "review" ? "انتهى العدّ — بانتظار مراجعة مدير المخزون وتطبيقه في أودو." : c.state === "done" ? "طُبّق هذا الجرد على المخزون." : "أُلغي هذا الجرد.") + '</div>'
+          + '<button class="btn gold" id="ctNew" style="margin-bottom:12px">' + ICON.scan + ' ابدأ جرد جديد</button>')
       + '<div class="card"><div class="h2 between"><span>عدّي</span><span class="muted" id="ctMine"></span></div><div id="ctList"></div></div>'
       + (boss ? '<div class="card" id="ctTeam"></div>' : '')
       + (c.can_close && open ? '<button class="btn soft" id="ctClose">' + ICON.check + ' إنهاء الجرد وإرساله للمراجعة</button>' : '');
@@ -2219,6 +2220,15 @@
     if (open){
       $("#ctScan").onclick = openCountScanner;
       if ($("#ctClose")) $("#ctClose").onclick = closeCountSheet;
+    } else {
+      // جردٌ جديد للموقع نفسه من شاشة الجرد المنتهي، بلا خروجٍ ودخول. إن بدأه زميلٌ في الأثناء يُدخَل جرده الجاري.
+      $("#ctNew").onclick = function(){
+        var b = this; b.disabled = true;
+        api("/counts", {method: "POST", body: {location_id: c.location.id}}).then(function(n){
+          jrOpen(n); screenCount(n.id, true);
+          toast(n.started_by && me && n.started_by !== me.name ? "دخلت الجرد الجاري — بدأه " + n.started_by : "بدأ جرد جديد");
+        }).catch(function(e){ b.disabled = false; toast(e.message); });
+      };
     }
     $("#ctList").addEventListener("click", function(e){
       if (!open) return;
