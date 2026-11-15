@@ -398,7 +398,6 @@
   .qchips button.on{background:var(--navy);color:#F3D97A;border-color:var(--navy)}
   .ct-row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line)}
   .ct-row:last-child{border-bottom:none}
-  .ct-add{display:flex;gap:8px;margin-bottom:12px}
   [hidden]{display:none!important}
 
   /* ── إيصال الطلب المدفوع (من أودو): معاينة ثم طباعة بورق الكاشير 80mm ── */
@@ -2148,14 +2147,19 @@
     }
   }
 
+  // موظف الفرع له موقعٌ واحد (مخزون نقطة بيعه): «جرد المخزون» يدخله جرد فرعه مباشرةً. ومن له مواقع أكثر
+  // (مدير المخزون بـ«مواقع الجرد») يختار من قائمتها.
+  var ctSingle = false;
+  function countBack(){ jrSync(); if (ctSingle) screenDash(); else screenCounts(); }
   function screenCounts(){
     view = {name: "counts"}; setNav("dash"); updateCartUI();
-    main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">جرد المخزون</span></div><div id="ctWrap"><div class="spin"></div></div>';
+    main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow" id="ctTitle">جرد المخزون</span></div><div id="ctWrap"><div class="spin"></div></div>';
     $("#bk").onclick = function(){ screenDash(); };
     api("/counts").then(function(d){
-      var wrap = $("#ctWrap"); if (!wrap) return;
-      var h = '<div class="note" style="background:var(--info-soft);color:var(--info)">اختر الموقع وامسح ملصق كل قطعة بالكاميرا: كل ملصق = قطعة من موديله. زملاؤك يعدّون معك في نفس الجرد، وكلٌّ يُحفظ عدّه باسمه.</div>'
-        + '<div class="list">' + d.locations.map(function(l){
+      var wrap = $("#ctWrap"); if (!wrap || view.name !== "counts") return;
+      ctSingle = d.locations.length === 1;
+      if (ctSingle) return countStart(d.locations[0], d.recent, wrap);
+      var h = '<div class="list">' + d.locations.map(function(l){
           var o = l.open;
           return '<div class="li" data-loc="' + l.id + '"><div class="avatar">' + ICON.store + '</div><div class="grow"><div style="font-weight:800" class="ellip">' + esc(l.name) + '</div>'
             + '<div class="muted ellip">' + (o ? 'جرد جارٍ · بدأه ' + esc(o.started_by) + ' ' + ago(o.started) + (o.users.length ? ' · يعدّ: ' + esc(o.users.join("، ")) : '') : 'لا جرد جارٍ — اضغط لتبدأ') + '</div></div>'
@@ -2174,31 +2178,41 @@
       $$("[data-ct]").forEach(function(el){ el.onclick = function(){ screenCount(+el.getAttribute("data-ct")); }; });
     }).catch(function(e){ if ($("#ctWrap")) $("#ctWrap").innerHTML = '<div class="empty"><b>تعذّر الجلب</b>' + esc(e.message) + '</div>'; });
   }
+  // جرد الفرع: الجاري يُدخَل مباشرةً، وإلا فزرٌّ واحد يبدؤه (لا يبدأ جردٌ جديد بمجرّد فتح الشاشة بعد إنهاء سابقه)
+  function countStart(l, recent, wrap){
+    var join = function(){ return api("/counts", {method: "POST", body: {location_id: l.id}}).then(function(c){ jrOpen(c); screenCount(c.id, true); }); };
+    if (l.open) return join().catch(function(e){ wrap.innerHTML = '<div class="empty"><b>تعذّر فتح الجرد</b>' + esc(e.message) + '</div>'; });
+    var last = recent.filter(function(c){ return c.location.id === l.id; })[0];
+    $("#ctTitle").textContent = "جرد " + l.name;
+    wrap.innerHTML = '<div class="empty"><b>لا جرد شغّال الآن</b>ابدأ الجرد، وزملاؤك يدخلونه معك من «جرد المخزون».</div>'
+      + '<button class="btn gold" id="ctStart">' + ICON.scan + ' ابدأ الجرد</button>'
+      + (last ? '<div class="list" style="margin-top:12px"><div class="li" id="ctLast"><div class="grow"><div style="font-weight:800">آخر جرد</div>'
+        + '<div class="muted num ellip">' + esc(last.name) + ' · ' + ago(last.started) + '</div></div>' + pill(CT, last.state) + '</div></div>' : '');
+    $("#ctStart").onclick = function(){ var b = this; b.disabled = true; join().catch(function(e){ b.disabled = false; toast(e.message); }); };
+    if (last) $("#ctLast").onclick = function(){ screenCount(last.id); };
+  }
   function screenCount(id, loaded){
     view = {name: "count", id: id}; setNav("dash"); updateCartUI();
     if (loaded) return renderCount();
     main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">الجرد</span></div><div class="spin"></div>';
-    $("#bk").onclick = screenCounts;
+    $("#bk").onclick = countBack;
     api("/counts/" + id).then(function(c){ jrOpen(c); if (view.name === "count" && view.id === id) renderCount(); })
       .catch(function(e){ main.innerHTML = '<div class="empty"><b>تعذّر</b>' + esc(e.message) + '</div>'; });
   }
   function renderCount(){
-    var c = jr.count, open = c.state === "open" && !jr.closed;
-    main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow ellip">' + esc(c.location.name) + '</span></div>'
-      + '<div class="hero"><div class="row between" style="position:relative;z-index:1"><span class="num" style="opacity:.8;font-size:13px">' + esc(c.name) + '</span>' + pill(CT, c.state) + '</div>'
-      + '<div class="big num" id="ctBig" style="position:relative;z-index:1"></div><div class="meta" id="ctMeta" style="position:relative;z-index:1"></div>'
+    // شاشة العدّ: عدّي ورقمه، وزرّ الكاميرا (فيها كتابة الكود يدويًا). فريق الجرد وإنهاؤه للمشرف.
+    var c = jr.count, open = c.state === "open" && !jr.closed, boss = me && me.role === "supervisor";
+    main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow ellip">جرد ' + esc(c.location.name) + '</span></div>'
+      + '<div class="hero"><div class="big num" id="ctBig" style="position:relative;z-index:1"></div><div class="meta" id="ctMeta" style="position:relative;z-index:1"></div>'
       + '<div style="margin-top:10px;position:relative;z-index:1"><span data-jrsync></span></div></div>'
-      + (open ? '<button class="btn gold" id="ctScan" style="margin-bottom:12px">' + ICON.scan + ' افتح الكاميرا وابدأ العدّ</button>'
-        + '<div class="ct-add"><input id="ctCode" dir="ltr" placeholder="أو اكتب كود الموديل"><button class="btn dark sm" id="ctGo" style="white-space:nowrap">+ قطعة</button></div>'
+      + (open ? '<button class="btn gold" id="ctScan" style="margin-bottom:12px">' + ICON.scan + ' امسح بالكاميرا</button>'
         : '<div class="note">' + (c.state === "review" ? "انتهى العدّ — بانتظار مراجعة مدير المخزون وتطبيقه في أودو." : c.state === "done" ? "طُبّق هذا الجرد على المخزون." : "أُلغي هذا الجرد.") + '</div>')
       + '<div class="card"><div class="h2 between"><span>عدّي</span><span class="muted" id="ctMine"></span></div><div id="ctList"></div></div>'
-      + '<div class="card" id="ctTeam"></div>'
+      + (boss ? '<div class="card" id="ctTeam"></div>' : '')
       + (c.can_close && open ? '<button class="btn soft" id="ctClose">' + ICON.check + ' إنهاء الجرد وإرساله للمراجعة</button>' : '');
-    $("#bk").onclick = function(){ jrSync(); screenCounts(); };
+    $("#bk").onclick = countBack;
     if (open){
       $("#ctScan").onclick = openCountScanner;
-      $("#ctGo").onclick = function(){ var v = $("#ctCode").value.trim(); if (!v) return; jrAdd(v, 1); jrLookup([v]).then(renderCountList); $("#ctCode").value = ""; renderCountList(); };
-      $("#ctCode").onkeydown = function(e){ if (e.key === "Enter") $("#ctGo").click(); };
       if ($("#ctClose")) $("#ctClose").onclick = closeCountSheet;
     }
     $("#ctList").addEventListener("click", function(e){
@@ -2262,6 +2276,8 @@
   // ثلاث قطع. الملصق الأبيض الذي لم يُقرأ أحمر: يقرّب عليه التطبيق من دقّة الكاميرا الكاملة، أو يضغطه الموظف.
   // يُحفظ ما هو أخضر، والرصّة المحفوظة تُعرف إن عاد إليها (نفس الأكواد بنفس الأعداد) فلا تُحسب مرّتين.
   // «📷 صورة دقيقة»: كاميرا الجوال نفسها (12 ميجا، تركيزها وتقريبها) ثم تحليل الصورة مربعًا مربعًا.
+  // «الرصّة» مخفية بطلب المحل تبسيطًا للجرد (2026-11-16): يبقى «قطعة قطعة» و«بالعدد». true يعيدها كما كانت.
+  var RACK_MODE = false;
   var COUNT_GAP = 900;
   var HINTS = {auto: "على بُعد شبر من الملصق، مرّر الكاميرا عليها واحدًا واحدًا — كل صوت = قطعة",
     qty: "امسح ملصقًا واحدًا ثم اختر عدد قطع موديله أمامك",
@@ -2295,13 +2311,13 @@
       + '<div class="tb"><button class="round" id="sx" aria-label="إغلاق">' + ICON.close + '</button><div class="grow"><b class="ellip" style="display:block">جرد ' + esc(c.location.name) + '</b><span class="sub"><span data-jrsync></span></span></div>'
       + '<button class="round" id="torch" aria-label="الفلاش" hidden>' + ICON.torch + '</button></div>'
       + '<div class="hud"><b class="num" id="hudN"></b><span>قطعة عددتها</span></div><div class="zoomc" id="zoomc" hidden></div>'
-      + '<div class="bottom"><div class="seg" id="cmode"><button data-m="auto">قطعة قطعة</button><button data-m="qty">بالعدد</button><button data-m="rack">الرصّة</button></div>'
+      + '<div class="bottom"><div class="seg" id="cmode"><button data-m="auto">قطعة قطعة</button><button data-m="qty">بالعدد</button>' + (RACK_MODE ? '<button data-m="rack">الرصّة</button>' : '') + '</div>'
       + '<div class="hint" id="shint"></div><div class="rackp" id="rackp" hidden></div><div id="slast"></div><div id="qpad"></div>'
       + '<div class="manual"><input id="mcode" dir="ltr" placeholder="أو اكتب الكود يدويًا"><button class="btn gold sm" id="mgo">إضافة</button></div>'
       + '<button class="btn gold" id="sdone">تم — عرض عدّي ‹</button><input type="file" id="rkFile" accept="image/*" capture="environment" hidden></div>';
     document.body.appendChild(el);
     var saved = store("countMode");
-    var cam = null, seen = {}, asking = false, mode = saved === "qty" || saved === "rack" ? saved : "auto";
+    var cam = null, seen = {}, asking = false, mode = saved === "qty" || (RACK_MODE && saved === "rack") ? saved : "auto";
     var rack = {items: [], reds: [], finderAt: 0, zooming: false, turn: 0, shot: null, key: ""};
     var ov = $("#ov", el), ovg = ov.getContext("2d");
     function hud(){ $("#hudN", el).textContent = qn(jrPieces()); }
