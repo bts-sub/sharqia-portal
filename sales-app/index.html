@@ -1736,7 +1736,10 @@
         + (o.phone ? ' أو بجواله' : '') + ' ويكمل عليه.</div></div><b class="num">' + o.code + '</b></div>'
       // عند الكاشير (ومنه «مرتجع فقط» الذي يذهب للكاشير فورًا) يبقى الكود واضحًا كما في التحويل
       : o.code && o.state === "cashier" ? '<div class="card dcode"><div class="grow"><b>كود العميل</b><div class="muted">قُله للعميل: '
-        + (o.kind === "exchange" ? "استبداله" : o.kind === "return" ? "مرتجعه" : "طلبه") + ' عند الكاشير' + (o.ticket ? ' برقم ' + esc(o.ticket) : '') + '.</div></div><b class="num">' + o.code + '</b></div>' : '')
+        + (o.kind === "exchange" ? "استبداله" : o.kind === "return" ? "مرتجعه" : "طلبه") + ' عند الكاشير' + (o.ticket ? ' برقم ' + esc(o.ticket) : '') + '.</div></div><b class="num">' + o.code + '</b></div>'
+      // المرتجع والاستبدال: الكود يبقى بعد الدفع أيضًا ليُراجَع به
+      : o.code && o.kind && o.state === "paid" ? '<div class="card dcode"><div class="grow"><b>كود العميل</b><div class="muted">كود '
+        + (o.kind === "exchange" ? "الاستبدال" : "المرتجع") + (o.ticket ? ' · رقم الكاشير ' + esc(o.ticket) : '') + '.</div></div><b class="num">' + o.code + '</b></div>' : '')
       + (o.locked_by ? '<div class="note">مفتوح الآن عند ' + esc(o.locked_by) + ' — للعرض فقط حتى ينتهي.</div>' : '')
       + (o.state === "cashier" ? '<div class="note">عند كاشير ' + esc(o.cashier) + ' — يظهر في طلبات نقطة البيع برقم ' + esc(o.ticket) + '.</div>' : '')
       + '<div class="card"><div class="h2">الأصناف</div>' + (o.lines.length ? posLinesHtml(o) : '<div class="muted">لا أصناف بعد</div>')
