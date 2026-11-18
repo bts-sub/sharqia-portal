@@ -1388,22 +1388,26 @@
       o.connect(g); g.connect(beepCtx.destination); o.start(); o.stop(beepCtx.currentTime + .17);
     } catch(e){}
   }
-  function openScanner(){
+  // كاميرا المنتج: تضيف ما تقرؤه للسلة، وفي الاستعلام (زرّ «باركود»: kind = "inquiry") تُغلق وتعرض القطعة في كل فرع
+  function openInquiry(){ openScanner("inquiry"); }
+  function openScanner(kind){
+    var inquiry = kind === "inquiry";
     closeSheets();
     var el = document.createElement("div"); el.className = "scan";
     el.innerHTML = '<div id="reader"></div><div class="shade"><div class="frame"><i></i><i></i><i></i><i></i><span class="laser"></span></div></div>'
-      + '<div class="tb"><button class="round" id="sx" aria-label="إغلاق">' + ICON.close + '</button><b>امسح باركود المنتج</b>'
+      + '<div class="tb"><button class="round" id="sx" aria-label="إغلاق">' + ICON.close + '</button><b>' + (inquiry ? "استعلام: امسح باركود المنتج" : "امسح باركود المنتج") + '</b>'
       + '<button class="round" id="torch" aria-label="الفلاش" hidden>' + ICON.torch + '</button></div>'
       + '<div class="bottom"><div class="hint" id="shint">وجّه الكاميرا للباركود داخل الإطار</div><div id="slast"></div>'
-      + '<div class="manual"><input id="mcode" dir="ltr" inputmode="numeric" placeholder="أو اكتب الكود يدويًا"><button class="btn gold sm" id="mgo">إضافة</button></div>'
+      + '<div class="manual"><input id="mcode" dir="ltr" inputmode="numeric" placeholder="أو اكتب الكود يدويًا"><button class="btn gold sm" id="mgo">' + (inquiry ? "استعلام" : "إضافة") + '</button></div>'
       + '<button class="btn gold" id="sdone" hidden></button></div>';
     document.body.appendChild(el);
     var cam = null, seen = {}, busy = false;
-    function done(){ if (cam) cam.stop(); el.remove(); if (cartCount()) screenNew(); }
-    function showDone(){ var n = cartCount(), b = $("#sdone", el); b.hidden = !n; b.innerHTML = "السلة " + n + " قطعة · " + money(itemsTotal()) + " ‹"; }
+    function done(){ if (cam) cam.stop(); el.remove(); if (!inquiry && cartCount()) screenNew(); }
+    function showDone(){ var n = inquiry ? 0 : cartCount(), b = $("#sdone", el); b.hidden = !n; b.innerHTML = "السلة " + n + " قطعة · " + money(itemsTotal()) + " ‹"; }
     // الكود نفسه لا يُضاف ثانيةً ما دام أمام الكاميرا: قطعةٌ ثانية = أبعِد الكاميرا ثم أعِدها
     function lookup(code, manual){
       code = String(code || "").trim(); if (!code) return;
+      if (inquiry){ beep(true); vibrate(60); done(); screenInquiry(code); return; }
       var now = Date.now(), last = seen[code] || 0; seen[code] = now;
       if (busy || (!manual && now - last < 1500)) return;
       busy = true;
@@ -1426,6 +1430,55 @@
     $("#mcode", el).onkeydown = function(e){ if (e.key === "Enter") $("#mgo", el).click(); };
     showDone();
     cam = startCamera(el, LINEAR.concat(["qr_code"]), function(code){ lookup(code); });
+  }
+
+  // ════════════ استعلام المخزون (زرّ «باركود») ════════════
+  // القطعة في كل فرعٍ لحظيًا: في المخزن، والمحجوز في طلبات التطبيق التي لم تُدفع، والمتاح؛ فرع الموظف أولًا.
+  // المتوفر فقط في القائمة، وما لا قطعة فيه سطرٌ واحد تحتها.
+  function screenInquiry(code){
+    view = {name: "inquiry", code: code}; setNav("scan"); updateCartUI();
+    main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">استعلام المخزون</span>'
+      + '<button class="icon-btn" id="rf" aria-label="تحديث">' + ICON.refresh + '</button></div><div id="iqWrap"><div class="spin"></div></div>';
+    $("#bk").onclick = function(){ screenDash(); };
+    $("#rf").onclick = function(){ screenInquiry(code); };
+    var again = '<button class="btn gold" id="iqAgain" style="margin-top:12px">' + ICON.scan + ' امسح منتجًا آخر</button>';
+    api("/stock/" + encodeURIComponent(code)).then(function(p){
+      if (view.name !== "inquiry" || view.code !== code || !$("#iqWrap")) return;
+      var stocked = p.branches.filter(function(b){ return b.qty > 0; }), none = p.branches.filter(function(b){ return b.qty <= 0; });
+      var mine = p.branches.filter(function(b){ return b.mine; })[0];
+      var row = function(b){
+        var free = Math.max(0, b.available);
+        return '<div class="li"><div class="avatar">' + ICON.store + '</div><div class="grow"><div style="font-weight:800" class="ellip">' + esc(b.name)
+          + (b.mine ? ' <span class="pill p-info">فرعي</span>' : '') + '</div>'
+          + '<div class="muted num">في المخزن ' + qn(b.qty) + (b.reserved ? ' · محجوز في الطلبات ' + qn(b.reserved) : '') + '</div></div>'
+          + '<div style="text-align:left"><b class="num" style="font-size:20px;color:var(' + (free ? '--good' : '--bad') + ')">' + qn(free) + '</b>'
+          + '<div class="muted">' + (free ? 'متاح' : 'كله محجوز') + '</div></div></div>';
+      };
+      var h = '<div class="card row">' + thumbHtml(p.id) + '<div class="grow"><div style="font-weight:800">' + esc(p.name) + '</div>'
+        + '<div class="muted num" dir="ltr" style="text-align:right">' + esc([p.code, p.barcode].filter(Boolean).join(" · ")) + '</div></div>'
+        + '<b class="num">' + money(p.price_incl != null ? p.price_incl : p.price) + '</b></div>';
+      if (!p.stock) h += '<div class="note">هذا المنتج لا يُتتبّع مخزونه.</div>';
+      else {
+        h += '<div class="sec-h">المتوفر في الفروع · الآن ' + esc(p.at) + '</div>'
+          + (stocked.length ? '<div class="list">' + stocked.map(row).join("") + '</div>'
+            : '<div class="empty"><b>غير متوفر في أي فرع</b>لا قطعة منه في مخزون أي فرع الآن.</div>');
+        if (stocked.length && none.length) h += '<div class="muted" style="margin:8px 4px">غير متوفر في: ' + esc(none.map(function(b){ return b.name; }).join("، ")) + '</div>';
+      }
+      var canAdd = p.sellable && isInt() && can("internal") && (!p.stock || (mine && mine.available > 0));
+      h += again + (canAdd ? '<button class="btn soft" id="iqAdd" style="margin-top:10px">' + ICON.plus + ' أضف للطلب</button>' : '');
+      $("#iqWrap").innerHTML = h;
+      wireThumbs($("#iqWrap"));
+      $("#iqAgain").onclick = openInquiry;
+      if ($("#iqAdd")) $("#iqAdd").onclick = function(){
+        remember(Object.assign({}, p, {qty: mine ? mine.available : 0}));
+        var l = cartLine(p.id); setQty(p.id, (l ? l.qty : 0) + 1);
+        if (cartLine(p.id)) toast("أُضيف للطلب — في السلة " + cartLine(p.id).qty);
+      };
+    }).catch(function(e){
+      if (!$("#iqWrap")) return;
+      $("#iqWrap").innerHTML = '<div class="empty"><b>لا منتج بهذا الكود</b>' + esc(e.message) + '</div>' + again;
+      $("#iqAgain").onclick = openInquiry;
+    });
   }
 
   // ════════════ عروض الأسعار (أودو) ════════════
@@ -2696,7 +2749,7 @@
   $$(".tabbar button").forEach(function(b){
     b.onclick = function(){ var n = b.getAttribute("data-nav"); closeSheets();
       if (n === "dash") screenDash(); else if (n === "invoices"){ if (can("internal")) screenInternal(); else screenInvoices(); }
-      else if (n === "products") screenProducts(); else if (n === "new") screenNew(); else if (n === "scan") openScanner(); };
+      else if (n === "products") screenProducts(); else if (n === "new") screenNew(); else if (n === "scan") openInquiry(); };
   });
   $("#meBtn").onclick = openAccount;
 

@@ -162,6 +162,13 @@ r.get("/api/sales/products/by-code/:code", run(async (req, res) => {
   res.json({ ...p, more: rows.length > 1 });
 }));
 
+// استعلام زرّ «باركود»: القطعة في كل فرعٍ لحظيًا — في المخزن، والمحجوز في طلبات التطبيق التي لم تُدفع، والمتاح
+r.get("/api/sales/stock/:code", run(async (req, res) => {
+  const code = String(req.params.code || "").trim();
+  if (!code) throw badRequest("الكود فارغ");
+  res.json(await execKw(APP, "app_stock_inquiry", [req.appToken, code]));
+}));
+
 // صورة المنتج (بروكسي من Odoo — image_256). عامّة: الوسم <img> لا يحمل رمز الجلسة، وصور المنتجات
 // منشورة أصلًا في المتجر.
 r.get("/api/sales/products/:id/image", async (req, res, next) => {
