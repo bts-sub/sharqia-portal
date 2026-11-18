@@ -356,6 +356,11 @@
   .vchip b{font-size:13.5px}
   .vchip.ok b{color:var(--good)} .vchip.else b{color:var(--warn)} .vchip.none{opacity:.45}
   .vchip.on{border-color:var(--gold);background:var(--gold-soft);box-shadow:0 0 0 2px rgba(201,162,39,.3)}
+  /* الفرع المعروض في الجدول: أسماء الفروع فوقه، وفي القائمة يُبرَز ويُضغط */
+  .seg.vbr{flex-wrap:wrap;margin-bottom:8px}
+  .seg.vbr button{flex:1 1 auto;white-space:nowrap}
+  .li.br-pick{cursor:pointer}
+  .li.br-on{background:var(--gold-soft);box-shadow:inset -3px 0 0 var(--gold)}
 
   /* ── الطلب الداخلي ── */
   .sec-h{display:flex;align-items:center;gap:8px;font-weight:800;font-size:13px;margin:12px 0 2px}
@@ -1462,17 +1467,21 @@
     });
   }
   function inquiryAgainHtml(){ return '<button class="btn gold" id="iqAgain" style="margin-top:12px">' + ICON.scan + ' امسح منتجًا آخر</button>'; }
-  // المتغير المعروض (selId): الممسوح أولًا، ثم ما يُضغط من الألوان والمقاسات — بلا طلبٍ جديد من أودو
-  function renderInquiry(p, selId){
+  // المتغير المعروض (selId): الممسوح أولًا، ثم ما يُضغط من الألوان والمقاسات — بلا طلبٍ جديد من أودو.
+  // br: الفرع الذي تُعرض مقاساته وألوانه في الجدول، فرع الموظف افتراضيًا، و"*" كل الفروع؛ يُختار من أسماء الفروع.
+  function renderInquiry(p, selId, br, toGrid){
     var variants = p.variants || [];
+    if (br == null){ var own = p.branches.filter(function(b){ return b.mine; })[0]; br = own ? own.name : "*"; }
     var sel = variants.filter(function(v){ return v.id === selId; })[0]
       || {id: p.id, name: p.name, attrs: p.attrs, code: p.code, barcode: p.barcode, price_incl: p.price_incl != null ? p.price_incl : p.price,
           branches: p.branches, sellable: p.sellable};
     var stocked = sel.branches.filter(function(b){ return b.qty > 0; }), none = sel.branches.filter(function(b){ return b.qty <= 0; });
     var mine = sel.branches.filter(function(b){ return b.mine; })[0];
+    var grid = variants.length > 1;
     var row = function(b){
       var free = Math.max(0, b.available);
-      return '<div class="li"><div class="avatar">' + ICON.store + '</div><div class="grow"><div style="font-weight:800" class="ellip">' + esc(b.name)
+      return '<div class="li' + (grid ? ' br-pick' + (b.name === br ? ' br-on' : '') + '" data-br="' + esc(b.name) : '') + '"><div class="avatar">' + ICON.store
+        + '</div><div class="grow"><div style="font-weight:800" class="ellip">' + esc(b.name)
         + (b.mine ? ' <span class="pill p-info">فرعي</span>' : '') + '</div>'
         + '<div class="muted num">في المخزن ' + qn(b.qty) + (b.reserved ? ' · محجوز في الطلبات ' + qn(b.reserved) : '') + '</div></div>'
         + '<div style="text-align:left"><b class="num" style="font-size:20px;color:var(' + (free ? '--good' : '--bad') + ')">' + qn(free) + '</b>'
@@ -1488,14 +1497,18 @@
         + (stocked.length ? '<div class="list">' + stocked.map(row).join("") + '</div>'
           : '<div class="empty"><b>غير متوفر في أي فرع</b>لا قطعة منه في مخزون أي فرع الآن.</div>');
       if (stocked.length && none.length) h += '<div class="muted" style="margin:8px 4px">غير متوفر في: ' + esc(none.map(function(b){ return b.name; }).join("، ")) + '</div>';
-      h += variantsHtml(p, sel.id);
+      h += variantsHtml(p, sel.id, br);
     }
     var canAdd = sel.sellable && isInt() && can("internal") && (!p.stock || (mine && mine.available > 0));
     h += inquiryAgainHtml() + (canAdd ? '<button class="btn soft" id="iqAdd" style="margin-top:10px">' + ICON.plus + ' أضف للطلب' + (sel.attrs ? ' (' + esc(sel.attrs) + ')' : '') + '</button>' : '');
     $("#iqWrap").innerHTML = h;
     wireThumbs($("#iqWrap"));
     $("#iqAgain").onclick = openInquiry;
-    $$("[data-v]", $("#iqWrap")).forEach(function(b){ b.onclick = function(){ renderInquiry(p, +b.getAttribute("data-v")); }; });
+    $$("[data-v]", $("#iqWrap")).forEach(function(b){ b.onclick = function(){ renderInquiry(p, +b.getAttribute("data-v"), br); }; });
+    // اسم فرعٍ (في القائمة أو فوق الجدول): مقاساته وألوانه في الجدول؛ ومن القائمة يُنزل إلى الجدول
+    $$("[data-br]", $("#iqWrap")).forEach(function(b){ b.onclick = function(){
+      renderInquiry(p, sel.id, b.getAttribute("data-br"), b.classList.contains("br-pick")); }; });
+    if (toGrid && $("#iqWrap .vgrid")) $("#iqWrap .vbr").scrollIntoView({behavior: "smooth", block: "start"});
     if ($("#iqAdd")) $("#iqAdd").onclick = function(){
       remember({id: sel.id, name: sel.name, code: sel.code, barcode: sel.barcode, price: sel.price_incl, price_incl: sel.price_incl,
                 stock: p.stock, qty: mine ? mine.available : 0});
@@ -1503,28 +1516,33 @@
       if (cartLine(sel.id)) toast("أُضيف للطلب — في السلة " + cartLine(sel.id).qty);
     };
   }
-  // كل متغيرات المنتج: صفٌّ لكل لون ومقاساته أزرار (أو صفٌّ واحد لخاصيةٍ واحدة). الرقم المتاح في فرع الموظف،
-  // وبرتقاليٌّ ما نفد عنده ووُجد في فرعٍ آخر، وباهتٌ ما لا قطعة منه في أي فرع.
-  function variantsHtml(p, selId){
+  // كل متغيرات المنتج: صفٌّ لكل لون ومقاساته أزرار (أو صفٌّ واحد لخاصيةٍ واحدة)، والرقم المتاح في الفرع المختار
+  // (br: فرع الموظف افتراضيًا، أو أي فرعٍ يُضغط اسمه، أو "*" كلها). برتقاليٌّ ما نفد فيه ووُجد في فرعٍ آخر، وباهتٌ
+  // ما لا قطعة منه في أي فرع.
+  function variantsHtml(p, selId, br){
     var variants = p.variants || [];
     if (variants.length < 2) return '';
-    var hasMine = p.branches.some(function(b){ return b.mine; });
     var nested = variants.some(function(v){ return v.label; });
     var groups = [], by = {};
     variants.forEach(function(v){ var g = nested ? v.group : ""; if (!(g in by)){ by[g] = []; groups.push(g); } by[g].push(v); });
+    var free = function(b){ return b ? Math.max(0, b.available) : 0; };
     var chip = function(v){
-      var mine = v.branches.filter(function(b){ return b.mine; })[0];
-      var all = v.branches.reduce(function(s, b){ return s + Math.max(0, b.available); }, 0);
-      var n = hasMine ? (mine ? Math.max(0, mine.available) : 0) : all;
+      var all = v.branches.reduce(function(s, b){ return s + free(b); }, 0);
+      var n = br === "*" ? all : free(v.branches.filter(function(b){ return b.name === br; })[0]);
       return '<button class="vchip ' + (n > 0 ? "ok" : all > 0 ? "else" : "none") + (v.id === selId ? " on" : "") + '" data-v="' + v.id + '">'
         + '<span>' + esc(nested ? v.label : v.group || v.attrs) + '</span><b class="num">' + qn(n) + '</b></button>';
     };
-    return '<div class="sec-h">كل المتغيرات' + (nested && p.group_name ? ' · حسب ' + esc(p.group_name) : '') + '</div><div class="card vgrid">'
+    var where = br === "*" ? "كل الفروع" : br;
+    var picks = p.branches.map(function(b){ return {key: b.name, label: b.name + (b.mine ? " (فرعي)" : "")}; }).concat([{key: "*", label: "الكل"}]);
+    return '<div class="sec-h">المقاسات والألوان في ' + esc(where) + '</div>'
+      + '<div class="seg vbr">' + picks.map(function(o){
+        return '<button class="' + (o.key === br ? "on" : "") + '" data-br="' + esc(o.key) + '">' + esc(o.label) + '</button>'; }).join("") + '</div>'
+      + '<div class="card vgrid">'
       + groups.map(function(g){
         return '<div class="vrow">' + (nested ? '<div class="vname">' + esc(g || "—") + '</div>' : '') + '<div class="vchips">' + by[g].map(chip).join("") + '</div></div>';
       }).join("") + '</div>'
-      + '<div class="muted" style="margin:6px 4px;font-size:12px">الرقم: المتاح ' + (hasMine ? 'في فرعك' : 'في كل الفروع')
-      + ' · <b style="color:var(--warn)">برتقالي</b>: في فرعٍ آخر فقط · اضغط أيًّا منها لتوزيعه على الفروع</div>';
+      + '<div class="muted" style="margin:6px 4px;font-size:12px">الرقم: المتاح في ' + esc(where)
+      + ' · <b style="color:var(--warn)">برتقالي</b>: نفد فيه وموجود في فرعٍ آخر · اضغط اسم فرعٍ لمقاساته، أو مقاسًا لتوزيعه على الفروع</div>';
   }
 
   // ════════════ عروض الأسعار (أودو) ════════════
