@@ -101,7 +101,11 @@ r.post("/api/sales/login", run(async (req, res) => {
   res.json({ token: out.token, user: out.user });
 }));
 
-r.get("/api/sales/me", (req, res) => res.json(req.appUser));
+// ?fresh=1: من أودو لا من الذاكرة — بعد انتقال البائع لفرعٍ آخر أو رجوعه تتغيّر نقطة بيعه
+r.get("/api/sales/me", run(async (req, res) => {
+  if (req.query.fresh) { sessions.delete(req.appToken); return res.json(await sessionUser(req.appToken)); }
+  res.json(req.appUser);
+}));
 
 r.post("/api/sales/logout", run(async (req, res) => {
   await execKw(APP, "app_logout", [req.appToken]);
@@ -167,6 +171,28 @@ r.get("/api/sales/stock/:code", run(async (req, res) => {
   const code = String(req.params.code || "").trim();
   if (!code) throw badRequest("الكود فارغ");
   res.json(await execKw(APP, "app_stock_inquiry", [req.appToken, code]));
+}));
+
+// العمل في فرعٍ آخر: البائع يطلب، ومشرف فرعه الأصلي يوافق أو يرفض، والبائع يرجع (أو مشرف أحد الفرعين يُنهيه).
+// كلٌّ يُرجع الحالة كاملة؛ ونقطة بيع البائع تتغيّر، فتُمسح جلسته من الذاكرة ليقرأها التطبيق من أودو.
+const visitOut = (req, out) => { sessions.delete(req.appToken); return out; };
+r.get("/api/sales/visits", run(async (req, res) => {
+  res.json(await execKw(APP, "app_visit_status", [req.appToken]));
+}));
+r.post("/api/sales/visits", run(async (req, res) => {
+  const { config_id, note } = req.body || {};
+  res.json(await execKw(APP, "app_visit_request", [req.appToken, num(config_id), note ? String(note).slice(0, 500) : false]));
+}));
+r.post("/api/sales/visits/:id/cancel", run(async (req, res) => {
+  res.json(await execKw(APP, "app_visit_cancel", [req.appToken, num(req.params.id)]));
+}));
+r.post("/api/sales/visits/:id/decide", run(async (req, res) => {
+  const { approve, reason } = req.body || {};
+  res.json(await execKw(APP, "app_visit_decide", [req.appToken, num(req.params.id), !!approve, reason ? String(reason).slice(0, 200) : false]));
+}));
+r.post("/api/sales/visits/end", run(async (req, res) => {
+  const { visit_id } = req.body || {};
+  res.json(visitOut(req, await execKw(APP, "app_visit_end", [req.appToken, num(visit_id) || false])));
 }));
 
 // صورة المنتج (بروكسي من Odoo — image_256). عامّة: الوسم <img> لا يحمل رمز الجلسة، وصور المنتجات

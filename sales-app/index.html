@@ -357,6 +357,10 @@
   .vchip.ok b{color:var(--good)} .vchip.else b{color:var(--warn)} .vchip.none{opacity:.45}
   .vchip.on{border-color:var(--gold);background:var(--gold-soft);box-shadow:0 0 0 2px rgba(201,162,39,.3)}
   /* الفرع المعروض في الجدول: أسماء الفروع فوقه، وفي القائمة يُبرَز ويُضغط */
+  /* العمل في فرعٍ آخر: بطاقة البائع في رئيسيته، وطلبات بائعي الفرع عند مشرفه */
+  #hVisit .card.visit{margin-bottom:12px}
+  #hVisit .card.visit.on{border-color:var(--gold);background:var(--gold-soft)}
+  #hVisit .li.visit-req{align-items:flex-start}
   .seg.vbr{flex-wrap:wrap;margin-bottom:8px}
   .seg.vbr button{flex:1 1 auto;white-space:nowrap}
   .li.br-pick{cursor:pointer}
@@ -623,7 +627,7 @@
     var ov = sheet("حسابي",
       '<div class="card row"><div class="avatar">' + esc(initials(me.name)) + '</div><div class="grow"><div style="font-weight:800">' + esc(me.name) + '</div>'
       + '<div class="muted">' + (me.role === "supervisor" ? "مشرف" : "بائع") + ' · ' + esc(me.login) + '</div></div></div>'
-      + (me.pos ? '<div class="card"><div class="kv"><span>نقطة البيع</span><b>' + esc(me.pos.name) + '</b></div><div class="kv"><span>المخزون</span><span>' + esc(me.pos.stock) + '</span></div></div>'
+      + (me.pos ? '<div class="card"><div class="kv"><span>نقطة البيع</span><b>' + esc(me.pos.name) + '</b></div>' + (me.pos.home ? '<div class="kv"><span>فرعك الأصلي</span><span>' + esc(me.pos.home) + '</span></div>' : '') + '<div class="kv"><span>المخزون</span><span>' + esc(me.pos.stock) + '</span></div></div>'
         : '<div class="note">حسابك غير مربوط بنقطة بيع — اطلب ربطه من مدير المبيعات.</div>')
       + '<div class="card"><div class="h2">صلاحياتك</div>' + row(P.internal, "البيع الداخلي (عملاء المعرض)") + row(P.receive_stock, "استلام المخزن واعتماد الجودة") + row(P.count, "جرد المخزون بالكاميرا") + row(P.create_link, "إنشاء لينك دفع")
       + row(P.edit_price, "تعديل سعر المنتج" + (P.edit_price ? " (حتى خصم " + (+P.max_discount || 0) + "%)" : ""))
@@ -1645,11 +1649,104 @@
     return api("/dashboard?period=" + dashPeriod + (userId ? "&user=" + userId : "")).then(function(d){ renderDash(d, userId); return d; })
       .catch(function(e){ if ($("#dashBody")) $("#dashBody").innerHTML = '<div class="empty"><b>تعذّر الجلب</b>' + esc(e.message) + '</div>'; });
   }
+  // ════════════ العمل في فرعٍ آخر ════════════
+  // البائع يطلب العمل في فرعٍ آخر، ومشرف فرعه الأصلي يوافق أو يرفض من رئيسيته، والبائع يرجع بزرّ (أو يُرجعه مشرف أحد
+  // الفرعين). إذا تغيّرت نقطة بيعه في أودو (وافق المشرف أو رجع) تُقرأ بياناته من جديد، وتُفرَّغ سلّته (منتجات فرعٍ آخر).
+  var visitSync = 0;
+  function loadVisits(live){
+    api("/visits").then(function(s){
+      if (live && !live()) return;
+      var c = s.current, away = c && c.state === "active";
+      var stale = away ? (me.pos && me.pos.id !== c.target_id) : !!(me.pos && me.pos.home);
+      if (stale && Date.now() - visitSync > 5000){
+        visitSync = Date.now();
+        return refreshMe(away ? "وافق مشرفك — أنت الآن في " + c.target : "رجعت لفرعك " + s.home);
+      }
+      renderVisits(s);
+    }).catch(function(){});
+  }
+  function refreshMe(msg){
+    return api("/me?fresh=1").then(function(u){
+      var moved = !me.pos || !u.pos || me.pos.id !== u.pos.id;
+      me = u;
+      if (moved){ cart = []; updateCartUI(); }
+      if (msg) toast(msg);
+      screenHome();
+    }).catch(function(e){ toast(e.message); });
+  }
+  function renderVisits(s){
+    var box = $("#hVisit"); if (!box) return;
+    var c = s.current, h = "";
+    if (c && c.state === "active"){
+      h += '<div class="card visit on"><div class="row"><div class="avatar">' + ICON.swap + '</div><div class="grow"><b>تعمل الآن في ' + esc(c.target) + '</b>'
+        + '<div class="muted">فرعك ' + esc(c.home) + (c.decided_by ? ' · وافق ' + esc(c.decided_by) : '') + '</div></div></div>'
+        + '<button class="btn soft" id="vEnd" style="margin-top:10px">رجوع لفرعي (' + esc(c.home) + ')</button></div>';
+    } else if (c && c.state === "pending"){
+      h += '<div class="card visit"><div class="row"><div class="avatar">' + ICON.swap + '</div><div class="grow"><b>طلبت العمل في ' + esc(c.target) + '</b>'
+        + '<div class="muted">بانتظار موافقة مشرف ' + esc(c.home) + ' · ' + ago(c.requested) + '</div></div>'
+        + '<button class="linkbtn" id="vCancel" style="color:var(--bad);width:auto;padding:8px">إلغاء</button></div></div>';
+    } else if (c && c.state === "rejected"){
+      h += '<div class="note">رُفض طلبك العمل في ' + esc(c.target) + (c.reason ? ': ' + esc(c.reason) : '') + (c.decided_by ? ' — ' + esc(c.decided_by) : '') + '</div>';
+    }
+    if (s.pending && s.pending.length){
+      h += '<div class="shead"><b>طلبات العمل في فرعٍ آخر</b><span class="n num">' + s.pending.length + '</span></div><div class="list">'
+        + s.pending.map(function(v){
+          return '<div class="li visit-req"><div class="avatar">' + esc(initials(v.seller)) + '</div><div class="grow"><div><b>' + esc(v.seller) + '</b> ← ' + esc(v.target) + '</div>'
+            + '<div class="muted">' + (v.note ? esc(v.note) + ' · ' : '') + ago(v.requested) + '</div>'
+            + '<div class="row" style="gap:8px;margin-top:8px"><button class="btn gold sm" data-vok="' + v.id + '">موافقة</button>'
+            + '<button class="btn soft sm" data-vno="' + v.id + '">رفض</button></div></div></div>';
+        }).join("") + '</div>';
+    }
+    var out = (s.away || []).map(function(v){ return {v: v, where: "من فرعك · يعمل في " + v.target}; })
+      .concat((s.guests || []).map(function(v){ return {v: v, where: "من " + v.home + " · يعمل في فرعك"}; }));
+    if (out.length){
+      h += '<div class="shead"><b>العاملون خارج فروعهم</b></div><div class="list">' + out.map(function(x){
+        return '<div class="li"><div class="avatar">' + esc(initials(x.v.seller)) + '</div><div class="grow"><b>' + esc(x.v.seller) + '</b><div class="muted">' + esc(x.where) + '</div></div>'
+          + '<button class="btn soft sm" data-vend="' + x.v.id + '">إرجاعه لفرعه</button></div>';
+      }).join("") + '</div>';
+    }
+    if (s.can_request && s.branches.length) h += '<button class="linkbtn" id="vAsk" style="display:block;margin:4px auto 2px">' + ICON.swap + ' اطلب العمل في فرعٍ آخر</button>';
+    box.innerHTML = h;
+    var act = function(path, body, msg){ return api(path, {method: "POST", body: body || {}}).then(function(st){ if (msg) toast(msg); renderVisits(st); return st; })
+      .catch(function(e){ toast(e.message); }); };
+    if ($("#vAsk", box)) $("#vAsk", box).onclick = function(){ openVisitRequest(s); };
+    if ($("#vCancel", box)) $("#vCancel", box).onclick = function(){ act("/visits/" + c.id + "/cancel", null, "أُلغي الطلب"); };
+    if ($("#vEnd", box)) $("#vEnd", box).onclick = function(){
+      if (!confirm("ترجع لفرعك " + c.home + " الآن؟ طلباتك المفتوحة هنا تبقى في " + c.target + " يكملها زملاؤك.")) return;
+      api("/visits/end", {method: "POST", body: {}}).then(function(){ refreshMe("رجعت لفرعك " + c.home); }).catch(function(e){ toast(e.message); });
+    };
+    $$("[data-vok]", box).forEach(function(b){ b.onclick = function(){ b.disabled = true;
+      act("/visits/" + b.getAttribute("data-vok") + "/decide", {approve: true}, "تمت الموافقة — انتقل للفرع الآخر"); }; });
+    $$("[data-vno]", box).forEach(function(b){ b.onclick = function(){
+      var why = prompt("سبب الرفض (اختياري):", ""); if (why === null) return;
+      act("/visits/" + b.getAttribute("data-vno") + "/decide", {approve: false, reason: why}, "رُفض الطلب"); }; });
+    $$("[data-vend]", box).forEach(function(b){ b.onclick = function(){
+      if (!confirm("يرجع لفرعه الأصلي الآن؟")) return;
+      act("/visits/end", {visit_id: +b.getAttribute("data-vend")}, "رجع لفرعه"); }; });
+  }
+  function openVisitRequest(s){
+    var ov = sheet("العمل في فرعٍ آخر",
+      '<div class="muted" style="margin-bottom:10px">يصل طلبك لمشرف ' + esc(s.home) + '، وبعد موافقته تبيع في الفرع الذي تختاره بمنتجاته ومخزونه، '
+      + 'وتُرسل طلباتك لكاشيره، حتى ترجع لفرعك بزرّ «رجوع لفرعي». طلباتك المفتوحة في فرعك تبقى فيه يكملها زملاؤك بكود العميل.</div>'
+      + '<div class="list">' + s.branches.map(function(b, i){
+        return '<label class="li" style="cursor:pointer"><input type="radio" name="vbr" value="' + b.id + '"' + (i ? '' : ' checked') + ' style="width:auto;margin:0">'
+          + '<div class="avatar">' + ICON.store + '</div><div class="grow"><b>' + esc(b.name) + '</b></div></label>';
+      }).join("") + '</div>'
+      + '<div class="lbl" style="margin-top:12px">السبب (اختياري)</div><textarea id="vNote" rows="2" placeholder="مثلًا: نقص بائعين في الفرع"></textarea>'
+      + '<button class="btn gold" id="vSend" style="margin-top:12px">' + ICON.swap + ' أرسل الطلب لمشرف فرعك</button>');
+    $("#vSend", ov).onclick = function(){
+      var b = this, pick = $("input[name=vbr]:checked", ov); if (!pick) return;
+      b.disabled = true;
+      api("/visits", {method: "POST", body: {config_id: +pick.value, note: $("#vNote", ov).value}})
+        .then(function(st){ ov.remove(); toast("أُرسل الطلب لمشرف " + st.home); renderVisits(st); })
+        .catch(function(e){ b.disabled = false; toast(e.message); });
+    };
+  }
   function screenHome(){
     view = {name: "dash", user: null}; setNav("dash"); updateCartUI();
     var req = ++homeReq, live = function(){ return req === homeReq && view.name === "dash" && !view.user; };
     var stock = can("count") || can("receive_stock");
-    main.innerHTML = installCardHtml() + homeHeroHtml() + homeActionsHtml()
+    main.innerHTML = installCardHtml() + homeHeroHtml() + '<div id="hVisit"></div>' + homeActionsHtml()
       + (can("internal") ? '<div id="hIn"></div><div id="hOpen">' + homeSkeleton(can("view_all") ? "الطلبات المفتوحة" : "طلباتي المفتوحة") + '</div>' : '')
       + (can("create_link") ? '<div id="hLinks">' + homeSkeleton("لينكات بانتظار الدفع") + '</div>' : '')
       + (can("view_all") ? '<div class="shead"><b>أداء المبيعات</b></div>' + periodSegHtml() + '<div id="dashBody"><div class="spin"></div></div>' : '')
@@ -1660,6 +1757,7 @@
     $$("[data-new]", main).forEach(function(b){ b.onclick = function(){ var m = b.getAttribute("data-new"); if (m === mode) screenNew(); else setMode(m); }; });
     $$("[data-k]", main).forEach(function(b){ b.onclick = function(){ homeGo(b.getAttribute("data-k")); }; });
     if (can("view_all")) wirePeriodSeg(function(){ if ($("#dashBody")) $("#dashBody").innerHTML = '<div class="spin"></div>'; loadDash(null); });
+    if (me.pos) loadVisits(live);
 
     if (can("internal")){
       api("/pos-orders/counts").then(function(c){
@@ -1686,7 +1784,8 @@
     }).catch(function(){});
   }
   function homeHeroHtml(){
-    var tags = [me.pos && me.pos.name, me.section, me.shift].filter(Boolean);
+    var branch = me.pos && (me.pos.home ? "في " + me.pos.name + " · من " + me.pos.home : me.pos.name);
+    var tags = [branch, me.section, me.shift].filter(Boolean);
     var kpis = [];
     if (can("internal")) kpis.push(["in", "وارد لقسمك"], ["open", "طلبات مفتوحة"]);
     if (can("create_link")) kpis.push(["links", "لينكات لم تُدفع"]);
