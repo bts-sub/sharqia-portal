@@ -544,7 +544,7 @@
   var DLV = {to_assign: ["بانتظار المنتجات", "p-warn"], to_deliver: ["جاهزة للتسليم", "p-info"], delivered: ["سُلِّمت", "p-good"]};
   var SO = {draft: ["مسودّة", "p-warn"], sent: ["مُرسل", "p-info"], sale: ["مؤكّد", "p-good"], done: ["منجز", "p-good"], cancel: ["ملغي", "p-bad"]};
   function pill(map, s){ var m = map[s]; return m ? '<span class="pill ' + m[1] + '">' + esc(m[0]) + '</span>' : ""; }
-  var PO = {open: ["مفتوح", "p-info"], transfer: ["وارد لقسم", "p-warn"], cashier: ["عند الكاشير", "p-warn"], paid: ["مدفوع", "p-good"], cancel: ["ملغي", "p-sub"]};
+  var PO = {open: ["مفتوح", "p-info"], transfer: ["وارد للفرع", "p-warn"], cashier: ["عند الكاشير", "p-warn"], paid: ["مدفوع", "p-good"], cancel: ["ملغي", "p-sub"]};
   var KIND = {"return": ["مرتجع", "p-bad"], exchange: ["استبدال", "p-warn"]};
   var me = null;           // البائع: {id,name,login,role,pos:{id,name,stock},section,shift,perms:{create_link,edit_price,max_discount,edit_shipping,create_customer,create_quotation,view_all,internal,receive_stock}}
   var view = {name: "dash"};
@@ -664,7 +664,7 @@
     if (go === "new") screenNew(); else if (go === "scan"){ screenDash(); openScanner(); }
     else if (go === "count" && can("count")) screenCounts(); else screenDash();
   }
-  // شارة «الطلبات»: ما ينتظر استلام قسمي
+  // شارة «الطلبات»: ما حُوِّل في فرعي وينتظر من يستلمه
   function refreshIncoming(){
     if (!can("internal")) return;
     api("/pos-orders/counts").then(function(c){ var b = $("#navIn"); b.textContent = c.incoming; b.hidden = !c.incoming; }).catch(function(){});
@@ -1800,7 +1800,7 @@
         if (!live()) return;
         setKpi("in", c.incoming); setKpi("open", c.open);
         if (c.incoming) api("/pos-orders?box=incoming&limit=3").then(function(rows){
-          if (live() && $("#hIn")) homeList("#hIn", "وارد لقسمك", c.incoming, "in", rows.map(posOrderRowHtml), "", wirePosRows);
+          if (live() && $("#hIn")) homeList("#hIn", "وارد للفرع", c.incoming, "in", rows.map(posOrderRowHtml), "", wirePosRows);
         }).catch(function(){});
       }).catch(function(){});
       var openTitle = can("view_all") ? "الطلبات المفتوحة" : "طلباتي المفتوحة";    // من يرى الكل يرى طلبات شيفته
@@ -1822,7 +1822,7 @@
     var branch = me.pos && (me.pos.home ? "في " + me.pos.name + " · من " + me.pos.home : me.pos.name);
     var tags = [branch, me.section, me.shift].filter(Boolean);
     var kpis = [];
-    if (can("internal")) kpis.push(["in", "وارد لقسمك"], ["open", "طلبات مفتوحة"]);
+    if (can("internal")) kpis.push(["in", "وارد للفرع"], ["open", "طلبات مفتوحة"]);
     if (can("create_link")) kpis.push(["links", "لينكات لم تُدفع"]);
     var day = new Date().toLocaleDateString("ar-u-nu-latn", {weekday: "long"});
     return '<div class="home-hero"><div class="row" style="align-items:flex-start;position:relative;z-index:1"><div class="grow">'
@@ -1921,7 +1921,7 @@
     var req = ++boxReq;
     api("/pos-orders?box=" + boxFilter).then(function(rows){
       var wrap = $("#boxWrap"); if (!wrap || req !== boxReq) return;
-      if (!rows.length){ wrap.innerHTML = '<div class="empty">' + ICON.receipt + '<b>لا طلبات هنا</b>' + (boxFilter === "incoming" ? "ما يحوّله زملاؤك لقسمك يظهر هنا." : "") + '</div>'; return; }
+      if (!rows.length){ wrap.innerHTML = '<div class="empty">' + ICON.receipt + '<b>لا طلبات هنا</b>' + (boxFilter === "incoming" ? "ما يحوّله زملاؤك في الفرع يظهر هنا، ويستلمه أيٌّ منكم." : "") + '</div>'; return; }
       wrap.innerHTML = '<div class="list">' + rows.map(posOrderRowHtml).join("") + '</div>';
       wirePosRows(wrap);
     }).catch(function(e){ if (req === boxReq && $("#boxWrap")) $("#boxWrap").innerHTML = '<div class="empty"><b>تعذّر الجلب</b>' + esc(e.message) + '</div>'; });
@@ -2006,7 +2006,7 @@
       + (can2.receive ? '<button class="btn gold" id="aRecv" style="margin-bottom:10px">' + ICON.check + ' استلام الطلب</button>' : '')
       + (can2.edit ? '<button class="btn gold" id="aEdit" style="margin-bottom:10px">' + ICON.plus + ' إضافة منتجاتي</button>' : '')
       + (can2.cashier ? '<button class="btn dark" id="aCash" style="margin-bottom:10px">' + ICON.store + ' إرسال للكاشير</button>' : '')
-      + (can2.transfer ? '<button class="btn soft" id="aMove" style="margin-bottom:10px">' + ICON.swap + ' تحويل لقسم آخر</button>' : '')
+      + (can2.transfer ? '<button class="btn soft" id="aMove" style="margin-bottom:10px">' + ICON.swap + ' تحويل للفرع</button>' : '')
       + (can2.recall ? '<button class="btn soft" id="aBack" style="margin-bottom:10px">استرجاع من الكاشير للتعديل</button>' : '')
       + (o.state === "paid" ? '<button class="btn dark" id="aPrint" style="margin-bottom:10px">' + ICON.print + ' طباعة الإيصال</button>' : '')
       + '<div class="card"><div class="h2">مسار الطلب</div>' + o.log.map(function(l){
@@ -2021,7 +2021,7 @@
     if ($("#aRecv")) $("#aRecv").onclick = function(){ post("receive", "استُلم الطلب").then(again, function(){}); };
     if ($("#aEdit")) $("#aEdit").onclick = function(){ post("open").then(startEditing, function(){}); };
     if ($("#aCash")) $("#aCash").onclick = function(){ this.disabled = true; post("cashier", "أُرسل للكاشير").then(again, function(){ screenPosOrder(o.id); }); };
-    if ($("#aMove")) $("#aMove").onclick = function(){ openTransfer(o, again); };
+    if ($("#aMove")) $("#aMove").onclick = function(){ if (confirm(TRANSFER_ASK)) transferOrder(o).then(again, function(){}); };
     if ($("#aBack")) $("#aBack").onclick = function(){ if (confirm("يُلغى من شاشة الكاشير ويعود مفتوحًا للتعديل. متابعة؟")) post("recall", "عاد الطلب للتعديل").then(again, function(){}); };
     if ($("#aPrint")) $("#aPrint").onclick = function(){ openReceipt(o); };
     if ($("#tfSave")) $("#tfSave").onclick = function(){
@@ -2091,11 +2091,10 @@
     setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
     toast("نُزّلت صورة الإيصال");
   }
-  function openTransfer(o, done){
-    var ov = sheet("تحويل لقسم آخر", '<div class="muted" style="margin-bottom:10px">يصل القسم كطلبٍ وارد، فيستلمه موظفه ويضيف منتجاته.</div>'
-      + o.route.filter(function(r){ return !r.current; }).map(function(r){ return '<button class="pickline" data-to="' + r.id + '">' + ICON.store + '<span class="grow">' + esc(r.name) + '</span></button>'; }).join(""));
-    $$("[data-to]", ov).forEach(function(b){ b.onclick = function(){
-      orderAction(api("/pos-orders/" + o.id + "/transfer", {method: "POST", body: {pos_config_id: +b.getAttribute("data-to")}}), "حُوّل الطلب").then(function(n){ ov.remove(); done(n); }, function(){}); }; });
+  // «تحويل للفرع» بلا اختيار قسم: يصل «الوارد» عند كل موظفي الفرع (عدا من حوّله)، ويستلمه أيٌّ منهم فينتقل لقسمه.
+  var TRANSFER_ASK = "يظهر الطلب في «الوارد» عند كل موظفي الفرع، وأيّ واحدٍ منهم يستلمه ويكمل عليه. تحويل؟";
+  function transferOrder(o){
+    return orderAction(api("/pos-orders/" + o.id + "/transfer", {method: "POST", body: {}}), "حُوّل الطلب للفرع");
   }
   // فتح الطلب للتعديل: السلة = أصناف هذا الموظف فقط، وأصناف زملائه تُعرض ولا تُمسّ
   function startEditing(o){
@@ -2130,7 +2129,7 @@
       + '<div class="card"><div class="lbl">ملاحظة داخلية (اختياري)</div><textarea id="note" rows="2">' + esc(note) + '</textarea></div>'
       + '<div class="card" id="sumBox"></div>'
       + '<button class="btn gold" id="toCash" style="margin-bottom:10px">' + ICON.store + ' إرسال للكاشير</button>'
-      + '<button class="btn soft" id="toMove" style="margin-bottom:10px">' + ICON.swap + ' تحويل لقسم آخر</button>'
+      + '<button class="btn soft" id="toMove" style="margin-bottom:10px">' + ICON.swap + ' تحويل للفرع</button>'
       + '<button class="btn soft" id="toSave">حفظ وإكمال لاحقًا</button>';
     wireNewCommon();
     wireThumbs(main);
@@ -2139,9 +2138,7 @@
     $("#toCash").onclick = function(){ saveInternal(function(o){ return orderAction(api("/pos-orders/" + o.id + "/cashier", {method: "POST"}), "أُرسل للكاشير"); }); };
     $("#toSave").onclick = function(){ saveInternal(function(o){ return api("/pos-orders/" + o.id + "/release", {method: "POST"}).then(function(){
       toast(o.code ? "حُفظ الطلب — كود العميل " + o.code : "حُفظ الطلب"); return o; }); }); };
-    $("#toMove").onclick = function(){ saveInternal(function(o){
-      if (o.route.length < 2){ toast("لا أقسام أخرى في فرعك"); return o; }
-      return new Promise(function(ok){ openTransfer(o, ok); }); }); };
+    $("#toMove").onclick = function(){ if (confirm(TRANSFER_ASK)) saveInternal(transferOrder); };
     renderCust(); updateCartUI();
   }
   function saveInternal(then){
