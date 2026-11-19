@@ -315,6 +315,9 @@
   .home-hero .icon-btn{background:rgba(243,234,211,.08);border-color:rgba(243,234,211,.2);color:#F3EAD3}
   .tags{display:flex;flex-wrap:wrap;gap:6px}
   .tags span{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;background:rgba(243,234,211,.1);border:1px solid rgba(243,234,211,.18)}
+  .tags button.br-sw{font:inherit;font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:999px;cursor:pointer;color:#F3D97A;
+    background:rgba(201,162,39,.16);border:1px solid rgba(201,162,39,.5);display:inline-flex;align-items:center;gap:4px}
+  .tags button.br-sw .i{width:13px;height:13px}
   .kpis{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px;margin-top:14px;position:relative;z-index:1}
   .kpi{border:1px solid rgba(201,162,39,.35);background:rgba(201,162,39,.1);border-radius:14px;padding:10px 6px;color:#F3EAD3;
     cursor:pointer;text-align:center;font-family:inherit;transition:transform .08s ease}
@@ -546,8 +549,12 @@
   function pill(map, s){ var m = map[s]; return m ? '<span class="pill ' + m[1] + '">' + esc(m[0]) + '</span>' : ""; }
   var PO = {open: ["مفتوح", "p-info"], transfer: ["وارد للفرع", "p-warn"], cashier: ["عند الكاشير", "p-warn"], paid: ["مدفوع", "p-good"], cancel: ["ملغي", "p-sub"]};
   var KIND = {"return": ["مرتجع", "p-bad"], exchange: ["استبدال", "p-warn"]};
-  var me = null;           // البائع: {id,name,login,role,pos:{id,name,stock},section,shift,perms:{create_link,edit_price,max_discount,edit_shipping,create_customer,create_quotation,view_all,internal,receive_stock}}
+  var me = null;           // البائع: {id,name,login,role,pos:{id,name,stock},branches,section,shift,perms:{create_link,edit_price,max_discount,edit_shipping,create_customer,create_quotation,view_all,internal,receive_stock}}
   var view = {name: "dash"};
+  // الأدوار: مدير الفروع فوق المشرف — صلاحياته في كل فروعه (me.branches)، ويبدّل الفرع الذي يعمل فيه بلا موافقة
+  var ROLE = {seller: "بائع", supervisor: "مشرف", manager: "مدير فروع"};
+  function isManager(){ return !!(me && me.role === "manager"); }
+  function isBoss(){ return !!(me && (me.role === "supervisor" || me.role === "manager")); }
   var mode = "ext";        // نوع العميل في الطلب الجاري: int عميل المعرض (نقطة البيع)، ext عميل خارجي (لينك دفع وشحن)
   var iorder = null;       // الطلب الداخلي المفتوح للتعديل (من أودو)، وnull لطلبٍ جديد
   var cart = [];           // [{product_id,name,code,price(شامل الضريبة),base,incl0,qty,max}]
@@ -645,7 +652,8 @@
     var row = function(ok, label){ return '<div class="kv"><span>' + label + '</span><span class="pill ' + (ok ? "p-good" : "p-sub") + '">' + (ok ? "مسموح" : "غير مسموح") + '</span></div>'; };
     var ov = sheet("حسابي",
       '<div class="card row"><div class="avatar">' + esc(initials(me.name)) + '</div><div class="grow"><div style="font-weight:800">' + esc(me.name) + '</div>'
-      + '<div class="muted">' + (me.role === "supervisor" ? "مشرف" : "بائع") + ' · ' + esc(me.login) + '</div></div></div>'
+      + '<div class="muted">' + (ROLE[me.role] || "بائع") + ' · ' + esc(me.login) + '</div></div></div>'
+      + (me.branches && me.branches.length ? '<div class="card"><div class="kv"><span>فروعك</span><b>' + me.branches.map(function(b){ return esc(b.name); }).join("، ") + '</b></div></div>' : '')
       + (me.pos ? '<div class="card"><div class="kv"><span>نقطة البيع</span><b>' + esc(me.pos.name) + '</b></div>' + (me.pos.home ? '<div class="kv"><span>فرعك الأصلي</span><span>' + esc(me.pos.home) + '</span></div>' : '') + '<div class="kv"><span>المخزون</span><span>' + esc(me.pos.stock) + '</span></div></div>'
         : '<div class="note">حسابك غير مربوط بنقطة بيع — اطلب ربطه من مدير المبيعات.</div>')
       + '<div class="card"><div class="h2">صلاحياتك</div>' + row(P.internal, "البيع الداخلي (عملاء المعرض)") + row(P.receive_stock, "استلام المخزن واعتماد الجودة") + row(P.count, "جرد المخزون بالكاميرا") + row(P.create_link, "إنشاء لينك دفع")
@@ -1700,6 +1708,26 @@
       renderVisits(s);
     }).catch(function(){});
   }
+  // مدير الفروع يبدّل الفرع الذي يعمل فيه (يبيع ويستلم مخزنه ويجرده) بلا موافقة، ويرى فروعه كلها في كل حال.
+  // تُفرَّغ السلة: منتجات فرعٍ آخر ومخزونه.
+  function openBranchSwitch(){
+    var ov = sheet("الفرع الذي تعمل فيه",
+      '<div class="muted" style="margin-bottom:10px">مبيعات فروعك وطلباتها وموافقاتها تظهر لك في كل حال. الفرع الذي تختاره تبيع فيه وتستلم مخزنه وتجرده، '
+      + 'وطلباتك المفتوحة في الفرع الحالي تبقى فيه لزملائك.</div>'
+      + me.branches.map(function(b){
+        var on = me.pos && me.pos.id === b.id;
+        return '<button class="pickline" data-br="' + b.id + '"' + (on ? ' disabled' : '') + ' style="margin-bottom:8px">' + ICON.store
+          + '<span class="grow">' + esc(b.name) + (on ? ' <span class="muted">· تعمل فيه الآن</span>' : '') + '</span></button>';
+      }).join(""));
+    $$("[data-br]", ov).forEach(function(b){ b.onclick = function(){
+      if (cart.length && !confirm("تبديل الفرع يفرّغ السلة (منتجات فرعٍ آخر). متابعة؟")) return;
+      var name = me.branches.filter(function(x){ return x.id === +b.getAttribute("data-br"); })[0].name;
+      $$("[data-br]", ov).forEach(function(x){ x.disabled = true; });
+      api("/branch", {method: "POST", body: {config_id: +b.getAttribute("data-br")}})
+        .then(function(){ ov.remove(); return refreshMe("أنت الآن في " + name); })
+        .catch(function(e){ toast(e.message); ov.remove(); });
+    }; });
+  }
   function refreshMe(msg){
     return api("/me?fresh=1").then(function(u){
       var moved = !me.pos || !u.pos || me.pos.id !== u.pos.id;
@@ -1732,8 +1760,9 @@
             + '<button class="btn soft sm" data-vno="' + v.id + '">رفض</button></div></div></div>';
         }).join("") + '</div>';
     }
-    var out = (s.away || []).map(function(v){ return {v: v, where: "من فرعك · يعمل في " + v.target}; })
-      .concat((s.guests || []).map(function(v){ return {v: v, where: "من " + v.home + " · يعمل في فرعك"}; }));
+    // مدير الفروع: الفرعان بالاسم (فروعه كثيرة)
+    var out = (s.away || []).map(function(v){ return {v: v, where: (isManager() ? "من " + v.home : "من فرعك") + " · يعمل في " + v.target}; })
+      .concat((s.guests || []).map(function(v){ return {v: v, where: "من " + v.home + " · يعمل في " + (isManager() ? v.target : "فرعك")}; }));
     if (out.length){
       h += '<div class="shead"><b>العاملون خارج فروعهم</b></div><div class="list">' + out.map(function(x){
         return '<div class="li"><div class="avatar">' + esc(initials(x.v.seller)) + '</div><div class="grow"><b>' + esc(x.v.seller) + '</b><div class="muted">' + esc(x.where) + '</div></div>'
@@ -1789,6 +1818,7 @@
         : '<div class="mini-empty">' + (stock ? "الاستلام والجرد في «المنتجات»." : "لا مهام لك الآن.") + '</div>');
     wireInstallCard(); wireClaim(main);
     $("#rf").onclick = screenHome;
+    if ($("#brSw")) $("#brSw").onclick = openBranchSwitch;
     $$("[data-new]", main).forEach(function(b){ b.onclick = function(){ var m = b.getAttribute("data-new"); if (m === mode) screenNew(); else setMode(m); }; });
     $$("[data-k]", main).forEach(function(b){ b.onclick = function(){ homeGo(b.getAttribute("data-k")); }; });
     if (can("view_all")) wirePeriodSeg(function(){ if ($("#dashBody")) $("#dashBody").innerHTML = '<div class="spin"></div>'; loadDash(null); });
@@ -1820,7 +1850,8 @@
   }
   function homeHeroHtml(){
     var branch = me.pos && (me.pos.home ? "في " + me.pos.name + " · من " + me.pos.home : me.pos.name);
-    var tags = [branch, me.section, me.shift].filter(Boolean);
+    var switcher = isManager() && (me.branches || []).length > 1;
+    var tags = [isManager() ? ROLE.manager : "", switcher ? "" : branch, me.section, me.shift].filter(Boolean);
     var kpis = [];
     if (can("internal")) kpis.push(["in", "وارد للفرع"], ["open", "طلبات مفتوحة"]);
     if (can("create_link")) kpis.push(["links", "لينكات لم تُدفع"]);
@@ -1828,7 +1859,8 @@
     return '<div class="home-hero"><div class="row" style="align-items:flex-start;position:relative;z-index:1"><div class="grow">'
       + '<div class="hi">' + (new Date().getHours() < 12 ? "صباح الخير" : "مساء الخير") + ' · ' + esc(day) + '</div>'
       + '<div class="who ellip">' + esc(String(me.name || "").trim().split(/\s+/)[0]) + '</div>'
-      + (tags.length ? '<div class="tags">' + tags.map(function(t){ return '<span>' + esc(t) + '</span>'; }).join("") + '</div>' : '')
+      + (tags.length || switcher ? '<div class="tags">' + tags.map(function(t){ return '<span>' + esc(t) + '</span>'; }).join("")
+        + (switcher ? '<button class="br-sw" id="brSw" aria-label="تبديل الفرع">' + ICON.swap + esc(me.pos ? me.pos.name : "اختر الفرع") + ' ▾</button>' : '') + '</div>' : '')
       + '</div><button class="icon-btn" id="rf" aria-label="تحديث">' + ICON.refresh + '</button></div>'
       + (kpis.length ? '<div class="kpis">' + kpis.map(function(k){
           return '<button class="kpi" data-k="' + k[0] + '"><b class="num" id="k-' + k[0] + '">–</b><span>' + k[1] + '</span></button>';
@@ -1892,6 +1924,7 @@
       + (d.top.length ? '<div class="card"><div class="h2">الأكثر مبيعًا</div>' + d.top.map(function(t, i){
           return '<div class="row ln-item"><span class="rank num">' + (i + 1) + '</span><div class="grow"><div class="ellip" style="font-weight:700;font-size:13.5px">' + esc(t.name) + '</div><div class="muted num">' + t.qty + ' قطعة</div></div><b class="num">' + money(t.amount) + '</b></div>';
         }).join("") + '</div>' : '')
+      + (d.branches && !userId ? branchesHtml(d.branches) : '')
       + (d.team && !userId ? teamHtml(d.team) : '');
     function showDay(i){ var x = d.days[i]; $("#brD").textContent = new Date(x.date + "T12:00:00").toLocaleDateString("ar-SA-u-nu-latn", {weekday: "long", day: "numeric", month: "short"}); $("#brV").textContent = money(x.amount);
       $$("#bars button").forEach(function(b, n){ b.classList.toggle("on", n === i); }); }
@@ -1899,10 +1932,19 @@
     showDay(d.days.length - 1);
     $$("[data-seller]").forEach(function(el){ el.onclick = function(){ screenDash(+el.getAttribute("data-seller")); }; });
   }
+  // مدير الفروع (والإدارة): مبيعات كل فرع. بلا عدد عمليات: طلبٌ فيه بائعان يُعدّ لكلٍّ منهما.
+  function branchesHtml(rows){
+    var top = rows.reduce(function(m, r){ return Math.max(m, r.amount); }, 0);
+    return '<div class="card"><div class="h2">مبيعات الفروع</div>' + rows.map(function(r){
+      return '<div class="ln-item"><div class="row"><b class="grow ellip">' + esc(r.name) + '</b><span class="muted num">' + r.sellers + ' موظف</span><b class="num">' + money(r.amount) + '</b></div>'
+        + '<div class="meter"><i style="width:' + (top > 0 ? Math.round(Math.max(r.amount, 0) / top * 100) : 0) + '%"></i></div></div>';
+    }).join("") + '</div>';
+  }
   function teamHtml(team){
     var top = team.length ? team[0].amount : 0;
     return '<div class="card"><div class="h2">مبيعات الموظفين</div>' + team.map(function(t, i){
-      return '<div class="ln-item" data-seller="' + t.id + '" style="cursor:pointer"><div class="row"><span class="rank num">' + (i + 1) + '</span><b class="grow ellip">' + esc(t.name) + '</b><span class="muted num">' + t.count + ' عملية</span><b class="num">' + money(t.amount) + '</b></div>'
+      return '<div class="ln-item" data-seller="' + t.id + '" style="cursor:pointer"><div class="row"><span class="rank num">' + (i + 1) + '</span><div class="grow" style="min-width:0"><b class="ellip" style="display:block">' + esc(t.name) + '</b>'
+        + (t.branch ? '<span class="muted ellip" style="display:block;font-size:12px">' + esc(t.branch) + '</span>' : '') + '</div><span class="muted num">' + t.count + ' عملية</span><b class="num">' + money(t.amount) + '</b></div>'
         + '<div class="meter"><i style="width:' + (top ? Math.round(t.amount / top * 100) : 0) + '%"></i></div></div>';
     }).join("") + '</div>';
   }
@@ -2474,7 +2516,7 @@
   }
   function renderCount(){
     // شاشة العدّ: عدّي ورقمه، وزرّ الكاميرا (فيها كتابة الكود يدويًا). فريق الجرد وإنهاؤه للمشرف.
-    var c = jr.count, open = c.state === "open" && !jr.closed, boss = me && me.role === "supervisor";
+    var c = jr.count, open = c.state === "open" && !jr.closed, boss = isBoss();
     main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow ellip">جرد ' + esc(c.location.name) + '</span></div>'
       + '<div class="hero"><div class="big num" id="ctBig" style="position:relative;z-index:1"></div><div class="meta" id="ctMeta" style="position:relative;z-index:1"></div>'
       + '<div style="margin-top:10px;position:relative;z-index:1"><span data-jrsync></span></div></div>'

@@ -194,6 +194,11 @@ r.post("/api/sales/visits/end", run(async (req, res) => {
   const { visit_id } = req.body || {};
   res.json(visitOut(req, await execKw(APP, "app_visit_end", [req.appToken, num(visit_id) || false])));
 }));
+// مدير الفروع يبدّل الفرع الذي يعمل فيه بين فروعه بلا موافقة (أودو يتحقق أنه مديرٌ وأن الفرع من فروعه)
+r.post("/api/sales/branch", run(async (req, res) => {
+  const { config_id } = req.body || {};
+  res.json(visitOut(req, await execKw(APP, "app_branch_switch", [req.appToken, num(config_id)])));
+}));
 
 // صورة المنتج (بروكسي من Odoo — image_256). عامّة: الوسم <img> لا يحمل رمز الجلسة، وصور المنتجات
 // منشورة أصلًا في المتجر.
