@@ -2006,7 +2006,7 @@
       + (can2.receive ? '<button class="btn gold" id="aRecv" style="margin-bottom:10px">' + ICON.check + ' استلام الطلب</button>' : '')
       + (can2.edit ? '<button class="btn gold" id="aEdit" style="margin-bottom:10px">' + ICON.plus + ' إضافة منتجاتي</button>' : '')
       + (can2.cashier ? '<button class="btn dark" id="aCash" style="margin-bottom:10px">' + ICON.store + ' إرسال للكاشير</button>' : '')
-      + (can2.transfer ? '<button class="btn soft" id="aMove" style="margin-bottom:10px">' + ICON.swap + ' تحويل للفرع</button>' : '')
+      + (can2.transfer ? '<button class="btn soft" id="aMove" style="margin-bottom:10px">' + ICON.swap + ' تحويل لقسم آخر</button>' : '')
       + (can2.recall ? '<button class="btn soft" id="aBack" style="margin-bottom:10px">استرجاع من الكاشير للتعديل</button>' : '')
       + (o.state === "paid" ? '<button class="btn dark" id="aPrint" style="margin-bottom:10px">' + ICON.print + ' طباعة الإيصال</button>' : '')
       + '<div class="card"><div class="h2">مسار الطلب</div>' + o.log.map(function(l){
@@ -2021,7 +2021,7 @@
     if ($("#aRecv")) $("#aRecv").onclick = function(){ post("receive", "استُلم الطلب").then(again, function(){}); };
     if ($("#aEdit")) $("#aEdit").onclick = function(){ post("open").then(startEditing, function(){}); };
     if ($("#aCash")) $("#aCash").onclick = function(){ this.disabled = true; post("cashier", "أُرسل للكاشير").then(again, function(){ screenPosOrder(o.id); }); };
-    if ($("#aMove")) $("#aMove").onclick = function(){ if (confirm(TRANSFER_ASK)) transferOrder(o).then(again, function(){}); };
+    if ($("#aMove")) $("#aMove").onclick = function(){ this.disabled = true; transferOrder(o).then(again, function(){ screenPosOrder(o.id); }); };
     if ($("#aBack")) $("#aBack").onclick = function(){ if (confirm("يُلغى من شاشة الكاشير ويعود مفتوحًا للتعديل. متابعة؟")) post("recall", "عاد الطلب للتعديل").then(again, function(){}); };
     if ($("#aPrint")) $("#aPrint").onclick = function(){ openReceipt(o); };
     if ($("#tfSave")) $("#tfSave").onclick = function(){
@@ -2091,10 +2091,10 @@
     setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
     toast("نُزّلت صورة الإيصال");
   }
-  // «تحويل للفرع» بلا اختيار قسم: يصل «الوارد» عند كل موظفي الفرع (عدا من حوّله)، ويستلمه أيٌّ منهم فينتقل لقسمه.
-  var TRANSFER_ASK = "يظهر الطلب في «الوارد» عند كل موظفي الفرع، وأيّ واحدٍ منهم يستلمه ويكمل عليه. تحويل؟";
+  // «تحويل لقسم آخر» مباشرةً بلا اختيار قسم ولا تأكيد: يصل «الوارد» عند كل موظفي الفرع (عدا من حوّله)، ويستلمه
+  // أيٌّ منهم فينتقل لقسمه.
   function transferOrder(o){
-    return orderAction(api("/pos-orders/" + o.id + "/transfer", {method: "POST", body: {}}), "حُوّل الطلب للفرع");
+    return orderAction(api("/pos-orders/" + o.id + "/transfer", {method: "POST", body: {}}), "حُوّل الطلب");
   }
   // فتح الطلب للتعديل: السلة = أصناف هذا الموظف فقط، وأصناف زملائه تُعرض ولا تُمسّ
   function startEditing(o){
@@ -2129,7 +2129,7 @@
       + '<div class="card"><div class="lbl">ملاحظة داخلية (اختياري)</div><textarea id="note" rows="2">' + esc(note) + '</textarea></div>'
       + '<div class="card" id="sumBox"></div>'
       + '<button class="btn gold" id="toCash" style="margin-bottom:10px">' + ICON.store + ' إرسال للكاشير</button>'
-      + '<button class="btn soft" id="toMove" style="margin-bottom:10px">' + ICON.swap + ' تحويل للفرع</button>'
+      + '<button class="btn soft" id="toMove" style="margin-bottom:10px">' + ICON.swap + ' تحويل لقسم آخر</button>'
       + '<button class="btn soft" id="toSave">حفظ وإكمال لاحقًا</button>';
     wireNewCommon();
     wireThumbs(main);
@@ -2138,7 +2138,7 @@
     $("#toCash").onclick = function(){ saveInternal(function(o){ return orderAction(api("/pos-orders/" + o.id + "/cashier", {method: "POST"}), "أُرسل للكاشير"); }); };
     $("#toSave").onclick = function(){ saveInternal(function(o){ return api("/pos-orders/" + o.id + "/release", {method: "POST"}).then(function(){
       toast(o.code ? "حُفظ الطلب — كود العميل " + o.code : "حُفظ الطلب"); return o; }); }); };
-    $("#toMove").onclick = function(){ if (confirm(TRANSFER_ASK)) saveInternal(transferOrder); };
+    $("#toMove").onclick = function(){ saveInternal(transferOrder); };
     renderCust(); updateCartUI();
   }
   function saveInternal(then){
