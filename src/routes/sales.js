@@ -194,6 +194,11 @@ r.post("/api/sales/visits/end", run(async (req, res) => {
   const { visit_id } = req.body || {};
   res.json(visitOut(req, await execKw(APP, "app_visit_end", [req.appToken, num(visit_id) || false])));
 }));
+// «كل الفروع» لمدير الفروع: بطاقة لكل فرع (مبيعات كاشيره في الفترة، وطلباته، وموظفوه، وما ينتظره). أودو يتحقق أنه مدير
+r.get("/api/sales/manager", run(async (req, res) => {
+  const period = ["today", "week", "month"].includes(req.query.period) ? req.query.period : "today";
+  res.json(await execKw(APP, "app_manager_overview", [req.appToken, period]));
+}));
 // مدير الفروع يبدّل الفرع الذي يعمل فيه بين فروعه بلا موافقة (أودو يتحقق أنه مديرٌ وأن الفرع من فروعه)
 r.post("/api/sales/branch", run(async (req, res) => {
   const { config_id } = req.body || {};

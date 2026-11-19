@@ -315,9 +315,33 @@
   .home-hero .icon-btn{background:rgba(243,234,211,.08);border-color:rgba(243,234,211,.2);color:#F3EAD3}
   .tags{display:flex;flex-wrap:wrap;gap:6px}
   .tags span{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;background:rgba(243,234,211,.1);border:1px solid rgba(243,234,211,.18)}
-  .tags button.br-sw{font:inherit;font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:999px;cursor:pointer;color:#F3D97A;
-    background:rgba(201,162,39,.16);border:1px solid rgba(201,162,39,.5);display:inline-flex;align-items:center;gap:4px}
-  .tags button.br-sw .i{width:13px;height:13px}
+  /* مدير الفروع: شريط الفروع، و«كل الفروع» بطاقة لكل فرع */
+  .mgr-bar{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 12px;scrollbar-width:none;scroll-behavior:smooth}
+  .mgr-bar::-webkit-scrollbar{display:none}
+  .mgr-bar button{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:9px 15px;border-radius:999px;border:1px solid var(--line);
+    background:var(--surface);color:var(--text);font:inherit;font-size:13.5px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:var(--shadow)}
+  .mgr-bar button .i{width:16px;height:16px}
+  .mgr-bar button.on{background:var(--navy);color:#F3D97A;border-color:var(--navy)}
+  .mgr-bar .dot{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 3px var(--good-soft)}
+  .ov-total{margin-top:12px;position:relative;z-index:1;display:flex;flex-direction:column;gap:2px}
+  .ov-total span{font-size:12.5px;opacity:.78}
+  .ov-total b{font-size:30px;font-weight:800;color:#F3D97A;line-height:1.2}
+  .kpi.ov{cursor:default} .kpi.ov:active{transform:none}
+  .br-card{display:block;width:100%;text-align:start;font:inherit;color:inherit;cursor:pointer}
+  .br-card.cur{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset,var(--shadow)}
+  .br-name{font-size:16.5px}
+  .br-sales{margin-top:10px;align-items:baseline}
+  .br-sales b{font-size:22px;font-weight:800}
+  .br-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}
+  .br-grid div{background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:8px 2px;text-align:center}
+  .br-grid b{display:block;font-size:17px;font-weight:800}
+  .br-grid b small{font-size:11px;color:var(--sub);font-weight:700}
+  .br-grid span{font-size:11px;color:var(--sub);font-weight:700}
+  .br-alerts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .br-go{margin-top:12px;font-size:13.5px;font-weight:800;color:var(--gold-t);text-align:end}
+  .cash{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;color:var(--sub);margin-inline-start:8px;white-space:nowrap}
+  .cash i{width:8px;height:8px;border-radius:50%;background:var(--sub);opacity:.5}
+  .cash.on{color:var(--good)} .cash.on i{background:var(--good);opacity:1}
   .kpis{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px;margin-top:14px;position:relative;z-index:1}
   .kpi{border:1px solid rgba(201,162,39,.35);background:rgba(201,162,39,.1);border-radius:14px;padding:10px 6px;color:#F3EAD3;
     cursor:pointer;text-align:center;font-family:inherit;transition:transform .08s ease}
@@ -1708,25 +1732,97 @@
       renderVisits(s);
     }).catch(function(){});
   }
-  // مدير الفروع يبدّل الفرع الذي يعمل فيه (يبيع ويستلم مخزنه ويجرده) بلا موافقة، ويرى فروعه كلها في كل حال.
-  // تُفرَّغ السلة: منتجات فرعٍ آخر ومخزونه.
-  function openBranchSwitch(){
-    var ov = sheet("الفرع الذي تعمل فيه",
-      '<div class="muted" style="margin-bottom:10px">مبيعات فروعك وطلباتها وموافقاتها تظهر لك في كل حال. الفرع الذي تختاره تبيع فيه وتستلم مخزنه وتجرده، '
-      + 'وطلباتك المفتوحة في الفرع الحالي تبقى فيه لزملائك.</div>'
-      + me.branches.map(function(b){
-        var on = me.pos && me.pos.id === b.id;
-        return '<button class="pickline" data-br="' + b.id + '"' + (on ? ' disabled' : '') + ' style="margin-bottom:8px">' + ICON.store
-          + '<span class="grow">' + esc(b.name) + (on ? ' <span class="muted">· تعمل فيه الآن</span>' : '') + '</span></button>';
-      }).join(""));
-    $$("[data-br]", ov).forEach(function(b){ b.onclick = function(){
-      if (cart.length && !confirm("تبديل الفرع يفرّغ السلة (منتجات فرعٍ آخر). متابعة؟")) return;
-      var name = me.branches.filter(function(x){ return x.id === +b.getAttribute("data-br"); })[0].name;
-      $$("[data-br]", ov).forEach(function(x){ x.disabled = true; });
-      api("/branch", {method: "POST", body: {config_id: +b.getAttribute("data-br")}})
-        .then(function(){ ov.remove(); return refreshMe("أنت الآن في " + name); })
-        .catch(function(e){ toast(e.message); ov.remove(); });
+  // ════════════ مدير الفروع ════════════
+  // شريط فروعه أعلى الرئيسية: «كل الفروع» لوحةٌ تقارنها (كل فرعٍ في بطاقته)، والضغط على فرعٍ يدخله بلا موافقة فتصير
+  // الرئيسية بيانات ذلك الفرع وحده (لا تتداخل الفروع)، ويبيع ويستلم ويجرد فيه. الاختيار يبقى على الجوال.
+  var mgrScope = "all", mgrPeriod = "today";
+  try { mgrScope = localStorage.getItem("salesMgrScope") || "all"; } catch(e){}
+  function setMgrScope(v){ mgrScope = v; try { localStorage.setItem("salesMgrScope", v); } catch(e){} }
+  function mgrBarHtml(){
+    var cur = me.pos && me.pos.id;
+    return '<div class="mgr-bar" id="mgrBar"><button data-mb="all" class="' + (mgrScope === "all" ? "on" : "") + '">' + ICON.store + ' كل الفروع</button>'
+      + (me.branches || []).map(function(b){
+        return '<button data-mb="' + b.id + '" class="' + (mgrScope !== "all" && b.id === cur ? "on" : "") + '">'
+          + (b.id === cur ? '<i class="dot" title="تعمل فيه"></i>' : '') + esc(b.name) + '</button>';
+      }).join("") + '</div>';
+  }
+  function wireMgrBar(){
+    var bar = $("#mgrBar"); if (!bar) return;
+    $$("[data-mb]", bar).forEach(function(b){ b.onclick = function(){
+      var v = b.getAttribute("data-mb");
+      if (v === "all"){ setMgrScope("all"); screenHome(); } else enterBranch(+v);
     }; });
+    var on = $(".on", bar);
+    if (on) bar.scrollLeft += on.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - on.offsetWidth) / 2;
+  }
+  // دخول فرع: يصير الفرع الذي يعمل فيه (تُفرَّغ السلة: منتجات فرعٍ آخر)، وطلباته المفتوحة في الفرع السابق لزملائه
+  function enterBranch(id){
+    if (me.pos && me.pos.id === id){ setMgrScope("branch"); return screenHome(); }
+    if (cart.length && !confirm("دخول فرعٍ آخر يفرّغ السلة (منتجات فرعٍ آخر). متابعة؟")) return;
+    var b = (me.branches || []).filter(function(x){ return x.id === id; })[0];
+    setMgrScope("branch");
+    api("/branch", {method: "POST", body: {config_id: id}})
+      .then(function(){ return refreshMe("أنت الآن في " + (b ? b.name : "الفرع")); })
+      .catch(function(e){ toast(e.message); });
+  }
+  function screenOverview(){
+    view = {name: "dash", user: null}; setNav("dash"); updateCartUI();
+    var req = ++homeReq, live = function(){ return req === homeReq && view.name === "dash" && !view.user; };
+    var day = new Date().toLocaleDateString("ar-u-nu-latn", {weekday: "long"});
+    var skel = '<div class="card br-card"><div class="skel" style="height:18px;width:45%"></div><div class="skel" style="height:26px;width:60%;margin-top:12px"></div>'
+      + '<div class="skel" style="height:44px;margin-top:12px"></div></div>';
+    main.innerHTML = installCardHtml() + mgrBarHtml()
+      + '<div class="home-hero"><div class="row" style="align-items:flex-start;position:relative;z-index:1"><div class="grow">'
+      + '<div class="hi">' + (new Date().getHours() < 12 ? "صباح الخير" : "مساء الخير") + ' · ' + esc(day) + '</div>'
+      + '<div class="who ellip">' + esc(String(me.name || "").trim().split(/\s+/)[0]) + '</div>'
+      + '<div class="tags"><span>' + ROLE.manager + '</span><span>' + (me.branches || []).length + ' فروع</span></div></div>'
+      + '<button class="icon-btn" id="rf" aria-label="تحديث">' + ICON.refresh + '</button></div>'
+      + '<div class="ov-total"><span id="ovLbl">مبيعات الفروع</span><b class="num" id="ovAmt">–</b><span class="num" id="ovCnt"></span></div>'
+      + '<div class="kpis"><div class="kpi ov"><b class="num" id="ovCash">–</b><span>كاشير مفتوح</span></div>'
+      + '<div class="kpi ov"><b class="num" id="ovOpen">–</b><span>طلبات مفتوحة</span></div>'
+      + '<div class="kpi ov"><b class="num" id="ovWait">–</b><span>بانتظارك</span></div></div></div>'
+      + '<div class="seg" id="ovSeg"><button data-p="today">اليوم</button><button data-p="week">الأسبوع</button><button data-p="month">الشهر</button></div>'
+      + '<div id="ovBody">' + skel + skel + '</div>';
+    wireInstallCard(); wireMgrBar();
+    $("#rf").onclick = screenHome;
+    var seg = $$("#ovSeg button");
+    var load = function(){
+      api("/manager?period=" + mgrPeriod).then(function(d){ if (live()) renderOverview(d); })
+        .catch(function(e){ if (live()) $("#ovBody").innerHTML = '<div class="empty"><b>تعذّر الجلب</b>' + esc(e.message) + '</div>'; });
+    };
+    seg.forEach(function(b){ b.classList.toggle("on", b.getAttribute("data-p") === mgrPeriod);
+      b.onclick = function(){ mgrPeriod = b.getAttribute("data-p"); seg.forEach(function(x){ x.classList.toggle("on", x === b); }); load(); }; });
+    load();
+  }
+  function renderOverview(d){
+    var label = {today: "اليوم", week: "هذا الأسبوع", month: "هذا الشهر"}[d.period] || "";
+    var rows = d.branches || [];
+    $("#ovLbl").textContent = "مبيعات الفروع · " + label;
+    $("#ovAmt").textContent = money(d.amount);
+    $("#ovCnt").textContent = d.count + " عملية من كاشير الفروع";
+    $("#ovCash").textContent = rows.filter(function(b){ return b.cashier_open; }).length + "/" + rows.length;
+    $("#ovOpen").textContent = rows.reduce(function(s, b){ return s + b.open + b.transfer; }, 0);
+    $("#ovWait").textContent = d.waiting;
+    var top = rows.reduce(function(m, b){ return Math.max(m, b.amount); }, 0);
+    var cell = function(v, k){ return '<div><b class="num">' + v + '</b><span>' + k + '</span></div>'; };
+    $("#ovBody").innerHTML = (rows.length ? rows.map(function(b){
+      var alerts = [];
+      if (b.visits) alerts.push('<span class="pill p-warn">' + b.visits + ' طلب عمل في فرعٍ آخر</span>');
+      if (b.receipts) alerts.push('<span class="pill p-info">' + b.receipts + ' بانتظار الاستلام</span>');
+      if (b.counting) alerts.push('<span class="pill p-sub">جردٌ جارٍ</span>');
+      return '<button class="card br-card' + (b.current ? " cur" : "") + '" data-ob="' + b.id + '">'
+        + '<div class="row"><b class="grow ellip br-name">' + esc(b.name) + '</b>'
+        + (b.current ? '<span class="pill p-good">تعمل فيه</span>' : '')
+        + '<span class="cash' + (b.cashier_open ? " on" : "") + '"><i></i>' + (b.cashier_open ? "الكاشير مفتوح" : "الكاشير مغلق") + '</span></div>'
+        + '<div class="row br-sales"><b class="num grow">' + money(b.amount) + '</b><span class="muted num">' + b.count + ' عملية</span></div>'
+        + '<div class="meter"><i style="width:' + (top > 0 ? Math.round(Math.max(b.amount, 0) / top * 100) : 0) + '%"></i></div>'
+        + '<div class="br-grid">' + cell(b.open, "مفتوحة") + cell(b.transfer, "محوّلة") + cell(b.cashier, "عند الكاشير")
+        + cell(b.active + '<small>/' + b.staff + '</small>', "دخلوا اليوم") + '</div>'
+        + (alerts.length ? '<div class="br-alerts">' + alerts.join("") + '</div>' : '')
+        + '<div class="br-go">' + (b.current ? "افتح الفرع" : "ادخل الفرع") + ' ‹</div></button>';
+    }).join("") : '<div class="empty"><b>لا فروع</b>اطلب من الإدارة تحديد فروعك.</div>')
+      + '<div class="muted" style="text-align:center;margin:4px 0 2px">المبيعات من كاشير كل فرع (ومنها طلبات التطبيق)، والمرتجع ينقصها · ' + esc(fmtDate(d.updated)) + '</div>';
+    $$("[data-ob]").forEach(function(c){ c.onclick = function(){ enterBranch(+c.getAttribute("data-ob")); }; });
   }
   function refreshMe(msg){
     return api("/me?fresh=1").then(function(u){
@@ -1807,10 +1903,11 @@
     };
   }
   function screenHome(){
+    if (isManager() && mgrScope === "all") return screenOverview();       // مدير الفروع: «كل الفروع»
     view = {name: "dash", user: null}; setNav("dash"); updateCartUI();
     var req = ++homeReq, live = function(){ return req === homeReq && view.name === "dash" && !view.user; };
     var stock = can("count") || can("receive_stock");
-    main.innerHTML = installCardHtml() + homeHeroHtml() + '<div id="hVisit"></div>' + homeActionsHtml()
+    main.innerHTML = installCardHtml() + (isManager() ? mgrBarHtml() : '') + homeHeroHtml() + '<div id="hVisit"></div>' + homeActionsHtml()
       + (can("internal") ? '<div id="hIn"></div><div id="hOpen">' + homeSkeleton(can("view_all") ? "الطلبات المفتوحة" : "طلباتي المفتوحة") + '</div>' : '')
       + (can("create_link") ? '<div id="hLinks">' + homeSkeleton("لينكات بانتظار الدفع") + '</div>' : '')
       + (can("view_all") ? '<div class="shead"><b>أداء المبيعات</b></div>' + periodSegHtml() + '<div id="dashBody"><div class="spin"></div></div>' : '')
@@ -1818,7 +1915,7 @@
         : '<div class="mini-empty">' + (stock ? "الاستلام والجرد في «المنتجات»." : "لا مهام لك الآن.") + '</div>');
     wireInstallCard(); wireClaim(main);
     $("#rf").onclick = screenHome;
-    if ($("#brSw")) $("#brSw").onclick = openBranchSwitch;
+    wireMgrBar();
     $$("[data-new]", main).forEach(function(b){ b.onclick = function(){ var m = b.getAttribute("data-new"); if (m === mode) screenNew(); else setMode(m); }; });
     $$("[data-k]", main).forEach(function(b){ b.onclick = function(){ homeGo(b.getAttribute("data-k")); }; });
     if (can("view_all")) wirePeriodSeg(function(){ if ($("#dashBody")) $("#dashBody").innerHTML = '<div class="spin"></div>'; loadDash(null); });
@@ -1850,8 +1947,7 @@
   }
   function homeHeroHtml(){
     var branch = me.pos && (me.pos.home ? "في " + me.pos.name + " · من " + me.pos.home : me.pos.name);
-    var switcher = isManager() && (me.branches || []).length > 1;
-    var tags = [isManager() ? ROLE.manager : "", switcher ? "" : branch, me.section, me.shift].filter(Boolean);
+    var tags = [isManager() ? ROLE.manager : "", branch, me.section, me.shift].filter(Boolean);
     var kpis = [];
     if (can("internal")) kpis.push(["in", "وارد للفرع"], ["open", "طلبات مفتوحة"]);
     if (can("create_link")) kpis.push(["links", "لينكات لم تُدفع"]);
@@ -1859,8 +1955,7 @@
     return '<div class="home-hero"><div class="row" style="align-items:flex-start;position:relative;z-index:1"><div class="grow">'
       + '<div class="hi">' + (new Date().getHours() < 12 ? "صباح الخير" : "مساء الخير") + ' · ' + esc(day) + '</div>'
       + '<div class="who ellip">' + esc(String(me.name || "").trim().split(/\s+/)[0]) + '</div>'
-      + (tags.length || switcher ? '<div class="tags">' + tags.map(function(t){ return '<span>' + esc(t) + '</span>'; }).join("")
-        + (switcher ? '<button class="br-sw" id="brSw" aria-label="تبديل الفرع">' + ICON.swap + esc(me.pos ? me.pos.name : "اختر الفرع") + ' ▾</button>' : '') + '</div>' : '')
+      + (tags.length ? '<div class="tags">' + tags.map(function(t){ return '<span>' + esc(t) + '</span>'; }).join("") + '</div>' : '')
       + '</div><button class="icon-btn" id="rf" aria-label="تحديث">' + ICON.refresh + '</button></div>'
       + (kpis.length ? '<div class="kpis">' + kpis.map(function(k){
           return '<button class="kpi" data-k="' + k[0] + '"><b class="num" id="k-' + k[0] + '">–</b><span>' + k[1] + '</span></button>';
@@ -1915,7 +2010,8 @@
       return '<button data-day="' + i + '" class="' + (i === d.days.length - 1 ? "on" : "") + '" aria-label="' + esc(dayName(x.date)) + ': ' + esc(money(x.amount)) + '"><i style="height:' + h + 'px"></i>' + esc(dayName(x.date)) + '</button>';
     }).join("");
     var sideStat = function(k, v, sub){ return '<div class="stat"><div class="k">' + k + '</div><div class="v num">' + v + '</div>' + (sub ? '<div class="muted num">' + sub + '</div>' : '') + '</div>'; };
-    box.innerHTML = '<div class="hero"><div class="meta">إجمالي المبيعات المحصّلة</div><div class="big num">' + money(d.total) + '</div>'
+    // مدير الفروع في فرعه: رأس اللوحة مبيعات موظفي الفرع كلهم (scope: team)
+    box.innerHTML = '<div class="hero"><div class="meta">' + (d.scope === "team" ? "مبيعات موظفي الفرع المحصّلة" : "إجمالي المبيعات المحصّلة") + '</div><div class="big num">' + money(d.total) + '</div>'
       + '<div class="meta num">' + d.count + ' عملية · متوسط ' + money(avg) + '</div></div>'
       + '<div class="stats">' + sideStat("عملاء المعرض", money(d.internal.amount), d.internal.count + " طلب")
       + sideStat("عملاء خارجيون", money(d.external.amount), d.external.count + " فاتورة") + '</div>'
