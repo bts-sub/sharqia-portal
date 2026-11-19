@@ -573,6 +573,25 @@
     ov.addEventListener("click", function(e){ if (e.target === ov || e.target.closest("[data-x]")) ov.remove(); });
     return ov;
   }
+  // العدد الكبير (500 قطعة) يُكتب ولا يُضغط «+» مرّةً مرّة — في الجرد وفي السلة. o.save(n, input) يُرجع false ليبقى مفتوحًا.
+  var QTY_MAX = 99999;
+  function qtySheet(o){
+    var ov = sheet(o.title, '<div style="font-weight:800" class="ellip">' + esc(o.name) + '</div>'
+      + '<div class="muted num" dir="ltr" style="text-align:right;margin-bottom:10px">' + esc(o.code || "") + '</div>'
+      + '<input id="cqN" class="num" type="number" inputmode="numeric" min="0" max="' + QTY_MAX + '" dir="ltr" value="' + o.value + '" style="font-size:24px;text-align:center;font-weight:800">'
+      + '<div class="muted" id="cqHint" style="margin-top:6px"' + (o.hint ? '' : ' hidden') + '>' + (o.hint || '') + '</div>'
+      + '<button class="btn gold" id="cqOk" style="margin-top:12px">' + ICON.check + ' ' + o.ok + '</button>');
+    var inp = $("#cqN", ov);
+    inp.focus(); inp.select();
+    var save = function(){
+      var n = Math.floor(+inp.value);
+      if (inp.value === "" || !(n >= 0)){ inp.focus(); return; }
+      if (o.save(Math.min(n, QTY_MAX), inp) === false) return;
+      ov.remove(); vibrate(15);
+    };
+    $("#cqOk", ov).onclick = save;
+    inp.onkeydown = function(e){ if (e.key === "Enter") save(); };
+  }
   function copyText(txt, okMsg){
     function fb(){ var ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select();
       try { document.execCommand("copy"); toast(okMsg); } catch(e){ toast("انسخ يدويًا"); } ta.remove(); }
@@ -674,15 +693,30 @@
       cart.push({product_id: p.id, name: p.name, code: p.code, price: incl, base: p.price, incl0: incl, qty: n, max: max}); }
     updateCartUI();
   }
+  // الضغط على الكمية يكتبها (طلبٌ بـ500 قطعة). لا تتجاوز مخزون عميل المعرض، و0 يحذف المنتج من السلة.
+  function cartQtySheet(pid){
+    var l = cartLine(pid); if (!l) return;
+    var max = l.max;
+    qtySheet({title: "الكمية", name: l.name, code: l.code, value: l.qty, ok: "حفظ الكمية",
+      hint: max != null ? "المتاح في مخزونك " + max : "",
+      save: function(n, inp){
+        if (max != null && n > max){ toast("المتاح في مخزونك " + max + " فقط"); vibrate(40); inp.value = max; inp.select(); return false; }
+        if (!n && !confirm("حذف هذا المنتج من السلة؟")) return false;
+        setQty(pid, n);
+        $$('[data-step="' + pid + '"]').forEach(function(box){ box.innerHTML = stepperHtml(pid); });
+      }});
+  }
   function stepperHtml(pid, small){
     var l = cartLine(pid);
     if (!l) return '<button class="add-btn" data-plus="' + pid + '" aria-label="أضف للسلة">' + ICON.bag + ' أضف</button>';
     return '<div class="stepper' + (small ? " sm" : "") + '"><button data-minus="' + pid + '" aria-label="أنقص">−</button>'
-      + '<b class="qn num">' + l.qty + '</b><button data-plus="' + pid + '" aria-label="زِد">+</button></div>';
+      + '<button class="num qset" data-qset="' + pid + '" aria-label="اكتب الكمية">' + l.qty + '</button><button data-plus="' + pid + '" aria-label="زِد">+</button></div>';
   }
   // تفويضٌ واحد لكل حاوية (يبقى يعمل بعد كل بحث)
   function wireSteppers(root){
     root.addEventListener("click", function(e){
+      var q = e.target.closest("[data-qset]");
+      if (q && root.contains(q)){ e.stopPropagation(); return cartQtySheet(+q.getAttribute("data-qset")); }
       var b = e.target.closest("[data-plus],[data-minus]"); if (!b || !root.contains(b)) return;
       e.stopPropagation();
       var pid = +(b.getAttribute("data-plus") || b.getAttribute("data-minus"));
@@ -923,12 +957,13 @@
           + '<div class="row between" style="margin-top:10px"><div class="row" style="gap:8px"><span class="muted">السعر</span>'
           + '<input class="price-in num" type="number" min="' + (can("edit_price") ? floor : l.incl0) + '" step="0.01" inputmode="decimal" data-price="' + i + '" value="' + l.price + '"'
           + (can("edit_price") ? '' : ' readonly title="لا صلاحية لتعديل السعر"') + '></div>'
-          + '<div class="stepper sm"><button data-dec="' + i + '" aria-label="أنقص">−</button><b class="num">' + l.qty + '</b><button data-inc="' + i + '" aria-label="زِد">+</button></div></div>'
+          + '<div class="stepper sm"><button data-dec="' + i + '" aria-label="أنقص">−</button><button class="num qset" data-cq="' + i + '" aria-label="اكتب الكمية">' + l.qty + '</button><button data-inc="' + i + '" aria-label="زِد">+</button></div></div>'
           + '<div class="muted" data-pwarn="' + i + '" style="color:var(--bad);margin-top:6px" hidden>أقل سعر مسموح لك ' + money(floor) + ' (خصم ' + maxD + '%)</div></div>';
       }).join("");
       wireThumbs(box);
       $$("[data-inc]", box).forEach(function(b){ b.onclick = function(){ var l = cart[+b.getAttribute("data-inc")]; setQty(l.product_id, l.qty + 1); }; });
       $$("[data-dec]", box).forEach(function(b){ b.onclick = function(){ var l = cart[+b.getAttribute("data-dec")]; setQty(l.product_id, Math.max(1, l.qty - 1)); }; });
+      $$("[data-cq]", box).forEach(function(b){ b.onclick = function(){ cartQtySheet(cart[+b.getAttribute("data-cq")].product_id); }; });
       $$("[data-rm]", box).forEach(function(b){ b.onclick = function(){ setQty(cart[+b.getAttribute("data-rm")].product_id, 0); }; });
       $$("[data-price]", box).forEach(function(inp){ inp.oninput = function(){
         var i = +inp.getAttribute("data-price"), v = parseFloat(inp.value), l = cart[i];
@@ -2495,25 +2530,14 @@
     }).join("");
     wireThumbs(box);
   }
-  // العدد الكبير (500 قطعة) يُكتب ولا يُضغط «+» مرّةً مرّة. 0 يحذف الموديل من عدّي.
-  var COUNT_MAX = 99999;
+  // 0 يحذف الموديل من عدّي.
   function countQtySheet(code){
     var p = jrNames[code];
-    var ov = sheet("عدد القطع", '<div style="font-weight:800" class="ellip">' + (p ? esc(p.name) : esc(code)) + '</div>'
-      + '<div class="muted num" dir="ltr" style="text-align:right;margin-bottom:10px">' + esc(code) + '</div>'
-      + '<input id="cqN" class="num" type="number" inputmode="numeric" min="0" max="' + COUNT_MAX + '" dir="ltr" value="' + (jr.qty[code] || 0) + '" style="font-size:24px;text-align:center;font-weight:800">'
-      + '<button class="btn gold" id="cqOk" style="margin-top:12px">' + ICON.check + ' حفظ العدد</button>');
-    var inp = $("#cqN", ov);
-    inp.focus(); inp.select();
-    var save = function(){
-      var n = Math.floor(+inp.value);
-      if (inp.value === "" || !(n >= 0)){ inp.focus(); return; }
-      n = Math.min(n, COUNT_MAX);
-      if (!n && !confirm("حذف هذا الموديل من عدّك؟")) return;
-      jrAdd(code, n - (jr.qty[code] || 0)); ov.remove(); vibrate(15); renderCountList();
-    };
-    $("#cqOk", ov).onclick = save;
-    inp.onkeydown = function(e){ if (e.key === "Enter") save(); };
+    qtySheet({title: "عدد القطع", name: p ? p.name : code, code: code, value: jr.qty[code] || 0, ok: "حفظ العدد",
+      save: function(n){
+        if (!n && !confirm("حذف هذا الموديل من عدّك؟")) return false;
+        jrAdd(code, n - (jr.qty[code] || 0)); renderCountList();
+      }});
   }
   function renderCountTeam(){
     var box = $("#ctTeam"); if (!box || !jr.count) return;
@@ -2640,14 +2664,14 @@
           + '<div class="num" style="font-size:12.5px;opacity:.7" dir="ltr">' + esc(code) + (jr.qty[code] ? ' · عندك منه: ' + qn(jr.qty[code]) : '') + '</div>'
           + '<div class="qchips">' + [1, 2, 3, 5, 10].map(function(k){ return '<button data-k="' + k + '" class="' + (k === n ? "on" : "") + '">' + k + '</button>'; }).join("") + '</div>'
           + '<div class="row"><div class="stepper" style="flex:1"><button data-s="-1" aria-label="أنقص">−</button>'
-          + '<input id="qn" class="num" type="number" inputmode="numeric" min="1" max="' + COUNT_MAX + '" dir="ltr" value="' + n + '" aria-label="عدد القطع — اكتبه"><button data-s="1" aria-label="زد">+</button></div>'
+          + '<input id="qn" class="num" type="number" inputmode="numeric" min="1" max="' + QTY_MAX + '" dir="ltr" value="' + n + '" aria-label="عدد القطع — اكتبه"><button data-s="1" aria-label="زد">+</button></div>'
           + '<button class="btn gold sm" id="qok">أضف ' + n + '</button><button class="btn soft sm" id="qno">إلغاء</button></div></div>';
         $$("[data-k]", pad).forEach(function(b){ b.onclick = function(){ n = +b.getAttribute("data-k"); draw(); }; });
-        $$("[data-s]", pad).forEach(function(b){ b.onclick = function(){ n = Math.max(1, Math.min(COUNT_MAX, n + +b.getAttribute("data-s"))); draw(); }; });
+        $$("[data-s]", pad).forEach(function(b){ b.onclick = function(){ n = Math.max(1, Math.min(QTY_MAX, n + +b.getAttribute("data-s"))); draw(); }; });
         // العدد يُكتب أيضًا (500 قطعة) لا بالأزرار وحدها
         $("#qn", pad).oninput = function(){
           var v = Math.floor(+this.value), ok = this.value !== "" && v >= 1;
-          if (ok) n = Math.min(v, COUNT_MAX);
+          if (ok) n = Math.min(v, QTY_MAX);
           $("#qok", pad).disabled = !ok; $("#qok", pad).textContent = ok ? "أضف " + n : "أضف";
           $$("[data-k]", pad).forEach(function(b){ b.classList.toggle("on", ok && +b.getAttribute("data-k") === n); });
         };
