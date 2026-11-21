@@ -2,9 +2,9 @@
 //   • الصفحة: من الشبكة أولًا (فيصل كل تحديث فورًا)، ومن الكاش إن انقطع النت.
 //   • الملفات الثابتة والخطوط: من الكاش أولًا.
 //   • /api/*: من الشبكة دائمًا — لا تُخزَّن بيانات الفواتير والأسعار أبدًا.
-const VERSION = "sales-3.99.0";
+const VERSION = "sales-3.100.0";
 // ترجمة إشعارات الجوال بلغة التطبيق (يحفظها التطبيق في كاش «sales-prefs»). إن تعذّر تحميلها بقيت عربية.
-try { importScripts("/static/i18n-dict.js?v=3.99.0", "/static/i18n.js?v=3.99.0"); } catch (err) { /* عربي كما هو */ }
+try { importScripts("/static/i18n-dict.js?v=3.100.0", "/static/i18n.js?v=3.100.0"); } catch (err) { /* عربي كما هو */ }
 const PREFS = "sales-prefs";
 const appLang = () => caches.open(PREFS).then((c) => c.match("/__lang")).then((r) => (r ? r.text() : "ar")).catch(() => "ar");
 const SHELL = ["/", "/static/logo.png", "/static/emblem.png", "/static/icons/icon-192.png",
