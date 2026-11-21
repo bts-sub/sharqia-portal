@@ -254,6 +254,14 @@ r.post("/api/sales/push/unsubscribe", run(async (req, res) => {
 r.post("/api/sales/push/test", run(async (req, res) => {
   res.json(await execKw(APP, "app_push_test", [req.appToken]));
 }));
+// إعدادات مدير الفروع (قواعد الشركة: العميل إجباري في الطلبات، وجواله عند إضافته). أودو يتحقق أنه مدير فروع.
+// الجلسات المحفوظة هنا (60 ث) تقرأ القواعد الجديدة عند انتهائها، وأودو يفرضها فورًا.
+r.post("/api/sales/settings", run(async (req, res) => {
+  const rules = (req.body && typeof req.body.rules === "object" && req.body.rules) || {};
+  const clean = {};
+  for (const k of ["require_customer", "require_phone"]) if (k in rules) clean[k] = !!rules[k];
+  res.json(visitOut(req, await execKw(APP, "app_settings_set", [req.appToken, clean])));
+}));
 
 // صورة المنتج (بروكسي من Odoo — image_256). عامّة: الوسم <img> لا يحمل رمز الجلسة، وصور المنتجات
 // منشورة أصلًا في المتجر.

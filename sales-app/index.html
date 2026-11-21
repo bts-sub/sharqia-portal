@@ -318,6 +318,9 @@
   /* الموافقات والصلاحيات والإشعارات */
   .mgr-actions{margin-bottom:12px} .push-card{margin-bottom:12px} .card.apv{margin-bottom:10px}
   .kv.sw{cursor:pointer;align-items:center}
+  .tiles .tile.wide{grid-column:1/-1}
+  .req{color:var(--bad);font-weight:800}
+  #custBox.need{outline:2px solid var(--bad);outline-offset:3px}
   /* «الموظفون»: كل فرعٍ صفٌّ يُفتح، وتحته موظفوه (أزرارٌ بلون البطاقة لا لون الزرّ الافتراضي) */
   .st-branch,.st-row{width:100%;font:inherit;color:var(--text);background:var(--surface);border:0;text-align:start;cursor:pointer}
   .st-branch{display:flex;align-items:center;gap:12px;padding:13px 14px}
@@ -600,6 +603,8 @@
   var ROLE = {seller: "بائع", supervisor: "مشرف", manager: "مدير فروع"};
   function isManager(){ return !!(me && me.role === "manager"); }
   function isBoss(){ return !!(me && (me.role === "supervisor" || me.role === "manager")); }
+  // قواعد مدير الفروع (me.rules): require_customer العميل إجباري في الطلبات، require_phone جواله عند إضافته
+  function rule(k){ return !!(me && me.rules && me.rules[k]); }
   var mode = "ext";        // نوع العميل في الطلب الجاري: int عميل المعرض (نقطة البيع)، ext عميل خارجي (لينك دفع وشحن)
   var iorder = null;       // الطلب الداخلي المفتوح للتعديل (من أودو)، وnull لطلبٍ جديد
   var cart = [];           // [{product_id,name,code,price(شامل الضريبة),base,incl0,qty,max}]
@@ -961,19 +966,22 @@
   }
   function renderCust(){
     var box = $("#custBox"); if (!box) return;
+    var must = rule("require_customer");        // العميل إجباري: لا «بدون اسم» ولا «(اختياري)»
+    box.classList.remove("need");
     if (customer){
       box.innerHTML = '<div class="row"><div class="avatar">' + esc(initials(customer.name)) + '</div><div class="grow"><div style="font-weight:800">' + esc(customer.name) + '</div>'
         + '<div class="muted num" dir="ltr" style="text-align:right">' + esc(customer.phone || "بلا جوال") + '</div></div>'
         + '<button class="btn soft sm" id="chCust">تغيير</button></div>'
-        + (isInt() ? '<button class="linkbtn" id="noCust" style="padding:10px 0 0">بدون اسم</button>' : '');
+        + (isInt() && !must ? '<button class="linkbtn" id="noCust" style="padding:10px 0 0">بدون اسم</button>' : '');
       $("#chCust").onclick = openCustomerPicker;
       if ($("#noCust")) $("#noCust").onclick = function(){ customer = null; renderCust(); };
     } else {
-      box.innerHTML = '<button class="btn soft" id="pickCust" style="border-style:dashed;padding:18px">' + ICON.user + ' اختر العميل' + (can("create_customer") ? ' أو أضف جديدًا' : '') + (isInt() ? ' (اختياري)' : '') + '</button>';
+      box.innerHTML = '<button class="btn soft" id="pickCust" style="border-style:dashed;padding:18px">' + ICON.user + ' اختر العميل' + (can("create_customer") ? ' أو أضف جديدًا' : '')
+        + (isInt() ? (must ? ' <span class="req">(إجباري)</span>' : ' (اختياري)') : '') + '</button>';
       $("#pickCust").onclick = openCustomerPicker;
     }
-    // عميل المعرض بلا جوالٍ مسجّل: جواله على الطلب، فيفتحه به بائعٌ آخر كما بالكود
-    if (isInt() && !(customer && customer.phone)){
+    // عميل المعرض بلا جوالٍ مسجّل: جواله على الطلب، فيفتحه به بائعٌ آخر كما بالكود. والعميل إجباري: جواله معه
+    if (isInt() && !(customer && customer.phone) && !(must && !customer)){
       box.insertAdjacentHTML("beforeend", '<div class="lbl" style="margin-top:12px">جوال العميل (اختياري)</div>'
         + '<input id="custPhone" type="tel" inputmode="tel" dir="ltr" style="text-align:right" placeholder="05xxxxxxxx" value="' + esc(custPhone) + '">');
       $("#custPhone").oninput = function(){ custPhone = this.value; };
@@ -1131,7 +1139,7 @@
       '<label class="btn dark" style="margin-bottom:6px">' + ICON.id + ' مسح جواز السفر<input id="pf" type="file" accept="image/*" capture="environment" hidden></label>'
       + '<div class="muted" style="margin-bottom:12px;text-align:center">تُرسل الصورة لقراءتها فقط ولا تُحفظ.</div><div id="pbox"></div>'
       + '<div style="margin-bottom:12px"><div class="lbl">الاسم *</div><input id="n" autocomplete="name"></div>'
-      + '<div style="margin-bottom:12px"><div class="lbl">الجوال</div><input id="p" dir="ltr" style="text-align:right" inputmode="tel" placeholder="05xxxxxxxx"></div>'
+      + '<div style="margin-bottom:12px"><div class="lbl">الجوال' + (rule("require_phone") ? ' *' : '') + '</div><input id="p" dir="ltr" style="text-align:right" inputmode="tel" placeholder="05xxxxxxxx"></div>'
       + '<div style="margin-bottom:12px"><div class="lbl">البريد</div><input id="e" dir="ltr" style="text-align:right" inputmode="email"></div>'
       + '<div style="margin-bottom:16px"><div class="lbl">المدينة</div><input id="ci"></div>'
       + '<button class="btn gold" id="save">حفظ العميل</button>');
@@ -1150,7 +1158,9 @@
         .then(function(){ saveBtn.disabled = false; });
     };
     $("#save", ov).onclick = function(){
-      var name = $("#n", ov).value.trim(); if (!name){ toast("الاسم مطلوب"); return; }
+      var name = $("#n", ov).value.trim(); if (!name){ toast("الاسم مطلوب"); $("#n", ov).focus(); return; }
+      // جوال العميل إجباري (قاعدة مدير الفروع): سبعة أرقامٍ على الأقل
+      if (rule("require_phone") && ($("#p", ov).value.match(/[0-9٠-٩۰-۹]/g) || []).length < 7){ toast("جوال العميل مطلوب"); $("#p", ov).focus(); return; }
       $("#save", ov).disabled = true;
       var body = {name: name, phone: $("#p", ov).value.trim(), email: $("#e", ov).value.trim(), city: $("#ci", ov).value.trim(), scope: isInt() ? "internal" : "external"};
       if (pass){ body.passport_no = pass.passport_no; body.nationality = pass.nationality; body.birthdate = pass.birthdate;
@@ -1884,11 +1894,39 @@
     return '<div class="tiles mgr-actions"><button class="tile" id="goApv"><span class="avatar">' + ICON.check + '</span><span class="grow"><b>الموافقات</b>'
       + '<span class="muted">البضاعة والعمل في فرعٍ آخر</span></span><span class="badge num apvN" hidden></span></button>'
       + '<button class="tile" id="goStaff"><span class="avatar">' + ICON.user + '</span><span class="grow"><b>الموظفون</b>'
-      + '<span class="muted">الصلاحيات</span></span></button></div>';
+      + '<span class="muted">الصلاحيات</span></span></button>'
+      + '<button class="tile wide" id="goSet"><span class="avatar">' + ICON.lock + '</span><span class="grow"><b>الإعدادات</b>'
+      + '<span class="muted">قواعد الطلبات والعملاء</span></span></button></div>';
+  }
+  // ════════════ إعدادات مدير الفروع ════════════
+  // قواعد للشركة كلها، تسري على الموظفين فورًا في أودو (ويظهر أثرها في تطبيقاتهم عند فتحها من جديد)
+  var RULES = [
+    {key: "require_customer", label: "العميل إجباري في الطلبات", hint: "لا يُحفظ طلب معرضٍ ولا يُرسل للكاشير بلا عميل. المرتجع والاستبدال عميلهما من الفاتورة."},
+    {key: "require_phone", label: "جوال العميل إجباري عند إضافته", hint: "العميل الجديد باسمه وجواله معًا (الاسم مطلوبٌ دائمًا)."},
+  ];
+  function screenSettings(){
+    if (!isManager()) return screenHome();
+    view = {name: "settings"}; setNav("dash"); updateCartUI();
+    main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">الإعدادات</span></div>'
+      + '<div class="card">' + RULES.map(function(r){
+        return '<label class="kv sw" style="align-items:flex-start"><span><b style="display:block">' + esc(r.label) + '</b><span class="muted" style="font-size:12.5px">' + esc(r.hint) + '</span></span>'
+          + '<input type="checkbox" data-rule="' + r.key + '"' + (rule(r.key) ? ' checked' : '') + '></label>';
+      }).join("") + '</div>'
+      + '<button class="btn gold" id="setSave">' + ICON.check + ' حفظ الإعدادات</button>'
+      + '<div class="muted" style="margin-top:8px">تسري على كل الفروع والموظفين، ويُكتب كل تغييرٍ في سجلك. وتُغيَّر من أودو أيضًا (تطبيق المبيعات ← إعدادات التطبيق).</div>';
+    $("#bk").onclick = function(){ screenHome(); };
+    $("#setSave").onclick = function(){
+      var b = this, rules = {};
+      $$("[data-rule]").forEach(function(c){ rules[c.getAttribute("data-rule")] = c.checked; });
+      b.disabled = true;
+      api("/settings", {method: "POST", body: {rules: rules}}).then(function(r){ me.rules = r; toast("حُفظت الإعدادات"); screenHome(); })
+        .catch(function(e){ b.disabled = false; toast(e.message); });
+    };
   }
   function wireMgrActions(){
     if ($("#goApv")) $("#goApv").onclick = function(){ screenApprovals(); };
     if ($("#goStaff")) $("#goStaff").onclick = screenStaff;
+    if ($("#goSet")) $("#goSet").onclick = screenSettings;
     setApvBadge(apvCount);
   }
   // عدّاد الموافقات: شارة «لوحتي» وزرّ الموافقات وأيقونة التطبيق نفسها (على الجوال، خارج التطبيق)
@@ -2627,6 +2665,12 @@
     if (!can("internal")){ toast("حسابك غير مربوط بنقطة بيع"); return; }
     var others = iorder ? iorder.lines.some(function(l){ return !l.mine; }) : false;
     if (!cart.length && !others){ toast("أضف منتجًا واحدًا على الأقل"); return; }
+    // العميل إجباري (قاعدة مدير الفروع) في طلب البيع؛ المرتجع والاستبدال عميلهما من الفاتورة
+    if (rule("require_customer") && !customer && !(iorder && iorder.kind && iorder.kind !== "sale")){
+      toast("اختر العميل أو أضف عميلًا جديدًا — العميل إجباري");
+      var cb = $("#custBox"); if (cb){ cb.scrollIntoView({behavior: "smooth", block: "center"}); cb.classList.add("need"); }
+      return;
+    }
     var lines = cart.map(function(l){ return {product_id: l.product_id, qty: l.qty, price_unit: l.price}; });
     var body = {partner_id: customer ? customer.id : false, lines: lines, note: note,
       phone: customer && customer.phone ? customer.phone : custPhone.trim(), tax_free: taxFree.on, gb_shopper_id: taxFree.gb};
@@ -3427,7 +3471,8 @@
 
   if (!token) showLogin("");
   else {
-    api("/me").then(function(u){ me = u; startApp(); })
+    // من أودو عند كل فتح (لا ذاكرة البوابة): صلاحياتٌ أو قواعد غيّرها مدير الفروع تسري فورًا
+    api("/me?fresh=1").then(function(u){ me = u; startApp(); })
       .catch(function(e){ if (token) { $("#conn").className = "conn bad"; main.innerHTML = '<div class="empty"><b>تعذّر الاتصال</b>' + esc(e.message) + '<div style="margin-top:14px"><button class="btn gold" onclick="location.reload()" style="max-width:220px">إعادة المحاولة</button></div></div>'; } });
   }
 })();
