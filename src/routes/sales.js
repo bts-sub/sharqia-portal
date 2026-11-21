@@ -205,6 +205,56 @@ r.post("/api/sales/branch", run(async (req, res) => {
   res.json(visitOut(req, await execKw(APP, "app_branch_switch", [req.appToken, num(config_id)])));
 }));
 
+// طلبات البضاعة: الموظف يطلب صنفًا لفرعه من فرعٍ آخر أو المخزن، ومدير الفروع يوافق فيُنشأ تحويلٌ مخزني. أودو يتحقق
+// من الصلاحية والفروع في كل خطوة.
+r.get("/api/sales/stock-requests", run(async (req, res) => {
+  res.json(await execKw(APP, "app_stock_request_list", [req.appToken]));
+}));
+r.post("/api/sales/stock-requests", run(async (req, res) => {
+  const { product_id, qty, source_location_id, note } = req.body || {};
+  res.json(await execKw(APP, "app_stock_request_create", [req.appToken, num(product_id), Number(qty) || 0,
+    num(source_location_id), note ? String(note).slice(0, 300) : false]));
+}));
+r.post("/api/sales/stock-requests/:id/cancel", run(async (req, res) => {
+  res.json(await execKw(APP, "app_stock_request_cancel", [req.appToken, num(req.params.id)]));
+}));
+r.post("/api/sales/stock-requests/:id/decide", run(async (req, res) => {
+  const { approve, reason } = req.body || {};
+  res.json(await execKw(APP, "app_stock_request_decide", [req.appToken, num(req.params.id), !!approve,
+    reason ? String(reason).slice(0, 200) : false]));
+}));
+// موافقات مدير الفروع (البضاعة والعمل في فرعٍ آخر في فروعه كلها)، وعدّادها لأيقونة التطبيق
+r.get("/api/sales/approvals", run(async (req, res) => {
+  res.json(await execKw(APP, "app_manager_approvals", [req.appToken]));
+}));
+r.get("/api/sales/approvals/count", run(async (req, res) => {
+  res.json(await execKw(APP, "app_approvals_count", [req.appToken]));
+}));
+// مدير الفروع يشغّل صلاحيات موظفي فروعه ويقفلها (الصلاحيات وحدها؛ أودو يرفض ما سواها)
+r.get("/api/sales/staff", run(async (req, res) => {
+  res.json(await execKw(APP, "app_staff_list", [req.appToken]));
+}));
+r.post("/api/sales/staff/:id", run(async (req, res) => {
+  const perms = (req.body && typeof req.body.perms === "object" && req.body.perms) || {};
+  res.json(await execKw(APP, "app_staff_set", [req.appToken, num(req.params.id), perms]));
+}));
+// إشعارات الجوال (Web Push): مفتاح VAPID من أودو، واشتراك الجوال للموظف
+r.get("/api/sales/push/key", run(async (req, res) => {
+  res.json(await execKw(APP, "app_push_key", [req.appToken]));
+}));
+r.post("/api/sales/push/subscribe", run(async (req, res) => {
+  const { endpoint, keys, device } = req.body || {};
+  const k = keys && typeof keys === "object" ? { p256dh: String(keys.p256dh || ""), auth: String(keys.auth || "") } : {};
+  res.json(await execKw(APP, "app_push_subscribe", [req.appToken, String(endpoint || "").slice(0, 1000), k,
+    String(device || req.get("user-agent") || "").slice(0, 120)]));
+}));
+r.post("/api/sales/push/unsubscribe", run(async (req, res) => {
+  res.json(await execKw(APP, "app_push_unsubscribe", [req.appToken, String((req.body || {}).endpoint || "").slice(0, 1000)]));
+}));
+r.post("/api/sales/push/test", run(async (req, res) => {
+  res.json(await execKw(APP, "app_push_test", [req.appToken]));
+}));
+
 // صورة المنتج (بروكسي من Odoo — image_256). عامّة: الوسم <img> لا يحمل رمز الجلسة، وصور المنتجات
 // منشورة أصلًا في المتجر.
 r.get("/api/sales/products/:id/image", async (req, res, next) => {

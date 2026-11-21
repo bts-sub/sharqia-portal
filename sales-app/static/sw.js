@@ -2,7 +2,7 @@
 //   • الصفحة: من الشبكة أولًا (فيصل كل تحديث فورًا)، ومن الكاش إن انقطع النت.
 //   • الملفات الثابتة والخطوط: من الكاش أولًا.
 //   • /api/*: من الشبكة دائمًا — لا تُخزَّن بيانات الفواتير والأسعار أبدًا.
-const VERSION = "sales-3.85.0";
+const VERSION = "sales-3.86.0";
 const SHELL = ["/", "/static/logo.png", "/static/emblem.png", "/static/icons/icon-192.png",
   "/static/manifest.webmanifest"];
 
@@ -39,4 +39,29 @@ self.addEventListener("fetch", (e) => {
     }
     return res;
   })));
+});
+
+// إشعارات الجوال (Web Push من أودو): طلب بضاعة أو موافقة لمدير الفروع، وقرار المدير للطالب. تصل والتطبيق مغلق.
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : "" }; }
+  const title = d.title || "تطبيق المبيعات";
+  e.waitUntil(self.registration.showNotification(title, {
+    body: d.body || "", tag: d.tag || "sales-app", renotify: true, dir: "rtl", lang: "ar",
+    icon: "/static/icons/icon-192.png", badge: "/static/icons/icon-192.png", data: { url: d.url || "/" },
+  }));
+});
+
+// لمس الإشعار: يفتح التطبيق (أو يُظهره إن كان مفتوحًا) على الشاشة المعنيّة (/?go=approvals …)
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || "/", self.location.origin).href;
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+    const win = wins.find((w) => new URL(w.url).origin === self.location.origin);
+    if (win) {
+      win.postMessage({ type: "sales-go", url });
+      return win.focus();
+    }
+    return self.clients.openWindow(url);
+  }));
 });

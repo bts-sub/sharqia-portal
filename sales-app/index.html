@@ -315,6 +315,14 @@
   .home-hero .icon-btn{background:rgba(243,234,211,.08);border-color:rgba(243,234,211,.2);color:#F3EAD3}
   .tags{display:flex;flex-wrap:wrap;gap:6px}
   .tags span{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;background:rgba(243,234,211,.1);border:1px solid rgba(243,234,211,.18)}
+  /* الموافقات والصلاحيات والإشعارات */
+  .mgr-actions{margin-bottom:12px} .push-card{margin-bottom:12px} .card.apv{margin-bottom:10px}
+  .kv.sw{cursor:pointer;align-items:center}
+  .sw input{flex:0 0 44px;width:44px;height:26px;margin:0;padding:0;border:none;border-radius:999px;background:var(--line);
+    -webkit-appearance:none;appearance:none;position:relative;cursor:pointer;transition:background .2s}
+  .sw input::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:20px;height:20px;border-radius:50%;background:#fff;
+    box-shadow:0 1px 3px rgba(0,0,0,.25);transition:inset-inline-start .2s}
+  .sw input:checked{background:var(--good)} .sw input:checked::after{inset-inline-start:21px}
   /* مدير الفروع: شريط الفروع، و«كل الفروع» بطاقة لكل فرع */
   .mgr-bar{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 12px;scrollbar-width:none;scroll-behavior:smooth}
   .mgr-bar::-webkit-scrollbar{display:none}
@@ -481,8 +489,9 @@
   <main id="main"><div class="spin"></div></main>
   <div class="bar" id="cartBar"></div>
   <nav class="tabbar" id="tabbar" hidden aria-label="التنقّل">
-    <button data-nav="dash" class="on">
-      <svg class="i" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>لوحتي</button>
+    <button data-nav="dash" class="on" style="position:relative">
+      <svg class="i" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>لوحتي
+      <span class="nbadge" id="navApv" hidden style="top:6px;inset-inline-end:calc(50% - 22px)">0</span></button>
     <button data-nav="invoices" style="position:relative">
       <svg class="i" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>الطلبات
       <span class="nbadge" id="navIn" hidden style="top:6px;inset-inline-end:calc(50% - 22px)">0</span></button>
@@ -683,9 +692,17 @@
       + '<div class="card"><div class="h2">صلاحياتك</div>' + row(P.internal, "البيع الداخلي (عملاء المعرض)") + row(P.receive_stock, "استلام المخزن واعتماد الجودة") + row(P.count, "جرد المخزون بالكاميرا") + row(P.create_link, "إنشاء لينك دفع")
       + row(P.edit_price, "تعديل سعر المنتج" + (P.edit_price ? " (حتى خصم " + (+P.max_discount || 0) + "%)" : ""))
       + row(P.edit_shipping, "تعديل سعر الشحن") + row(P.create_customer, "إضافة عملاء") + row(P.create_quotation, "عروض أسعار أودو")
-      + row(P.view_all, "رؤية فواتير كل البائعين") + '</div>'
+      + row(P.view_all, "رؤية فواتير كل البائعين") + row(P.request_stock, "طلب بضاعة من الفروع والمخازن") + '</div>'
+      + (pushSupported() ? '<div class="card"><div class="kv"><span>إشعارات الجوال</span>'
+        + (Notification.permission === "granted" ? '<button class="btn soft sm" id="pushTest">جرّب الإشعار</button>'
+          : Notification.permission === "denied" ? '<span class="pill p-bad">مقفولة من إعدادات الجوال</span>' : '<button class="btn gold sm" data-push>تفعيل</button>')
+        + '</div></div>' : '')
       + '<button class="btn soft" id="lo" style="color:var(--bad)">' + ICON.out + ' تسجيل الخروج</button>');
     $("#lo", ov).onclick = function(){ api("/logout", {method: "POST"}).catch(function(){}).then(function(){ ov.remove(); signOut(false); }); };
+    wirePushCard(ov);
+    if ($("#pushTest", ov)) $("#pushTest", ov).onclick = function(){
+      syncPush();
+      api("/push/test", {method: "POST", body: {}}).then(function(){ toast("أُرسل إشعار تجربة — يصلك خلال ثوانٍ"); }).catch(function(e){ toast(e.message); }); };
   }
   function startApp(){
     $("#tabbar").hidden = false; $("#meBtn").hidden = false; $("#meIni").textContent = initials(me.name);
@@ -694,7 +711,10 @@
     refreshInstallChip(); refreshIncoming();
     var go = new URLSearchParams(location.search).get("go");
     if (go === "new") screenNew(); else if (go === "scan"){ screenDash(); openScanner(); }
-    else if (go === "count" && can("count")) screenCounts(); else screenDash();
+    else if (go === "count" && can("count")) screenCounts();
+    else if (go === "approvals" || go === "requests") goTo(go);       // من إشعار الجوال
+    else screenDash();
+    syncPush(); startApprovalsWatch();
   }
   // شارة «الطلبات»: ما حُوِّل في فرعي وينتظر من يستلمه
   function refreshIncoming(){
@@ -1230,6 +1250,7 @@
     $("[data-scan]", main).onclick = openScanner;
     if ($("#goRc", main)) $("#goRc", main).onclick = screenReceipts;
     if ($("#goCt", main)) $("#goCt", main).onclick = screenCounts;
+    if ($("#goSr", main)) $("#goSr", main).onclick = screenStockRequests;
     refreshReceipts();
     wireProductList(main, $("#pwrap", main), 50);
   }
@@ -1240,6 +1261,9 @@
       + '<span class="muted" id="rcSub">…</span></span><span class="badge num" id="rcN" hidden></span></button>');
     if (can("count")) t.push('<button class="tile" id="goCt"><span class="avatar">' + ICON.scan + '</span><span class="grow"><b>جرد المخزون</b>'
       + '<span class="muted">بالكاميرا</span></span></button>');
+    // طلبات البضاعة: ما طلبه الفرع من غيره، وما طُلب منه فيجهّزه
+    if (can("request_stock") || can("receive_stock")) t.push('<button class="tile" id="goSr"><span class="avatar">' + ICON.truck + '</span><span class="grow"><b>طلبات البضاعة</b>'
+      + '<span class="muted">من الفروع والمخازن</span></span></button>');
     return t.length ? '<div class="tiles stask' + (t.length === 1 ? " one" : "") + '">' + t.join("") + '</div>' : '';
   }
   // ما وصل مخزن الفرع وينتظر العدّ واعتماد الجودة: شارة «المنتجات» وزرّ الاستلام
@@ -1545,7 +1569,7 @@
     if (br == null){ var own = p.branches.filter(function(b){ return b.mine; })[0]; br = own ? own.name : "*"; }
     var sel = variants.filter(function(v){ return v.id === selId; })[0]
       || {id: p.id, name: p.name, attrs: p.attrs, code: p.code, barcode: p.barcode, price_incl: p.price_incl != null ? p.price_incl : p.price,
-          branches: p.branches, sellable: p.sellable};
+          branches: p.branches, sellable: p.sellable, warehouses: p.warehouses || []};
     var stocked = sel.branches.filter(function(b){ return b.qty > 0; }), none = sel.branches.filter(function(b){ return b.qty <= 0; });
     var mine = sel.branches.filter(function(b){ return b.mine; })[0];
     var grid = variants.length > 1;
@@ -1571,7 +1595,9 @@
       h += variantsHtml(p, sel.id, br);
     }
     var canAdd = sel.sellable && isInt() && can("internal") && (!p.stock || (mine && mine.available > 0));
-    h += inquiryAgainHtml() + (canAdd ? '<button class="btn soft" id="iqAdd" style="margin-top:10px">' + ICON.plus + ' أضف للطلب' + (sel.attrs ? ' (' + esc(sel.attrs) + ')' : '') + '</button>' : '');
+    // «أضف للطلب»: لطلب العميل من مخزون فرعه، أو طلب البضاعة لفرعه من فرعٍ آخر أو المخزن (بموافقة مدير الفروع)
+    var canRequest = p.stock && can("request_stock");
+    h += inquiryAgainHtml() + (canAdd || canRequest ? '<button class="btn soft" id="iqAdd" style="margin-top:10px">' + ICON.plus + ' أضف للطلب' + (sel.attrs ? ' (' + esc(sel.attrs) + ')' : '') + '</button>' : '');
     $("#iqWrap").innerHTML = h;
     wireThumbs($("#iqWrap"));
     $("#iqAgain").onclick = openInquiry;
@@ -1580,11 +1606,22 @@
     $$("[data-br]", $("#iqWrap")).forEach(function(b){ b.onclick = function(){
       renderInquiry(p, sel.id, b.getAttribute("data-br"), b.classList.contains("br-pick")); }; });
     if (toGrid && $("#iqWrap .vgrid")) $("#iqWrap .vbr").scrollIntoView({behavior: "smooth", block: "start"});
-    if ($("#iqAdd")) $("#iqAdd").onclick = function(){
+    var toCart = function(){
       remember({id: sel.id, name: sel.name, code: sel.code, barcode: sel.barcode, price: sel.price_incl, price_incl: sel.price_incl,
                 stock: p.stock, qty: mine ? mine.available : 0});
       var l = cartLine(sel.id); setQty(sel.id, (l ? l.qty : 0) + 1);
       if (cartLine(sel.id)) toast("أُضيف للطلب — في السلة " + cartLine(sel.id).qty);
+    };
+    if ($("#iqAdd")) $("#iqAdd").onclick = function(){
+      if (!canRequest) return toCart();
+      if (!canAdd) return openStockRequest(p, sel);
+      var ov = sheet("أضف للطلب",
+        '<button class="pickline" data-ch="cart" style="margin-bottom:8px">' + ICON.bag + '<span class="grow"><b>أضف لطلب العميل</b>'
+        + '<span class="muted" style="display:block">من مخزون فرعك — متاح ' + qn(mine ? Math.max(0, mine.available) : 0) + '</span></span></button>'
+        + '<button class="pickline" data-ch="req">' + ICON.truck + '<span class="grow"><b>اطلب من فرعٍ آخر أو المخزن</b>'
+        + '<span class="muted" style="display:block">لفرعك، بموافقة مدير الفروع</span></span></button>');
+      $('[data-ch="cart"]', ov).onclick = function(){ ov.remove(); toCart(); };
+      $('[data-ch="req"]', ov).onclick = function(){ ov.remove(); openStockRequest(p, sel); };
     };
   }
   // كل متغيرات المنتج: صفٌّ لكل لون ومقاساته أزرار (أو صفٌّ واحد لخاصيةٍ واحدة)، والرقم المتاح في الفرع المختار
@@ -1771,7 +1808,7 @@
     var day = new Date().toLocaleDateString("ar-u-nu-latn", {weekday: "long"});
     var skel = '<div class="card br-card"><div class="skel" style="height:18px;width:45%"></div><div class="skel" style="height:26px;width:60%;margin-top:12px"></div>'
       + '<div class="skel" style="height:44px;margin-top:12px"></div></div>';
-    main.innerHTML = installCardHtml() + mgrBarHtml()
+    main.innerHTML = installCardHtml() + mgrBarHtml() + mgrActionsHtml() + pushCardHtml()
       + '<div class="home-hero"><div class="row" style="align-items:flex-start;position:relative;z-index:1"><div class="grow">'
       + '<div class="hi">' + (new Date().getHours() < 12 ? "صباح الخير" : "مساء الخير") + ' · ' + esc(day) + '</div>'
       + '<div class="who ellip">' + esc(String(me.name || "").trim().split(/\s+/)[0]) + '</div>'
@@ -1783,7 +1820,7 @@
       + '<div class="kpi ov"><b class="num" id="ovWait">–</b><span>بانتظارك</span></div></div></div>'
       + '<div class="seg" id="ovSeg"><button data-p="today">اليوم</button><button data-p="week">الأسبوع</button><button data-p="month">الشهر</button></div>'
       + '<div id="ovBody">' + skel + skel + '</div>';
-    wireInstallCard(); wireMgrBar();
+    wireInstallCard(); wireMgrBar(); wireMgrActions(); wirePushCard(main);
     $("#rf").onclick = screenHome;
     var seg = $$("#ovSeg button");
     var load = function(){
@@ -1807,6 +1844,7 @@
     var cell = function(v, k){ return '<div><b class="num">' + v + '</b><span>' + k + '</span></div>'; };
     $("#ovBody").innerHTML = (rows.length ? rows.map(function(b){
       var alerts = [];
+      if (b.requests) alerts.push('<span class="pill p-warn">' + b.requests + ' طلب بضاعة</span>');
       if (b.visits) alerts.push('<span class="pill p-warn">' + b.visits + ' طلب عمل في فرعٍ آخر</span>');
       if (b.receipts) alerts.push('<span class="pill p-info">' + b.receipts + ' بانتظار الاستلام</span>');
       if (b.counting) alerts.push('<span class="pill p-sub">جردٌ جارٍ</span>');
@@ -1823,7 +1861,292 @@
     }).join("") : '<div class="empty"><b>لا فروع</b>اطلب من الإدارة تحديد فروعك.</div>')
       + '<div class="muted" style="text-align:center;margin:4px 0 2px">المبيعات من كاشير كل فرع (ومنها طلبات التطبيق)، والمرتجع ينقصها · ' + esc(fmtDate(d.updated)) + '</div>';
     $$("[data-ob]").forEach(function(c){ c.onclick = function(){ enterBranch(+c.getAttribute("data-ob")); }; });
+    setApvBadge(d.approvals || 0);
   }
+
+  // ════════════ موافقات مدير الفروع ════════════
+  // زرّان أعلى رئيسيته (في «كل الفروع» وفي أي فرع): الموافقات بعدّادها، والموظفون وصلاحياتهم.
+  function mgrActionsHtml(){
+    if (!isManager()) return '';
+    return '<div class="tiles mgr-actions"><button class="tile" id="goApv"><span class="avatar">' + ICON.check + '</span><span class="grow"><b>الموافقات</b>'
+      + '<span class="muted">البضاعة والعمل في فرعٍ آخر</span></span><span class="badge num apvN" hidden></span></button>'
+      + '<button class="tile" id="goStaff"><span class="avatar">' + ICON.user + '</span><span class="grow"><b>الموظفون</b>'
+      + '<span class="muted">الصلاحيات</span></span></button></div>';
+  }
+  function wireMgrActions(){
+    if ($("#goApv")) $("#goApv").onclick = function(){ screenApprovals(); };
+    if ($("#goStaff")) $("#goStaff").onclick = screenStaff;
+    setApvBadge(apvCount);
+  }
+  // عدّاد الموافقات: شارة «لوحتي» وزرّ الموافقات وأيقونة التطبيق نفسها (على الجوال، خارج التطبيق)
+  var apvCount = 0, apvTimer = null;
+  function setApvBadge(n){
+    apvCount = n || 0;
+    [$("#navApv")].concat($$(".apvN")).forEach(function(b){ if (b){ b.textContent = apvCount; b.hidden = !apvCount; } });
+    try { if (navigator.setAppBadge){ if (apvCount) navigator.setAppBadge(apvCount); else navigator.clearAppBadge(); } } catch(e){}
+  }
+  function refreshApprovals(){
+    if (!token || !isManager()) return;
+    api("/approvals/count").then(function(d){ setApvBadge(d.count); }).catch(function(){});
+  }
+  function startApprovalsWatch(){
+    clearInterval(apvTimer);
+    if (!isManager()) return;
+    refreshApprovals();
+    apvTimer = setInterval(function(){ if (document.visibilityState === "visible") refreshApprovals(); }, 60000);
+  }
+  document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") refreshApprovals(); });
+
+  function screenApprovals(tab){
+    if (!isManager()) return screenDash();
+    view = {name: "approvals"}; setNav("dash"); updateCartUI();
+    tab = tab || "stock";
+    main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">الموافقات</span>'
+      + '<button class="icon-btn" id="rf" aria-label="تحديث">' + ICON.refresh + '</button></div>' + pushCardHtml()
+      + '<div class="seg" id="apSeg"><button data-t="stock">البضاعة <b class="num" id="apNs"></b></button><button data-t="visits">العمل في فرعٍ آخر <b class="num" id="apNv"></b></button>'
+      + '<button data-t="recent">آخر القرارات</button></div><div id="apBody"><div class="spin"></div></div>';
+    $("#bk").onclick = function(){ screenHome(); };
+    $("#rf").onclick = function(){ screenApprovals(tab); };
+    wirePushCard(main);
+    $$("#apSeg button").forEach(function(b){ b.classList.toggle("on", b.getAttribute("data-t") === tab);
+      b.onclick = function(){ screenApprovals(b.getAttribute("data-t")); }; });
+    api("/approvals").then(function(d){
+      if (view.name !== "approvals") return;
+      setApvBadge(d.count);
+      $("#apNs").textContent = d.stock.length ? "(" + d.stock.length + ")" : "";
+      $("#apNv").textContent = d.visits.length ? "(" + d.visits.length + ")" : "";
+      renderApprovals(d, tab);
+    }).catch(function(e){ $("#apBody").innerHTML = '<div class="empty"><b>تعذّر الجلب</b>' + esc(e.message) + '</div>'; });
+  }
+  function renderApprovals(d, tab){
+    var box = $("#apBody"), h = "";
+    if (tab === "stock"){
+      h = d.stock.length ? d.stock.map(function(r){
+        return '<div class="card apv">' + requestHeadHtml(r)
+          + '<div class="kv"><span>لفرع</span><b>' + esc(r.branch) + '</b></div>'
+          + '<div class="kv"><span>من</span><b>' + esc(r.source) + ' <span class="pill ' + (r.from_branch ? 'p-info">فرع' : 'p-sub">مخزن') + '</span></b></div>'
+          + '<div class="kv"><span>طلبه</span><span>' + esc(r.by) + ' · ' + esc(ago(r.created)) + '</span></div>'
+          + (r.note ? '<div class="note" style="margin:8px 0 0">' + esc(r.note) + '</div>' : '')
+          + '<div class="row" style="gap:8px;margin-top:12px"><button class="btn gold sm grow" data-sok="' + r.id + '">' + ICON.check + ' موافقة — حوّل البضاعة</button>'
+          + '<button class="btn soft sm" data-sno="' + r.id + '">رفض</button></div></div>';
+      }).join("") : '<div class="empty">' + ICON.check + '<b>لا طلبات بضاعة تنتظرك</b>يطلبها الموظفون من استعلام المخزون في فروعك.</div>';
+    } else if (tab === "visits"){
+      h = d.visits.length ? '<div class="list">' + d.visits.map(function(v){
+        return '<div class="li visit-req"><div class="avatar">' + esc(initials(v.seller)) + '</div><div class="grow"><div><b>' + esc(v.seller) + '</b></div>'
+          + '<div class="muted">من ' + esc(v.home) + ' ← يعمل في ' + esc(v.target) + (v.note ? ' · ' + esc(v.note) : '') + ' · ' + esc(ago(v.requested)) + '</div>'
+          + '<div class="row" style="gap:8px;margin-top:8px"><button class="btn gold sm" data-vok="' + v.id + '">موافقة</button>'
+          + '<button class="btn soft sm" data-vno="' + v.id + '">رفض</button></div></div></div>';
+      }).join("") + '</div>' : '<div class="empty">' + ICON.check + '<b>لا طلبات عمل في فرعٍ آخر تنتظرك</b></div>';
+    } else {
+      h = d.recent.length ? '<div class="list">' + d.recent.map(requestRowHtml).join("") + '</div>'
+        : '<div class="empty"><b>لا قرارات في آخر أسبوع</b></div>';
+    }
+    box.innerHTML = h;
+    wireThumbs(box);
+    var decide = function(path, body, msg){ return api(path, {method: "POST", body: body}).then(function(){ toast(msg); screenApprovals(tab); })
+      .catch(function(e){ toast(e.message); screenApprovals(tab); }); };
+    $$("[data-sok]", box).forEach(function(b){ b.onclick = function(){ b.disabled = true;
+      decide("/stock-requests/" + b.getAttribute("data-sok") + "/decide", {approve: true}, "تمت الموافقة — أُنشئ التحويل"); }; });
+    $$("[data-sno]", box).forEach(function(b){ b.onclick = function(){
+      var why = prompt("سبب الرفض (اختياري):", ""); if (why === null) return;
+      decide("/stock-requests/" + b.getAttribute("data-sno") + "/decide", {approve: false, reason: why}, "رُفض الطلب"); }; });
+    $$("[data-vok]", box).forEach(function(b){ b.onclick = function(){ b.disabled = true;
+      decide("/visits/" + b.getAttribute("data-vok") + "/decide", {approve: true}, "تمت الموافقة — انتقل للفرع الآخر"); }; });
+    $$("[data-vno]", box).forEach(function(b){ b.onclick = function(){
+      var why = prompt("سبب الرفض (اختياري):", ""); if (why === null) return;
+      decide("/visits/" + b.getAttribute("data-vno") + "/decide", {approve: false, reason: why}, "رُفض الطلب"); }; });
+  }
+
+  // ════════════ طلبات البضاعة ════════════
+  // من استعلام المخزون: صنفٌ لفرع الموظف من فرعٍ آخر أو المخزن، بموافقة مدير الفروع فيُنشأ تحويلٌ يستلمه الفرع.
+  var REQ_PILL = {pending: "p-warn", approved: "p-info", done: "p-good", rejected: "p-bad", cancelled: "p-sub"};
+  function requestHeadHtml(r){
+    return '<div class="row">' + thumbHtml(r.product_id) + '<div class="grow"><div style="font-weight:800" class="ellip">' + esc(r.product) + '</div>'
+      + '<div class="muted num" dir="ltr" style="text-align:right">' + esc(r.code) + '</div></div>'
+      + '<div style="text-align:center"><b class="num" style="font-size:22px">' + qn(r.qty) + '</b><div class="muted">' + esc(r.uom || "قطعة") + '</div></div></div>';
+  }
+  function requestRowHtml(r, opts){
+    opts = opts || {};
+    return '<div class="li"><div class="avatar">' + ICON.truck + '</div><div class="grow"><div style="font-weight:800" class="ellip">' + qn(r.qty) + ' × ' + esc(r.product) + '</div>'
+      + '<div class="muted">' + (opts.outgoing ? 'إلى ' + esc(r.branch) : 'من ' + esc(r.source) + (opts.branch ? ' ← ' + esc(r.branch) : ''))
+      + ' · ' + esc(r.by) + ' · ' + esc(ago(r.created)) + (r.picking ? ' · <span class="num">' + esc(r.picking) + '</span>' : '') + '</div>'
+      + (r.reason ? '<div class="muted" style="color:var(--bad)">' + esc(r.reason) + '</div>' : '')
+      + (opts.cancel && r.state === "pending" ? '<button class="linkbtn" data-rcancel="' + r.id + '" style="color:var(--bad);width:auto;padding:4px 0">إلغاء الطلب</button>' : '')
+      + '</div><span class="pill ' + (REQ_PILL[r.state] || "p-sub") + '">' + esc(r.state_label) + '</span></div>';
+  }
+  function screenStockRequests(){
+    view = {name: "requests"}; setNav("products"); updateCartUI();
+    main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">طلبات البضاعة</span>'
+      + '<button class="icon-btn" id="rf" aria-label="تحديث">' + ICON.refresh + '</button></div>' + pushCardHtml() + '<div id="srBody"><div class="spin"></div></div>';
+    $("#bk").onclick = screenProducts;
+    $("#rf").onclick = screenStockRequests;
+    wirePushCard(main);
+    api("/stock-requests").then(function(d){
+      if (view.name !== "requests") return;
+      var h = "";
+      if (d.outgoing.length) h += '<div class="shead"><b>مطلوبة من فرعك — جهّزها وأرسلها</b><span class="n num">' + d.outgoing.length + '</span></div>'
+        + '<div class="list">' + d.outgoing.map(function(r){ return requestRowHtml(r, {outgoing: true}); }).join("") + '</div>';
+      h += '<div class="shead"><b>طلبات فرعك</b></div>'
+        + (d.mine.length ? '<div class="list">' + d.mine.map(function(r){ return requestRowHtml(r, {cancel: true}); }).join("") + '</div>'
+          : '<div class="empty">' + ICON.truck + '<b>لا طلبات بعد</b>' + (d.can_request ? 'امسح القطعة من «باركود» ← «أضف للطلب» ← «اطلب من فرعٍ آخر أو المخزن».' : '') + '</div>');
+      if (d.mine.some(function(r){ return r.state === "approved"; }))
+        h += '<div class="muted" style="margin:8px 4px">ما وافق عليه المدير يصلك في «استلام المخزن» فتعدّه وتعتمده.</div>';
+      $("#srBody").innerHTML = h;
+      $$("[data-rcancel]").forEach(function(b){ b.onclick = function(){
+        if (!confirm("تلغي طلب البضاعة؟")) return;
+        api("/stock-requests/" + b.getAttribute("data-rcancel") + "/cancel", {method: "POST", body: {}})
+          .then(function(){ toast("أُلغي الطلب"); screenStockRequests(); }).catch(function(e){ toast(e.message); });
+      }; });
+    }).catch(function(e){ $("#srBody").innerHTML = '<div class="empty"><b>تعذّر الجلب</b>' + esc(e.message) + '</div>'; });
+  }
+  // نافذة الطلب: من أين (فرعٌ آخر فيه متاح، أو مخزن فيه كمية)، وكم، وملاحظة
+  function openStockRequest(p, sel){
+    var sources = (sel.branches || []).filter(function(b){ return !b.mine && b.available > 0 && b.location_id; })
+      .map(function(b){ return {id: b.location_id, name: b.name, qty: b.available, kind: "فرع"}; })
+      .concat((sel.warehouses || []).filter(function(w){ return w.qty > 0; })
+        .map(function(w){ return {id: w.location_id, name: w.name, qty: w.qty, kind: "مخزن"}; }));
+    var ov = sheet("اطلب البضاعة لفرعك",
+      '<div class="card row" style="margin-bottom:10px">' + thumbHtml(sel.id) + '<div class="grow"><div style="font-weight:800">' + esc(p.template || sel.name) + '</div>'
+      + (sel.attrs ? '<span class="pill p-info">' + esc(sel.attrs) + '</span>' : '')
+      + '<div class="muted num" dir="ltr" style="text-align:right">' + esc(sel.code || sel.barcode || "") + '</div></div></div>'
+      + (sources.length ? '<div class="lbl">من أين؟</div><div class="list">' + sources.map(function(s, i){
+          return '<label class="li" style="cursor:pointer"><input type="radio" name="srSrc" value="' + s.id + '" data-qty="' + s.qty + '"' + (i ? '' : ' checked') + ' style="width:auto;margin:0">'
+            + '<div class="avatar">' + (s.kind === "فرع" ? ICON.store : ICON.box) + '</div><div class="grow"><b>' + esc(s.name) + '</b> <span class="pill ' + (s.kind === "فرع" ? "p-info" : "p-sub") + '">' + s.kind + '</span></div>'
+            + '<div style="text-align:left"><b class="num" style="color:var(--good)">' + qn(s.qty) + '</b><div class="muted">متاح</div></div></label>';
+        }).join("") + '</div>'
+        + '<div class="lbl" style="margin-top:12px">الكمية</div><input id="srQty" class="num" type="number" inputmode="numeric" min="1" dir="ltr" value="1" style="font-size:22px;text-align:center;font-weight:800">'
+        + '<div class="lbl" style="margin-top:12px">ملاحظة (اختياري)</div><textarea id="srNote" rows="2" placeholder="مثلًا: زبونة تنتظر المقاس"></textarea>'
+        + '<button class="btn gold" id="srSend" style="margin-top:12px">' + ICON.truck + ' أرسل الطلب لمدير الفروع</button>'
+        + '<div class="muted" style="margin-top:8px">بعد موافقة مدير الفروع يُنشأ تحويلٌ من المصدر لفرعك، ويصلك في «استلام المخزن».</div>'
+      : '<div class="empty"><b>غير متوفر</b>لا قطعة منه في فرعٍ آخر ولا في المخازن الآن.</div>'));
+    wireThumbs(ov);
+    if (!$("#srSend", ov)) return;
+    $("#srSend", ov).onclick = function(){
+      var b = this, pick = $("input[name=srSrc]:checked", ov), qty = Math.floor(+$("#srQty", ov).value);
+      if (!pick) return;
+      if (!(qty > 0)){ toast("اكتب الكمية"); $("#srQty", ov).focus(); return; }
+      var avail = +pick.getAttribute("data-qty");
+      if (qty > avail){ toast("المتاح هناك " + qn(avail) + " فقط"); $("#srQty", ov).value = avail; return; }
+      b.disabled = true;
+      api("/stock-requests", {method: "POST", body: {product_id: sel.id, qty: qty, source_location_id: +pick.value, note: $("#srNote", ov).value}})
+        .then(function(r){ ov.remove(); toast("أُرسل الطلب " + r.name + " لمدير الفروع"); })
+        .catch(function(e){ b.disabled = false; toast(e.message); });
+    };
+  }
+
+  // ════════════ الموظفون والصلاحيات (مدير الفروع) ════════════
+  function screenStaff(){
+    if (!isManager()) return screenDash();
+    view = {name: "staff"}; setNav("dash"); updateCartUI();
+    main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">الموظفون والصلاحيات</span></div>'
+      + '<input id="stQ" placeholder="ابحث بالاسم أو رقم الدخول" style="margin-bottom:10px"><div id="stBody"><div class="spin"></div></div>';
+    $("#bk").onclick = function(){ screenHome(); };
+    api("/staff").then(function(d){
+      if (view.name !== "staff") return;
+      var draw = function(){
+        var q = $("#stQ").value.trim().toLowerCase(), groups = {}, order = [];
+        d.staff.filter(function(s){ return !q || (s.name + " " + s.login).toLowerCase().indexOf(q) >= 0; }).forEach(function(s){
+          if (!(s.branch in groups)){ groups[s.branch] = []; order.push(s.branch); } groups[s.branch].push(s); });
+        $("#stBody").innerHTML = order.length ? order.map(function(br){
+          return '<div class="shead"><b>' + esc(br || "بلا فرع") + '</b><span class="n num">' + groups[br].length + '</span></div><div class="list">'
+            + groups[br].map(function(s){
+              var on = d.labels.filter(function(l){ return s.perms[l.key]; }).length;
+              return '<button class="li" data-st="' + s.id + '" style="width:100%;text-align:inherit;font:inherit;color:inherit;cursor:pointer">'
+                + '<div class="avatar">' + esc(initials(s.name)) + '</div><div class="grow"><b class="ellip" style="display:block">' + esc(s.name) + '</b>'
+                + '<div class="muted">' + [s.role_label, s.shift, s.section, s.away ? "يعمل الآن في " + s.away : ""].filter(Boolean).map(esc).join(" · ") + '</div></div>'
+                + (s.locked ? '<span class="pill p-bad">مقفل</span>' : '') + '<span class="pill p-sub num">' + on + '/' + d.labels.length + '</span></button>';
+            }).join("") + '</div>';
+        }).join("") : '<div class="empty"><b>لا موظفين</b></div>';
+        $$("[data-st]").forEach(function(b){ b.onclick = function(){
+          var s = d.staff.filter(function(x){ return x.id === +b.getAttribute("data-st"); })[0];
+          openStaffSheet(s, d.labels, function(n){ d.staff[d.staff.indexOf(s)] = n; draw(); });
+        }; });
+      };
+      $("#stQ").oninput = draw;
+      draw();
+    }).catch(function(e){ $("#stBody").innerHTML = '<div class="empty"><b>تعذّر الجلب</b>' + esc(e.message) + '</div>'; });
+  }
+  function openStaffSheet(s, labels, done){
+    var ov = sheet(s.name, '<div class="muted" style="margin-bottom:8px">' + [s.role_label, s.branch, s.shift].filter(Boolean).map(esc).join(" · ")
+      + ' · <span class="num" dir="ltr">' + esc(s.login) + '</span></div>'
+      + '<div class="card">' + labels.map(function(l){
+        return '<label class="kv sw"><span>' + esc(l.label) + '</span><input type="checkbox" data-perm="' + l.key + '"' + (s.perms[l.key] ? ' checked' : '') + '></label>'
+          + (l.key === "can_edit_price" ? '<div class="kv" id="stDisc"' + (s.perms.can_edit_price ? '' : ' hidden') + '><span class="muted">أقصى خصم %</span>'
+            + '<input id="stMax" class="num price-in" type="number" min="0" max="100" inputmode="decimal" value="' + s.max_discount + '"></div>' : '');
+      }).join("") + '</div>'
+      + '<button class="btn gold" id="stSave">' + ICON.check + ' حفظ الصلاحيات</button>'
+      + '<div class="muted" style="margin-top:8px">الدور والفرع والشيفت ورمز الدخول من أودو. وكل تعديلٍ هنا يُكتب في سجل الموظف باسمك.</div>');
+    var price = $('[data-perm="can_edit_price"]', ov);
+    if (price) price.onchange = function(){ $("#stDisc", ov).hidden = !this.checked; };
+    $("#stSave", ov).onclick = function(){
+      var b = this, perms = {};
+      $$("[data-perm]", ov).forEach(function(c){ perms[c.getAttribute("data-perm")] = c.checked; });
+      if ($("#stMax", ov)) perms.max_discount = +$("#stMax", ov).value;
+      b.disabled = true;
+      api("/staff/" + s.id, {method: "POST", body: {perms: perms}}).then(function(n){ ov.remove(); toast("حُفظت صلاحيات " + s.name); done(n); })
+        .catch(function(e){ b.disabled = false; toast(e.message); });
+    };
+  }
+
+  // ════════════ إشعارات الجوال ════════════
+  // تصل والتطبيق مغلق: طلب بضاعة أو موافقة لمدير الفروع، وقراره للطالب، و«جهّز» للفرع المصدر. على الآيفون بعد تثبيت
+  // التطبيق على الشاشة الرئيسية (iOS 16.4 فأحدث). الموافقة على الإشعارات بلمسةٍ من الموظف (شرط المتصفح).
+  function pushSupported(){ return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; }
+  function isStandalone(){ return (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true; }
+  function pushWanted(){ return isManager() || isBoss() || can("request_stock") || can("receive_stock"); }
+  function pushCardHtml(){
+    if (!me || !pushWanted()) return '';
+    var ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    if (!pushSupported()){
+      return ios && !isStandalone() ? '<div class="note push-card">لتصلك الإشعارات على الآيفون: ثبّت التطبيق على الشاشة الرئيسية (مشاركة ← «إضافة إلى الشاشة الرئيسية») ثم افتحه منها.</div>' : '';
+    }
+    if (Notification.permission === "granted") return '';
+    if (Notification.permission === "denied") return '<div class="note push-card">الإشعارات مقفولة لهذا التطبيق — فعّلها من إعدادات الجوال ← الإشعارات.</div>';
+    return '<div class="card push-card row"><div class="avatar">' + ICON.check + '</div><div class="grow"><b>فعّل إشعارات الجوال</b>'
+      + '<div class="muted">يصلك الطلب والموافقة فورًا، والتطبيق مغلق.</div></div><button class="btn gold sm" data-push>تفعيل</button></div>';
+  }
+  function wirePushCard(root){
+    $$("[data-push]", root).forEach(function(b){ b.onclick = function(){ b.disabled = true;
+      enablePush().then(function(ok){ if (ok){ var c = b.closest(".push-card"); if (c) c.remove(); } else b.disabled = false; }); }; });
+  }
+  function b64ToBytes(s){
+    var pad = "=".repeat((4 - s.length % 4) % 4), raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/")), out = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  function sendSubscription(sub){
+    var j = sub.toJSON();
+    return api("/push/subscribe", {method: "POST", body: {endpoint: j.endpoint, keys: j.keys, device: navigator.userAgent.slice(0, 120)}});
+  }
+  function enablePush(){
+    if (!pushSupported()){ toast("الجوال لا يدعم الإشعارات هنا — ثبّت التطبيق على الشاشة الرئيسية"); return Promise.resolve(false); }
+    return Notification.requestPermission().then(function(p){
+      if (p !== "granted"){ toast("لم تُفعَّل الإشعارات"); return false; }
+      return Promise.all([navigator.serviceWorker.ready, api("/push/key")]).then(function(r){
+        var reg = r[0], key = r[1].key;
+        return reg.pushManager.getSubscription().then(function(old){
+          return old || reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64ToBytes(key)});
+        });
+      }).then(sendSubscription).then(function(){ toast("فُعّلت الإشعارات ✓"); return true; });
+    }).catch(function(e){ toast(e.message || "تعذّر تفعيل الإشعارات"); return false; });
+  }
+  // عند الدخول: جوالٌ وافق قبلُ يُربط بالموظف الداخل الآن (قد يتبدّل الموظفون على جوالٍ واحد)
+  function syncPush(){
+    if (!pushSupported() || Notification.permission !== "granted" || !token) return;
+    navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); })
+      .then(function(sub){ if (sub) return sendSubscription(sub); }).catch(function(){});
+  }
+  // لمس الإشعار والتطبيق مفتوح: يذهب للشاشة المعنيّة
+  function goTo(go){
+    if (go === "approvals" && isManager()) screenApprovals();
+    else if (go === "requests") screenStockRequests();
+    else screenDash();
+  }
+  if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", function(e){
+    if (e.data && e.data.type === "sales-go" && me){
+      try { goTo(new URL(e.data.url).searchParams.get("go")); } catch(err){}
+    }
+  });
   function refreshMe(msg){
     return api("/me?fresh=1").then(function(u){
       var moved = !me.pos || !u.pos || me.pos.id !== u.pos.id;
@@ -1907,7 +2230,7 @@
     view = {name: "dash", user: null}; setNav("dash"); updateCartUI();
     var req = ++homeReq, live = function(){ return req === homeReq && view.name === "dash" && !view.user; };
     var stock = can("count") || can("receive_stock");
-    main.innerHTML = installCardHtml() + (isManager() ? mgrBarHtml() : '') + homeHeroHtml() + '<div id="hVisit"></div>' + homeActionsHtml()
+    main.innerHTML = installCardHtml() + (isManager() ? mgrBarHtml() + mgrActionsHtml() : '') + homeHeroHtml() + '<div id="hVisit"></div>' + homeActionsHtml()
       + (can("internal") ? '<div id="hIn"></div><div id="hOpen">' + homeSkeleton(can("view_all") ? "الطلبات المفتوحة" : "طلباتي المفتوحة") + '</div>' : '')
       + (can("create_link") ? '<div id="hLinks">' + homeSkeleton("لينكات بانتظار الدفع") + '</div>' : '')
       + (can("view_all") ? '<div class="shead"><b>أداء المبيعات</b></div>' + periodSegHtml() + '<div id="dashBody"><div class="spin"></div></div>' : '')
@@ -1915,7 +2238,7 @@
         : '<div class="mini-empty">' + (stock ? "الاستلام والجرد في «المنتجات»." : "لا مهام لك الآن.") + '</div>');
     wireInstallCard(); wireClaim(main);
     $("#rf").onclick = screenHome;
-    wireMgrBar();
+    wireMgrBar(); wireMgrActions();
     $$("[data-new]", main).forEach(function(b){ b.onclick = function(){ var m = b.getAttribute("data-new"); if (m === mode) screenNew(); else setMode(m); }; });
     $$("[data-k]", main).forEach(function(b){ b.onclick = function(){ homeGo(b.getAttribute("data-k")); }; });
     if (can("view_all")) wirePeriodSeg(function(){ if ($("#dashBody")) $("#dashBody").innerHTML = '<div class="spin"></div>'; loadDash(null); });
