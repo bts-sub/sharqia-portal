@@ -742,7 +742,7 @@
     var go = new URLSearchParams(location.search).get("go");
     if (go === "new") screenNew(); else if (go === "scan"){ screenDash(); openScanner(); }
     else if (go === "count" && can("count")) screenCounts();
-    else if (go === "approvals" || go === "requests" || go === "incoming") goTo(go);       // من إشعار الجوال
+    else if (go === "approvals" || go === "requests" || go === "incoming" || go === "return") goTo(go, new URLSearchParams(location.search).get("key"));       // من إشعار الجوال
     else screenDash();
     syncPush(); startApprovalsWatch();
   }
@@ -2070,7 +2070,7 @@
       + '<button class="tile" id="goStaff"><span class="avatar">' + ICON.user + '</span><span class="grow"><b>الموظفون</b>'
       + '<span class="muted">الصلاحيات</span></span></button>'
       + '<button class="tile wide" id="goSet"><span class="avatar">' + ICON.lock + '</span><span class="grow"><b>الإعدادات</b>'
-      + '<span class="muted">قواعد الطلبات والعملاء والشحن</span></span></button></div>';
+      + '<span class="muted">الطلبات والعملاء والشحن والمرتجع</span></span></button></div>';
   }
   // ════════════ إعدادات مدير الفروع ════════════
   // قواعد للشركة كلها، تسري على الموظفين فورًا في أودو (ويظهر أثرها في تطبيقاتهم عند فتحها من جديد)
@@ -2078,14 +2078,30 @@
     {key: "require_customer", label: "العميل إجباري في الطلبات", hint: "لا يُحفظ طلب معرضٍ ولا يُرسل للكاشير بلا عميل. المرتجع والاستبدال عميلهما من الفاتورة."},
     {key: "require_phone", label: "جوال العميل إجباري عند إضافته", hint: "العميل الجديد باسمه وجواله معًا (الاسم مطلوبٌ دائمًا)."},
   ];
+  // قواعد المرتجع والاستبدال الفعلية (نص السياسة المطبوع على الفاتورة لا يتغيّر بها)
+  var RETURN_RULES = [
+    {key: "return_approval", label: "خارج المدة: بموافقتي", hint: "البائع يطلب موافقتك على فاتورةٍ بعينها (استرجاع أو استبدال) فتصلك في «الموافقات» بإشعار، وتصلح اليوم وغدًا."},
+    {key: "return_manager_free", label: "أرجّع وأستبدل بنفسي بلا مدة", hint: "من «مرتجع / استبدال» في التطبيق، لأي فاتورةٍ في فروعك مهما مرّ عليها."},
+  ];
+  function ruleRowHtml(r){
+    return '<label class="kv sw" style="align-items:flex-start"><span><b style="display:block">' + esc(r.label) + '</b><span class="muted" style="font-size:12.5px">' + esc(r.hint) + '</span></span>'
+      + '<input type="checkbox" data-rule="' + r.key + '"' + (rule(r.key) ? ' checked' : '') + '></label>';
+  }
   function screenSettings(){
     if (!isManager()) return screenHome();
     view = {name: "settings"}; setNav("dash"); updateCartUI();
+    var R = me.rules || {};
+    var days = function(v, d){ v = Number(v); return isFinite(v) && v >= 0 ? v : d; };
     main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">الإعدادات</span></div>'
-      + '<div class="card">' + RULES.map(function(r){
-        return '<label class="kv sw" style="align-items:flex-start"><span><b style="display:block">' + esc(r.label) + '</b><span class="muted" style="font-size:12.5px">' + esc(r.hint) + '</span></span>'
-          + '<input type="checkbox" data-rule="' + r.key + '"' + (rule(r.key) ? ' checked' : '') + '></label>';
-      }).join("") + '</div>'
+      + '<div class="card">' + RULES.map(ruleRowHtml).join("") + '</div>'
+      + '<div class="card" id="retCard"><div class="h2">' + ICON.swap + '<span class="grow">المرتجع والاستبدال</span></div>'
+      + '<div class="muted" style="font-size:12.5px;margin-bottom:4px">لكل الفروع. نص السياسة المطبوع على الفاتورة يفضل زي ما هو.</div>'
+      + ruleRowHtml({key: "return_open", label: "مفتوح بلا مدة", hint: "يرجّع ويستبدل الموظف من أي فاتورةٍ مدفوعة في فرعه مهما مرّ عليها."})
+      + '<div id="retTimed"' + (rule("return_open") ? ' hidden' : '') + '>'
+      + '<div class="row" style="gap:10px;margin:10px 0 6px"><div class="grow"><div class="lbl">أيام الاسترجاع (يرجع المبلغ)</div><input class="num" id="retDaysIn" type="number" min="0" step="1" inputmode="numeric" value="' + days(R.return_days, 1) + '"></div>'
+      + '<div class="grow"><div class="lbl">أيام الاستبدال</div><input class="num" id="excDaysIn" type="number" min="0" step="1" inputmode="numeric" value="' + days(R.exchange_days, 3) + '"></div></div>'
+      + '<div class="muted" style="font-size:12.5px;margin-bottom:6px">بعد يوم الفاتورة: 0 = يومها فقط، 1 = لآخر اليوم التالي. بعد أيام الاسترجاع وحتى أيام الاستبدال يُستبدل فقط والبديل بنفس القيمة أو أكتر.</div>'
+      + RETURN_RULES.map(ruleRowHtml).join("") + '</div></div>'
       + '<div class="card"><div class="h2">' + ICON.truck + '<span class="grow">مبلغ الشحن على لينك الدفع</span></div>'
       + '<div class="muted" style="font-size:12.5px;margin-bottom:10px">البائع يكتب مبلغ الشحن بنفسه (شامل الضريبة) في هذه الحدود، ويُضاف على الفاتورة «خدمة شحن». «استلام من المعرض» بلا مبلغ.</div>'
       + '<div class="row" style="gap:10px"><div class="grow"><div class="lbl">أقل مبلغ</div><input class="num" id="shipMin" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0" value="' + (Number(me.rules && me.rules.shipping_min) || "") + '"></div>'
@@ -2093,9 +2109,15 @@
       + '<button class="btn gold" id="setSave">' + ICON.check + ' حفظ الإعدادات</button>'
       + '<div class="muted" style="margin-top:8px">تسري على كل الفروع والموظفين، ويُكتب كل تغييرٍ في سجلك. وتُغيَّر من أودو أيضًا (تطبيق المبيعات ← إعدادات التطبيق).</div>';
     $("#bk").onclick = function(){ screenHome(); };
+    $('[data-rule="return_open"]').onchange = function(){ $("#retTimed").hidden = this.checked; };
     $("#setSave").onclick = function(){
       var b = this, rules = {};
       $$("[data-rule]").forEach(function(c){ rules[c.getAttribute("data-rule")] = c.checked; });
+      var rd = $("#retDaysIn").value.trim(), xd = $("#excDaysIn").value.trim();
+      rules.return_days = rd === "" ? 0 : Number(rd); rules.exchange_days = xd === "" ? 0 : Number(xd);
+      if (!Number.isInteger(rules.return_days) || !Number.isInteger(rules.exchange_days) || rules.return_days < 0 || rules.exchange_days < 0){
+        toast("الأيام عددٌ صحيح من 0"); $("#retDaysIn").focus(); return; }
+      if (rules.exchange_days < rules.return_days){ toast("أيام الاستبدال لا تقلّ عن أيام الاسترجاع"); $("#excDaysIn").focus(); return; }
       var lo = $("#shipMin").value.trim(), hi = $("#shipMax").value.trim();
       rules.shipping_min = lo === "" ? 0 : Number(lo); rules.shipping_max = hi === "" ? 0 : Number(hi);
       if (!(rules.shipping_min >= 0) || !(rules.shipping_max >= 0)){ toast("حدود مبلغ الشحن أرقامٌ موجبة"); return; }
@@ -2133,10 +2155,10 @@
   function screenApprovals(tab){
     if (!isManager()) return screenDash();
     view = {name: "approvals"}; setNav("dash"); updateCartUI();
-    tab = tab || "stock";
+    var auto = !tab; tab = tab || "stock";      // بلا تبويب (من الإشعار أو الزر): أول تبويبٍ فيه ما ينتظر
     main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow">الموافقات</span>'
       + '<button class="icon-btn" id="rf" aria-label="تحديث">' + ICON.refresh + '</button></div>' + pushCardHtml()
-      + '<div class="seg" id="apSeg"><button data-t="stock">البضاعة <b class="num" id="apNs"></b></button><button data-t="visits">العمل في فرعٍ آخر <b class="num" id="apNv"></b></button>'
+      + '<div class="seg" id="apSeg"><button data-t="stock">البضاعة <b class="num" id="apNs"></b></button><button data-t="returns">المرتجع <b class="num" id="apNr"></b></button><button data-t="visits">العمل في فرعٍ آخر <b class="num" id="apNv"></b></button>'
       + '<button data-t="recent">آخر القرارات</button></div><div id="apBody"><div class="spin"></div></div>';
     $("#bk").onclick = function(){ screenHome(); };
     $("#rf").onclick = function(){ screenApprovals(tab); };
@@ -2148,6 +2170,9 @@
       setApvBadge(d.count);
       $("#apNs").textContent = d.stock.length ? "(" + d.stock.length + ")" : "";
       $("#apNv").textContent = d.visits.length ? "(" + d.visits.length + ")" : "";
+      $("#apNr").textContent = (d.returns || []).length ? "(" + d.returns.length + ")" : "";
+      if (auto && !d.stock.length) tab = (d.returns || []).length ? "returns" : d.visits.length ? "visits" : "stock";
+      $$("#apSeg button").forEach(function(b){ b.classList.toggle("on", b.getAttribute("data-t") === tab); });
       renderApprovals(d, tab);
     }).catch(function(e){ $("#apBody").innerHTML = '<div class="empty"><b>تعذّر الجلب</b>' + esc(e.message) + '</div>'; });
   }
@@ -2163,6 +2188,20 @@
           + '<div class="row" style="gap:8px;margin-top:12px"><button class="btn gold sm grow" data-sok="' + r.id + '">' + ICON.check + ' موافقة — حوّل البضاعة</button>'
           + '<button class="btn soft sm" data-sno="' + r.id + '">رفض</button></div></div>';
       }).join("") : '<div class="empty">' + ICON.check + '<b>لا طلبات بضاعة تنتظرك</b>يطلبها الموظفون من استعلام المخزون في فروعك.</div>';
+    } else if (tab === "returns"){
+      // فاتورةٌ خارج مدتها: يوافق المدير فيرجّعها البائع أو يستبدلها اليوم وغدًا
+      h = (d.returns || []).length ? d.returns.map(function(r){
+        return '<div class="card apv"><div class="row between"><b class="num">' + esc(r.invoice) + '</b><span class="pill ' + (r.kind === "return" ? "p-warn" : "p-info") + '">' + esc(r.kind_label) + '</span></div>'
+          + '<div class="kv"><span>العميل</span><span>' + esc(r.partner || "عميل معرض") + ' · <span class="num">' + money(r.amount) + '</span></span></div>'
+          + '<div class="kv"><span>مرّ عليها</span><b class="num">' + r.passed + ' يوم</b></div>'
+          + '<div class="muted num" style="font-size:12.5px">المدة: ' + r.return_days + ' استرجاع · ' + r.exchange_days + ' استبدال</div>'
+          + '<div class="kv"><span>الفرع</span><span>' + esc(r.branch) + '</span></div>'
+          + '<div class="kv"><span>طلبه</span><span>' + esc(r.by) + ' · ' + esc(ago(r.created)) + '</span></div>'
+          + (r.items.length ? '<div class="muted" style="font-size:12.5px;margin-top:4px">' + r.items.map(esc).join("، ") + (r.more ? " و" + r.more + " أخرى" : "") + '</div>' : '')
+          + (r.reason ? '<div class="note" style="margin:8px 0 0">' + esc(r.reason) + '</div>' : '')
+          + '<div class="row" style="gap:8px;margin-top:12px"><button class="btn gold sm grow" data-rok="' + r.id + '">' + ICON.check + ' موافقة (اليوم وغدًا)</button>'
+          + '<button class="btn soft sm" data-rno="' + r.id + '">رفض</button></div></div>';
+      }).join("") : '<div class="empty">' + ICON.check + '<b>لا طلبات مرتجع خارج المدة</b>يطلبها البائع من «مرتجع / استبدال» لفاتورةٍ انتهت مدتها.</div>';
     } else if (tab === "visits"){
       h = d.visits.length ? '<div class="list">' + d.visits.map(function(v){
         return '<div class="li visit-req"><div class="avatar">' + esc(initials(v.seller)) + '</div><div class="grow"><div><b>' + esc(v.seller) + '</b></div>'
@@ -2183,6 +2222,11 @@
     $$("[data-sno]", box).forEach(function(b){ b.onclick = function(){
       var why = prompt("سبب الرفض (اختياري):", ""); if (why === null) return;
       decide("/stock-requests/" + b.getAttribute("data-sno") + "/decide", {approve: false, reason: why}, "رُفض الطلب"); }; });
+    $$("[data-rok]", box).forEach(function(b){ b.onclick = function(){ b.disabled = true;
+      decide("/return-requests/" + b.getAttribute("data-rok") + "/decide", {approve: true}, "تمت الموافقة — يرجّعها البائع اليوم أو غدًا"); }; });
+    $$("[data-rno]", box).forEach(function(b){ b.onclick = function(){
+      var why = prompt("سبب الرفض (اختياري):", ""); if (why === null) return;
+      decide("/return-requests/" + b.getAttribute("data-rno") + "/decide", {approve: false, reason: why}, "رُفض الطلب"); }; });
     $$("[data-vok]", box).forEach(function(b){ b.onclick = function(){ b.disabled = true;
       decide("/visits/" + b.getAttribute("data-vok") + "/decide", {approve: true}, "تمت الموافقة — انتقل للفرع الآخر"); }; });
     $$("[data-vno]", box).forEach(function(b){ b.onclick = function(){
@@ -2378,15 +2422,16 @@
       .then(function(sub){ if (sub) return sendSubscription(sub); }).catch(function(){});
   }
   // لمس الإشعار والتطبيق مفتوح: يذهب للشاشة المعنيّة
-  function goTo(go){
+  function goTo(go, key){
     if (go === "approvals" && isManager()) screenApprovals();
+    else if (go === "return" && can("returns")){ screenReturn(); if (key){ $("#retKey").value = key; lookupReturn(key); } }
     else if (go === "requests") screenStockRequests();
     else if (go === "incoming" && can("internal")){ boxFilter = "incoming"; screenInternal(); }
     else screenDash();
   }
   if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", function(e){
     if (e.data && e.data.type === "sales-go" && me){
-      try { goTo(new URL(e.data.url).searchParams.get("go")); } catch(err){}
+      try { var u = new URL(e.data.url); goTo(u.searchParams.get("go"), u.searchParams.get("key")); } catch(err){}
     }
   });
   function refreshMe(msg){
@@ -2905,10 +2950,31 @@
   }
   function retLine(id){ return ret.inv.lines.filter(function(l){ return l.id === id; })[0]; }
   function retPicked(){ return ret.inv.lines.filter(function(l){ return ret.qty[l.id] > 0; }); }
+  // مدة الفاتورة كما تحكمها إعدادات مدير الفروع: مفتوحة بلا مدة، أو فُتحت خارج المدة (للمدير أو بموافقته)، أو مدتها،
+  // وطلب الموافقة خارجها إن سمح بها
   function retTermsHtml(inv){
-    if (inv.can_return) return '<div class="muted num">الاسترجاع حتى ' + esc(inv.return_until) + ' · الاستبدال حتى ' + esc(inv.exchange_until) + '</div>';
-    if (inv.can_exchange) return '<div class="note num" style="margin:0">انتهت مدة الاسترجاع (' + esc(inv.return_until) + '): استبدال فقط حتى ' + esc(inv.exchange_until) + '، والبديل بنفس القيمة أو أكتر.</div>';
-    return '<div class="note num" style="margin:0;background:var(--bad-soft);color:var(--bad)">انتهت مدة الاستبدال (' + esc(inv.exchange_until) + '): لا مرتجع ولا استبدال لهذه الفاتورة.</div>';
+    var good = 'style="margin:0;background:var(--good-soft);color:var(--good)"', h;
+    var what = inv.can_return ? "استرجاع واستبدال" : "استبدال فقط والبديل بنفس القيمة أو أكتر";
+    if (inv.open) h = '<div class="note" ' + good + '>المرتجع والاستبدال مفتوحان بلا مدة (إعدادات مدير الفروع).</div>';
+    else if (inv.override && inv.by === "manager") h = '<div class="note num" ' + good + '>مرّ عليها ' + inv.passed + ' يوم — مفتوحة لك كمدير فروع بلا مدة.</div>';
+    else if (inv.override && inv.by === "approval") h = '<div class="note num" ' + good + '>وافق مدير الفروع: ' + what + ' حتى ' + esc(inv.approved_until) + '.</div>';
+    else if (inv.can_return) h = '<div class="muted num">الاسترجاع حتى ' + esc(inv.return_until) + ' · الاستبدال حتى ' + esc(inv.exchange_until) + '</div>';
+    else if (inv.can_exchange) h = '<div class="note num" style="margin:0">انتهت مدة الاسترجاع (' + esc(inv.return_until) + '): استبدال فقط حتى ' + esc(inv.exchange_until) + '، والبديل بنفس القيمة أو أكتر.</div>';
+    else h = '<div class="note num" style="margin:0;background:var(--bad-soft);color:var(--bad)">انتهت مدة الاستبدال (' + esc(inv.exchange_until) + '): لا مرتجع ولا استبدال لهذه الفاتورة.</div>';
+    if (inv.pending) h += '<div class="note" style="margin:8px 0 0">طلب موافقة «' + esc(inv.pending.kind_label) + '» بانتظار مدير الفروع (' + esc(inv.pending.by) + ').</div>';
+    if (inv.can_request) h += '<div class="lbl" style="margin-top:10px">خارج المدة؟ اطلب موافقة مدير الفروع على الفاتورة دي</div><div class="row" style="gap:8px">'
+      + (inv.can_exchange ? '' : '<button class="btn soft sm grow" data-rq="exchange">' + ICON.swap + ' موافقة: استبدال</button>')
+      + '<button class="btn soft sm grow" data-rq="return">' + ICON.store + ' موافقة: استرجاع بفلوس</button></div>';
+    return h;
+  }
+  // طلب الموافقة: السبب اختياري، ويصل المدير بإشعار؛ والفاتورة تُعرض من جديد بحالتها
+  function requestReturnApproval(kind, btn){
+    var why = prompt(kind === "return" ? "سبب الاسترجاع بعد المدة (اختياري):" : "سبب الاستبدال بعد المدة (اختياري):", "");
+    if (why === null) return;
+    btn.disabled = true;
+    api("/returns/request", {method: "POST", body: {origin_id: ret.inv.id, kind: kind, reason: why}}).then(function(inv){
+      toast("وصل طلب الموافقة لمدير الفروع"); ret = {inv: inv, qty: {}}; renderReturn();
+    }).catch(function(e){ toast(e.message); btn.disabled = false; });
   }
   function renderReturn(){
     var box = $("#retBox"); if (!box || !ret) return;
@@ -2936,6 +3002,7 @@
     $$("[data-rdec]", box).forEach(function(b){ b.onclick = function(){ var id = +b.getAttribute("data-rdec"); ret.qty[id] = Math.max(0, (ret.qty[id] || 0) - 1); renderReturn(); }; });
     if ($("#retSwap")) $("#retSwap").onclick = function(){ createReturn(false, this); };
     if ($("#retCash")) $("#retCash").onclick = function(){ createReturn(true, this); };
+    $$("[data-rq]", box).forEach(function(b){ b.onclick = function(){ requestReturnApproval(b.getAttribute("data-rq"), b); }; });
   }
   // ينشئ طلب المرتجع: «مرتجع فقط» يرسله للكاشير في الحال، و«استبدال» يفتحه لإضافة البديل كإضافة منتجات الموظف
   function createReturn(toCashier, btn){

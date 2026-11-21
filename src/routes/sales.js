@@ -259,7 +259,16 @@ r.post("/api/sales/push/test", run(async (req, res) => {
 r.post("/api/sales/settings", run(async (req, res) => {
   const rules = (req.body && typeof req.body.rules === "object" && req.body.rules) || {};
   const clean = {};
-  for (const k of ["require_customer", "require_phone"]) if (k in rules) clean[k] = !!rules[k];
+  for (const k of ["require_customer", "require_phone", "return_open", "return_approval", "return_manager_free"]) {
+    if (k in rules) clean[k] = !!rules[k];
+  }
+  // أيام الاسترجاع والاستبدال: أعدادٌ صحيحة موجبة، وأودو يرفض الاستبدال أقلّ من الاسترجاع
+  for (const k of ["return_days", "exchange_days"]) {
+    if (!(k in rules)) continue;
+    const v = Number(rules[k]);
+    if (!Number.isInteger(v) || v < 0 || v > 3650) throw badRequest("الأيام عددٌ صحيح من 0");
+    clean[k] = v;
+  }
   // حدود مبلغ الشحن: فارغٌ = صفر (بلا حدٍّ أعلى)، وأودو يرفض الأدنى فوق الأعلى
   for (const k of ["shipping_min", "shipping_max"]) {
     if (!(k in rules)) continue;
@@ -462,6 +471,17 @@ r.post("/api/sales/returns", run(async (req, res) => {
     .filter((x) => x.line_id && x.qty > 0);
   res.json(await execKw(APP, "app_return_create", [req.appToken, num(origin_id), back, orderLines(lines), note ? String(note) : false],
     phone ? { phone: String(phone) } : {}));
+}));
+// فاتورةٌ خارج مدتها: البائع يطلب موافقة مدير الفروع (استرجاعًا أو استبدالًا)، والمدير يقرّر من «الموافقات»
+r.post("/api/sales/returns/request", run(async (req, res) => {
+  const { origin_id, kind, reason } = req.body || {};
+  if (kind !== "return" && kind !== "exchange") throw badRequest("اختر: استرجاع أو استبدال");
+  res.json(await execKw(APP, "app_return_request", [req.appToken, num(origin_id), kind, reason ? String(reason).slice(0, 200) : false]));
+}));
+r.post("/api/sales/return-requests/:id/decide", run(async (req, res) => {
+  const { approve, reason } = req.body || {};
+  res.json(await execKw(APP, "app_return_request_decide", [req.appToken, num(req.params.id), !!approve,
+    reason ? String(reason).slice(0, 200) : false]));
 }));
 
 // ───────────────────────── لوحة مبيعات الموظف ─────────────────────────
