@@ -4,8 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <script>try{var t=localStorage.getItem("salesTheme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
-<script src="/static/i18n-dict.js?v=3.97.0"></script>
-<script src="/static/i18n.js?v=3.97.0"></script>
+<script src="/static/i18n-dict.js?v=3.98.0"></script>
+<script src="/static/i18n.js?v=3.98.0"></script>
 <title>مبيعات بيت العباءة الشرقية</title>
 <meta name="description" content="فواتير ولينكات دفع ماي فاتورة بالمنتجات — موصّل بأودو." />
 <meta name="theme-color" content="#14121A" />
@@ -692,6 +692,8 @@
   var note = "";
   var custPhone = "";      // جوال عميل المعرض على الطلب: به (أو بكود الطلب) يفتحه بائعٌ آخر ويكمل عليه
   var taxFree = {on: false, gb: ""};   // سائحٌ يسترد الضريبة عبر Global Blue، وباركود تطبيقه (اختياري)
+  var staffSale = {on: false, emp: null, pay: "cash"};   // بيع لموظف بسعر الموظفين: الموظف من الموارد البشرية وسداده
+  function staffOn(){ return rule("staff_sale") && staffSale.on && !!staffSale.emp; }
   var invFilter = "all";
   var boxFilter = "incoming";
   var boxReq = 0;     // أحدث طلب صندوق: ردٌّ متأخّر من تبويبٍ سابق لا يكتب فوق الحالي
@@ -772,7 +774,7 @@
   }
   function signOut(expired){
     token = ""; store("salesToken", null); me = null; cart = []; customer = null; shipping = null; carriers = null; iorder = null;
-    posCats = {}; pfilter.categ = 0; custPhone = ""; taxFree = {on: false, gb: ""};
+    posCats = {}; pfilter.categ = 0; custPhone = ""; taxFree = {on: false, gb: ""}; staffSale = {on: false, emp: null, pay: "cash"};
     showLogin(expired ? "انتهت الجلسة — سجّل الدخول من جديد." : "");
   }
   function openAccount(){
@@ -808,7 +810,7 @@
     var go = new URLSearchParams(location.search).get("go");
     if (go === "new") screenNew(); else if (go === "scan"){ screenDash(); openScanner(); }
     else if (go === "count" && can("count")) screenCounts();
-    else if (go === "approvals" || go === "requests" || go === "incoming" || go === "return") goTo(go, new URLSearchParams(location.search).get("key"));       // من إشعار الجوال
+    else if (go === "approvals" || go === "requests" || go === "incoming" || go === "return" || go === "order") goTo(go, new URLSearchParams(location.search).get("key"));       // من إشعار الجوال
     else screenDash();
     syncPush(); startApprovalsWatch();
   }
@@ -820,7 +822,7 @@
   function setMode(m){
     if (m === mode) return;
     if (cart.length && !confirm("تغيير نوع العميل يفرّغ السلة (الأسعار والمخزون مختلفان). متابعة؟")) return;
-    cart = []; customer = null; shipping = null; mode = m; iorder = null; custPhone = ""; taxFree = {on: false, gb: ""}; updateCartUI(); screenNew();
+    cart = []; customer = null; shipping = null; mode = m; iorder = null; custPhone = ""; taxFree = {on: false, gb: ""}; staffSale = {on: false, emp: null, pay: "cash"}; updateCartUI(); screenNew();
   }
 
   // ════════════ السلة ════════════
@@ -1047,6 +1049,13 @@
     var box = $("#custBox"); if (!box) return;
     var must = rule("require_customer");        // العميل إجباري: لا «بدون اسم» ولا «(اختياري)»
     box.classList.remove("need");
+    var tfb = $("#tfBox");
+    if (tfb) tfb.hidden = staffOn();
+    if (staffOn()){
+      box.innerHTML = '<div class="row"><div class="avatar">' + esc(initials(staffSale.emp.name)) + '</div><div class="grow">'
+        + '<div class="muted" style="font-size:12px">العميل: الموظف</div><div style="font-weight:800">' + esc(staffSale.emp.name) + '</div></div></div>';
+      return;
+    }
     if (customer){
       box.innerHTML = '<div class="row"><div class="avatar">' + esc(initials(customer.name)) + '</div><div class="grow"><div style="font-weight:800">' + esc(customer.name) + '</div>'
         + '<div class="muted num" dir="ltr" style="text-align:right">' + esc(customer.phone || "بلا جوال") + '</div></div>'
@@ -1214,10 +1223,15 @@
       var sum = function(keep){ return iorder ? iorder.lines.filter(keep).reduce(function(s, l){ return s + l.subtotal; }, 0) : 0; };
       var others = sum(function(l){ return !l.mine && !l.refund; }), back = sum(function(l){ return l.refund; });
       var total = itemsTotal() + others + back;
+      var sd = staffOn() ? staffRate(staffSale.pay) : 0, snet = Math.round(total * (100 - sd)) / 100;
+      var staffRows = !staffOn() ? '' : '<div class="kv"><span>خصم الموظف ' + sd + '%</span><span class="num" style="color:var(--good)">−' + money(total - snet) + '</span></div>'
+        + '<div class="kv"><b>صافي الموظف</b><b class="num">' + money(snet) + '</b></div>'
+        + (staffSale.pay === "payroll" && staffInst() ? '<div class="muted">سلفة على ' + Math.ceil(snet / staffInst() - 1e-9) + ' شهر بقسطٍ لا يزيد على ' + money(staffInst()) + '.</div>' : '');
       box.innerHTML = '<div class="kv"><span>منتجاتي (' + cartCount() + ' قطعة)</span><span class="num">' + money(itemsTotal()) + '</span></div>'
         + (others ? '<div class="kv"><span>أصناف زملائك</span><span class="num">' + money(others) + '</span></div>' : '')
         + (back ? '<div class="kv"><span>المرتجع</span><span class="num" style="color:var(--bad)">' + money(back) + '</span></div>' : '')
         + '<div class="tot-row"><b>' + totLabel(total, back ? "return" : "sale") + '</b><b class="num" style="font-size:19px" id="cartTotal">' + money(Math.abs(total)) + '</b></div>'
+        + staffRows
         + '<div class="muted" style="margin-top:6px">' + (total < 0 ? "يرجّعه الكاشير للعميل" : "يحصّله الكاشير") + ' من نقطة البيع في أودو.</div>';
       return;
     }
@@ -2136,7 +2150,7 @@
       + '<button class="tile" id="goStaff"><span class="avatar">' + ICON.user + '</span><span class="grow"><b>الموظفون</b>'
       + '<span class="muted">الصلاحيات</span></span></button>'
       + '<button class="tile wide" id="goSet"><span class="avatar">' + ICON.lock + '</span><span class="grow"><b>الإعدادات</b>'
-      + '<span class="muted">الطلبات والعملاء والشحن والمرتجع</span></span></button></div>';
+      + '<span class="muted">الطلبات والعملاء والشحن والمرتجع وبيع الموظفين</span></span></button></div>';
   }
   // ════════════ إعدادات مدير الفروع ════════════
   // قواعد للشركة كلها، تسري على الموظفين فورًا في أودو (ويظهر أثرها في تطبيقاتهم عند فتحها من جديد)
@@ -2172,6 +2186,12 @@
       + '<div class="muted" style="font-size:12.5px;margin-bottom:10px">البائع يكتب مبلغ الشحن بنفسه (شامل الضريبة) في هذه الحدود، ويُضاف على الفاتورة «خدمة شحن». «استلام من المعرض» بلا مبلغ.</div>'
       + '<div class="row" style="gap:10px"><div class="grow"><div class="lbl">أقل مبلغ</div><input class="num" id="shipMin" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0" value="' + (Number(me.rules && me.rules.shipping_min) || "") + '"></div>'
       + '<div class="grow"><div class="lbl">أعلى مبلغ</div><input class="num" id="shipMax" type="number" min="0" step="0.01" inputmode="decimal" placeholder="بلا حد" value="' + (Number(me.rules && me.rules.shipping_max) || "") + '"></div></div></div>'
+      + ("staff_sale" in R ? '<div class="card" id="staffCard"><div class="h2">' + ICON.user + '<span class="grow">بيع الموظفين</span></div>'
+        + ruleRowHtml({key: "staff_sale", label: "بيع الموظفين", hint: "البائع يبيع لموظفٍ مسجّل في الموارد البشرية بسعر الموظفين: نقدًا، أو استقطاعًا من راتبه سلفةً تعتمدها الموارد البشرية قبل الكاشير."})
+        + '<div class="row" style="gap:10px;margin-top:10px"><div class="grow"><div class="lbl">خصم النقدي %</div><input class="num" id="stCash" type="number" min="0" max="100" step="0.5" inputmode="decimal" value="' + (Number(R.staff_cash_discount) || 0) + '"></div>'
+        + '<div class="grow"><div class="lbl">خصم الاستقطاع %</div><input class="num" id="stPayroll" type="number" min="0" max="100" step="0.5" inputmode="decimal" value="' + (Number(R.staff_payroll_discount) || 0) + '"></div></div>'
+        + '<div class="lbl" style="margin-top:10px">قسط الاستقطاع الشهري</div><input class="num" id="stInst" type="number" min="0" step="1" inputmode="decimal" placeholder="0 = لا استقطاع" value="' + (Number(R.staff_installment) || "") + '">'
+        + '<div class="muted" style="font-size:12.5px;margin-top:6px">أشهر السلفة = صافي المشتريات ÷ القسط (لأعلى)، والسلفة «مقابل مشتريات من الشركة» في بوابة الموارد البشرية.</div></div>' : '')
       + '<button class="btn gold" id="setSave">' + ICON.check + ' حفظ الإعدادات</button>'
       + '<div class="muted" style="margin-top:8px">تسري على كل الفروع والموظفين، ويُكتب كل تغييرٍ في سجلك. وتُغيَّر من أودو أيضًا (تطبيق المبيعات ← إعدادات التطبيق).</div>';
     $("#bk").onclick = function(){ screenHome(); };
@@ -2184,6 +2204,12 @@
       if (!Number.isInteger(rules.return_days) || !Number.isInteger(rules.exchange_days) || rules.return_days < 0 || rules.exchange_days < 0){
         toast("الأيام عددٌ صحيح من 0"); $("#retDaysIn").focus(); return; }
       if (rules.exchange_days < rules.return_days){ toast("أيام الاستبدال لا تقلّ عن أيام الاسترجاع"); $("#excDaysIn").focus(); return; }
+      if ($("#stCash")){
+        rules.staff_cash_discount = Number($("#stCash").value) || 0; rules.staff_payroll_discount = Number($("#stPayroll").value) || 0;
+        rules.staff_installment = Number($("#stInst").value) || 0;
+        if ([rules.staff_cash_discount, rules.staff_payroll_discount].some(function(v){ return v < 0 || v > 100; }) || rules.staff_installment < 0){
+          toast("نسبة الخصم بين 0 و100، والقسط رقمٌ موجب"); return; }
+      }
       var lo = $("#shipMin").value.trim(), hi = $("#shipMax").value.trim();
       rules.shipping_min = lo === "" ? 0 : Number(lo); rules.shipping_max = hi === "" ? 0 : Number(hi);
       if (!(rules.shipping_min >= 0) || !(rules.shipping_max >= 0)){ toast("حدود مبلغ الشحن أرقامٌ موجبة"); return; }
@@ -2490,6 +2516,7 @@
   // لمس الإشعار والتطبيق مفتوح: يذهب للشاشة المعنيّة
   function goTo(go, key){
     if (go === "approvals" && isManager()) screenApprovals();
+    else if (go === "order" && key && can("internal")) screenPosOrder(+key);
     else if (go === "return" && can("returns")){ screenReturn(); if (key){ $("#retKey").value = key; lookupReturn(key); } }
     else if (go === "requests") screenStockRequests();
     else if (go === "incoming" && can("internal")){ boxFilter = "incoming"; screenInternal(); }
@@ -2745,7 +2772,7 @@
     return '<div class="li" data-po="' + o.id + '"><div class="avatar">' + esc(initials(who)) + '</div><div class="grow"><div class="ellip" style="font-weight:800">' + esc(who) + '</div>'
       + '<div class="muted num ellip">' + (o.code ? 'كود ' + o.code + ' · ' : '') + esc(o.name) + ' · ' + esc(o.pos.name) + (o.from_pos && o.state === "transfer" ? ' · من ' + esc(o.from_pos) : '') + ' · ' + esc(ago(o.updated)) + '</div>'
       + (o.locked_by ? '<div class="muted" style="color:var(--warn)">مفتوح عند ' + esc(o.locked_by) + '</div>' : '') + '</div>'
-      + '<div style="text-align:left"><div class="amt num">' + money(o.amount) + '</div><div style="margin-top:4px">' + (o.pickup ? '<span class="pill p-info">يدفع ويستلم</span> ' : '') + (o.tax_free ? '<span class="pill p-info">Tax Free</span> ' : '') + pill(KIND, o.kind) + ' ' + pill(PO, o.state) + '</div></div></div>';
+      + '<div style="text-align:left"><div class="amt num">' + money(o.amount) + '</div><div style="margin-top:4px">' + (o.staff ? '<span class="pill p-info">موظف</span> ' : '') + (o.pickup ? '<span class="pill p-info">يدفع ويستلم</span> ' : '') + (o.tax_free ? '<span class="pill p-info">Tax Free</span> ' : '') + pill(KIND, o.kind) + ' ' + pill(PO, o.state) + '</div></div></div>';
   }
   function wirePosRows(root){ $$("[data-po]", root).forEach(function(el){ el.onclick = function(){ screenPosOrder(+el.getAttribute("data-po")); }; }); }
   // عميلٌ بدأ طلبه مع زميل: يفتحه هذا الموظف بكوده اليومي أو بجواله، فينتقل إليه ويكمل عليه
@@ -2795,7 +2822,7 @@
   function renderPosOrder(o){
     var can2 = o.can, who = o.partner ? o.partner.name : "عميل معرض";
     main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow num">' + esc(o.name) + '</span><button class="icon-btn" id="rf" aria-label="تحديث">' + ICON.refresh + '</button></div>'
-      + '<div class="hero"><div class="row between"><span style="font-weight:700">' + esc(who) + '</span><span>' + (o.pickup ? '<span class="pill p-info">يدفع ويستلم</span> ' : '') + (o.tax_free ? '<span class="pill p-info">Tax Free</span> ' : '') + pill(KIND, o.kind) + ' ' + pill(PO, o.state) + '</span></div><div class="big num">' + money(o.amount) + '</div>'
+      + '<div class="hero"><div class="row between"><span style="font-weight:700">' + esc(who) + '</span><span>' + (o.staff ? '<span class="pill p-info">موظف</span> ' : '') + (o.pickup ? '<span class="pill p-info">يدفع ويستلم</span> ' : '') + (o.tax_free ? '<span class="pill p-info">Tax Free</span> ' : '') + pill(KIND, o.kind) + ' ' + pill(PO, o.state) + '</span></div><div class="big num">' + money(o.staff ? o.staff.net : o.amount) + '</div>'
       + '<div class="meta num">' + (o.returned ? 'يرجع ' + o.returned + (o.count ? ' · بديل ' + o.count : '') : o.count + ' قطعة') + ' · بدأه ' + esc(o.seller) + (o.origin ? ' · من الفاتورة ' + esc(o.origin) : '') + (o.ticket ? ' · رقم الكاشير ' + esc(o.ticket) : '') + '</div>'
       + '<div class="route">' + o.route.map(function(r){ return '<span class="' + (r.current ? "on" : "") + '">' + esc(r.name) + '</span>'; }).join("") + '</div></div>'
       + (o.code && (o.state === "open" || o.state === "transfer") ? '<div class="card dcode"><div class="grow"><b>كود العميل</b><div class="muted">قُله للعميل: أي بائعٍ في الفرع يفتح طلبه بالكود'
@@ -2817,6 +2844,8 @@
           ? '<div class="lbl">رقم نموذج Global Blue</div><div class="row"><input id="tfForm" dir="ltr" style="text-align:right" autocomplete="off" placeholder="رقم النموذج" value="' + esc(o.tax_free_form) + '">'
             + '<button class="btn gold sm" id="tfSave">حفظ</button></div><div class="muted" style="margin-top:6px">يُطبع في الإيصال ويظهر في تقرير مبيعات السياح في أودو.</div>'
           : '<div class="muted">بعد الدفع: أصدِر نموذج Global Blue للعميل، واكتب رقمه هنا فيُطبع في الإيصال.</div>') + '</div>' : '')
+      + (o.staff ? staffCardHtml(o) : '')
+      + (can2.staff_hr ? '<button class="btn gold" id="aStaffHr" style="margin-bottom:10px">' + ICON.user + ' إرسال للموارد البشرية (سلفة)</button>' : '')
       + (can2.receive ? '<button class="btn gold" id="aRecv" style="margin-bottom:10px">' + ICON.check + ' استلام الطلب</button>' : '')
       + (can2.edit ? '<button class="btn gold" id="aEdit" style="margin-bottom:10px">' + ICON.plus + ' إضافة منتجاتي</button>' : '')
       + (can2.cashier ? '<button class="btn dark" id="aCash" style="margin-bottom:10px">' + ICON.store + ' إرسال للكاشير</button>' : '')
@@ -2833,6 +2862,7 @@
     var post = function(action, okMsg){ return orderAction(api("/pos-orders/" + o.id + "/" + action, {method: "POST"}), okMsg); };
     var again = function(n){ renderPosOrder(n); };
     if ($("#aRecv")) $("#aRecv").onclick = function(){ post("receive", "استُلم الطلب").then(again, function(){}); };
+    if ($("#aStaffHr")) $("#aStaffHr").onclick = function(){ this.disabled = true; post("staff-hr", "أُرسل للموارد البشرية — يصل الكاشير بعد اعتماد السلفة").then(again, function(){ screenPosOrder(o.id); }); };
     if ($("#aEdit")) $("#aEdit").onclick = function(){ post("open").then(startEditing, function(){}); };
     if ($("#aCash")) $("#aCash").onclick = function(){ this.disabled = true; post("cashier", "أُرسل للكاشير").then(again, function(){ screenPosOrder(o.id); }); };
     if ($("#aMove")) $("#aMove").onclick = function(){ this.disabled = true; transferOrder(o).then(again, function(){ screenPosOrder(o.id); }); };
@@ -2916,13 +2946,14 @@
     if (!o.can.edit){ renderPosOrder(o); return; }
     mode = "int"; iorder = o; note = o.note || ""; shipping = null; custPhone = o.phone || "";
     taxFree = {on: !!o.tax_free, gb: o.gb_shopper_id || ""};
+    staffSale = o.staff ? {on: true, emp: o.staff.employee, pay: o.staff.pay} : {on: false, emp: null, pay: "cash"};
     customer = o.partner ? {id: o.partner.id, name: o.partner.name, phone: o.partner.phone} : null;
     cart = o.lines.filter(function(l){ return l.mine; }).map(function(l){
       return {product_id: l.product_id, name: l.name, code: l.code, price: l.price, base: l.price, incl0: l.price, qty: l.qty, max: null}; });
     updateCartUI(); screenNewInternal();
   }
   function leaveEditing(){
-    var o = iorder; iorder = null; cart = []; customer = null; note = ""; custPhone = ""; taxFree = {on: false, gb: ""}; updateCartUI();
+    var o = iorder; iorder = null; cart = []; customer = null; note = ""; custPhone = ""; taxFree = {on: false, gb: ""}; staffSale = {on: false, emp: null, pay: "cash"}; updateCartUI();
     return o;
   }
   function screenNewInternal(){
@@ -2936,6 +2967,7 @@
       + (iorder || !can("internal") ? '' : claimHtml())
       + '<div class="card" id="custBox"></div>'
       + (rets.length ? '' : '<div class="card" id="tfBox"></div>')
+      + (rets.length || !rule("staff_sale") ? '' : '<div class="card" id="staffBox"></div>')
       + (rets.length ? '<div class="card"><div class="h2"><span class="grow">المرتجع من الفاتورة</span><span class="pill p-bad num">' + esc(iorder.origin) + '</span></div>' + posLinesHtml({lines: rets})
         + (iorder.returns && !iorder.returns.can_return ? '<div class="note" style="margin:10px 0 0">انتهت مدة الاسترجاع: البديل لازم يكون بـ ' + money(iorder.returns.value) + ' أو أكتر.</div>' : '') + '</div>' : '')
       + (others.length ? '<div class="card"><div class="h2">أصناف زملائك</div>' + posLinesHtml({lines: others}) + '</div>' : '')
@@ -2950,18 +2982,84 @@
     wireThumbs(main);
     wireClaim(main);
     if ($("#bk")) $("#bk").onclick = function(){ var o = leaveEditing(); api("/pos-orders/" + o.id + "/release", {method: "POST"}).catch(function(){}); screenPosOrder(o.id); };
-    $("#toCash").onclick = function(){ saveInternal(function(o){ return orderAction(api("/pos-orders/" + o.id + "/cashier", {method: "POST"}), "أُرسل للكاشير"); }); };
+    // الاستقطاع من الراتب لا يصل الكاشير قبل الموارد البشرية: الزر نفسه يرسله سلفةً
+    $("#toCash").onclick = function(){
+      var hr = staffOn() && staffSale.pay === "payroll";
+      saveInternal(function(o){ return hr
+        ? orderAction(api("/pos-orders/" + o.id + "/staff-hr", {method: "POST"}), "أُرسل للموارد البشرية — يصل الكاشير بعد اعتماد السلفة")
+        : orderAction(api("/pos-orders/" + o.id + "/cashier", {method: "POST"}), "أُرسل للكاشير"); }); };
     $("#toSave").onclick = function(){ saveInternal(function(o){ return api("/pos-orders/" + o.id + "/release", {method: "POST"}).then(function(){
       toast(o.code ? "حُفظ الطلب — كود العميل " + o.code : "حُفظ الطلب"); return o; }); }); };
     $("#toMove").onclick = function(){ saveInternal(transferOrder); };
-    renderCust(); updateCartUI();
+    renderCust(); renderStaff(); renderStaffBtn(); updateCartUI();
+  }
+  // ════════════ بيع الموظفين ════════════
+  // الموظف من الموارد البشرية يصير عميل الطلب بخصم الموظفين: نقدًا للكاشير، أو استقطاعًا من راتبه سلفةً «مقابل مشتريات
+  // من الشركة» تعتمدها الموارد البشرية، ثم يصل الكاشير (أدون sharqia_sales_app_staff).
+  function staffRate(pay){ var r = me.rules || {}; return Number(pay === "payroll" ? r.staff_payroll_discount : r.staff_cash_discount) || 0; }
+  function staffInst(){ return Number((me.rules || {}).staff_installment) || 0; }
+  function renderStaff(){
+    var box = $("#staffBox"); if (!box) return;
+    var inst = staffInst();
+    if (staffSale.pay === "payroll" && !inst) staffSale.pay = "cash";
+    box.innerHTML = '<label class="row" style="gap:10px;cursor:pointer"><input type="checkbox" id="stOn"' + (staffSale.on ? " checked" : "") + ' style="width:20px;height:20px;flex:none">'
+      + '<span class="grow"><b>بيع لموظف بسعر الموظفين</b><span class="muted" style="display:block">نقدًا بخصم ' + staffRate("cash") + '%'
+      + (inst ? '، أو استقطاع من الراتب بخصم ' + staffRate("payroll") + '%' : '') + '</span></span></label>'
+      + (!staffSale.on ? '' : '<div style="margin-top:12px">'
+        + (staffSale.emp
+          ? '<div class="row"><div class="avatar">' + esc(initials(staffSale.emp.name)) + '</div><div class="grow"><div style="font-weight:800">' + esc(staffSale.emp.name) + '</div>'
+            + '<div class="muted num">' + esc([staffSale.emp.number, staffSale.emp.department].filter(Boolean).join(" · ")) + '</div></div><button class="btn soft sm" id="stPick">تغيير</button></div>'
+          : '<button class="btn soft" id="stPick">' + ICON.user + ' اختر الموظف</button>')
+        + '<div class="chips" style="margin-top:10px"><button class="chip' + (staffSale.pay === "cash" ? " on" : "") + '" data-stpay="cash">نقدي — خصم ' + staffRate("cash") + '%</button>'
+        + (inst ? '<button class="chip' + (staffSale.pay === "payroll" ? " on" : "") + '" data-stpay="payroll">استقطاع من الراتب — خصم ' + staffRate("payroll") + '%</button>' : '') + '</div>'
+        + (staffSale.pay === "payroll" ? '<div class="muted" style="margin-top:8px">يُرسل للموارد البشرية سلفةً «مقابل مشتريات من الشركة» بقسطٍ لا يزيد على ' + money(inst) + ' شهريًا، ويصل الكاشير بعد اعتمادها.</div>' : '')
+        + '</div>');
+    $("#stOn", box).onchange = function(){ staffSale.on = this.checked; if (staffSale.on) taxFree.on = false; staffChanged(); if (staffSale.on && !staffSale.emp) openStaffPicker(); };
+    if ($("#stPick", box)) $("#stPick", box).onclick = openStaffPicker;
+    $$("[data-stpay]", box).forEach(function(b){ b.onclick = function(){ staffSale.pay = b.getAttribute("data-stpay"); staffChanged(); }; });
+  }
+  function staffChanged(){ renderCust(); renderStaff(); renderStaffBtn(); renderSum(); }
+  function renderStaffBtn(){
+    var b = $("#toCash"); if (!b) return;
+    b.innerHTML = staffOn() && staffSale.pay === "payroll" ? ICON.user + " إرسال للموارد البشرية (سلفة)" : ICON.store + " إرسال للكاشير";
+  }
+  function openStaffPicker(){
+    var ov = sheet("اختر الموظف", '<div class="search"><div class="field">' + ICON.search + '<input id="stq" placeholder="ابحث بالاسم أو الرقم الوظيفي"></div></div><div id="stres"><div class="spin"></div></div>');
+    var timer = null;
+    function load(q){
+      api("/staff-employees?q=" + encodeURIComponent(q || "")).then(function(rows){
+        if (!ov.isConnected) return;
+        $("#stres", ov).innerHTML = rows.length ? '<div class="list">' + rows.map(function(e, i){
+          return '<div class="li" data-emp="' + i + '"><div class="avatar">' + esc(initials(e.name)) + '</div><div class="grow"><div style="font-weight:700">' + esc(e.name) + '</div>'
+            + '<div class="muted num">' + esc([e.number, e.department, e.job].filter(Boolean).join(" · ")) + '</div></div></div>'; }).join("") + '</div>'
+          : '<div class="empty"><b>لا موظف بهذا البحث</b>الموظف لازم يكون مسجّلًا في الموارد البشرية في أودو.</div>';
+        $$("[data-emp]", ov).forEach(function(el){ el.onclick = function(){
+          staffSale.emp = rows[+el.getAttribute("data-emp")]; staffSale.on = true; taxFree.on = false; ov.remove(); staffChanged(); }; });
+      }).catch(function(e){ if (ov.isConnected) $("#stres", ov).innerHTML = '<div class="empty"><b>تعذّر</b>' + esc(e.message) + '</div>'; });
+    }
+    $("#stq", ov).oninput = function(){ var v = this.value; clearTimeout(timer); timer = setTimeout(function(){ load(v); }, 300); };
+    load("");
+  }
+  function staffCardHtml(o){
+    var st = o.staff, tone = {hr: "p-warn", approved: "p-good", rejected: "p-bad"}[st.state];
+    return '<div class="card"><div class="h2"><span class="grow">بيع موظف</span>' + (st.pay === "payroll" && tone ? '<span class="pill ' + tone + '">' + esc(st.state_label) + '</span>' : '') + '</div>'
+      + '<div class="kv"><span>الموظف</span><b>' + esc(st.employee.name) + (st.employee.number ? ' <span class="muted num">' + esc(st.employee.number) + '</span>' : '') + '</b></div>'
+      + '<div class="kv"><span>السداد</span><span>' + esc(st.pay_label) + ' — خصم ' + st.discount + '%</span></div>'
+      + '<div class="kv"><span>صافي الموظف</span><b class="num">' + money(st.net) + '</b></div>'
+      + (st.pay === "payroll" ? '<div class="kv"><span>الاستقطاع</span><span class="num">' + st.months + ' شهر · قسط حتى ' + money(st.installment) + '</span></div>'
+        + (st.request ? '<div class="kv"><span>طلب السلفة</span><span class="num">' + esc(st.request) + '</span></div>' : '') : '')
+      + (st.state === "hr" ? '<div class="note" style="margin:8px 0 0">عند الموارد البشرية — يصل الكاشير بعد اعتماد السلفة.</div>'
+        : st.state === "approved" && o.state === "open" ? '<div class="note" style="margin:8px 0 0;background:var(--good-soft);color:var(--good)">اعتمدت الموارد البشرية السلفة — أرسله للكاشير، ويُقفله بطريقة الدفع «استقطاع من الراتب».</div>'
+        : st.state === "rejected" ? '<div class="note" style="margin:8px 0 0;background:var(--bad-soft);color:var(--bad)">لم تُعتمد السلفة — عدّل الطلب (نقدًا مثلًا) أو ألغِه.</div>' : '')
+      + '</div>';
   }
   function saveInternal(then){
     if (!can("internal")){ toast("حسابك غير مربوط بنقطة بيع"); return; }
     var others = iorder ? iorder.lines.some(function(l){ return !l.mine; }) : false;
     if (!cart.length && !others){ toast("أضف منتجًا واحدًا على الأقل"); return; }
     // العميل إجباري (قاعدة مدير الفروع) في طلب البيع؛ المرتجع والاستبدال عميلهما من الفاتورة
-    if (rule("require_customer") && !customer && !(iorder && iorder.kind && iorder.kind !== "sale")){
+    if (rule("staff_sale") && staffSale.on && !staffSale.emp){ toast("اختر الموظف"); openStaffPicker(); return; }
+    if (rule("require_customer") && !customer && !staffOn() && !(iorder && iorder.kind && iorder.kind !== "sale")){
       toast("اختر العميل أو أضف عميلًا جديدًا — العميل إجباري");
       var cb = $("#custBox"); if (cb){ cb.scrollIntoView({behavior: "smooth", block: "center"}); cb.classList.add("need"); }
       return;
@@ -2969,6 +3067,9 @@
     var lines = cart.map(function(l){ return {product_id: l.product_id, qty: l.qty, price_unit: l.price}; });
     var body = {partner_id: customer ? customer.id : false, lines: lines, note: note,
       phone: customer && customer.phone ? customer.phone : custPhone.trim(), tax_free: taxFree.on, gb_shopper_id: taxFree.gb};
+    // أدون بيع الموظفين مثبّت (في قواعد الإعدادات): الموظف وسداده، أو false
+    if (me.rules && "staff_sale" in me.rules) body.staff = staffOn() ? {employee_id: staffSale.emp.id, pay: staffSale.pay} : false;
+    if (staffOn()){ body.partner_id = false; body.tax_free = false; }
     var btns = ["#toCash", "#toMove", "#toSave"].map(function(s){ return $(s); });
     btns.forEach(function(b){ b.disabled = true; });
     var save = iorder ? api("/pos-orders/" + iorder.id, {method: "PUT", body: body}) : api("/pos-orders", {method: "POST", body: body});

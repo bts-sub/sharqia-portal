@@ -259,8 +259,15 @@ r.post("/api/sales/push/test", run(async (req, res) => {
 r.post("/api/sales/settings", run(async (req, res) => {
   const rules = (req.body && typeof req.body.rules === "object" && req.body.rules) || {};
   const clean = {};
-  for (const k of ["require_customer", "require_phone", "return_open", "return_approval", "return_manager_free"]) {
+  for (const k of ["require_customer", "require_phone", "return_open", "return_approval", "return_manager_free", "staff_sale"]) {
     if (k in rules) clean[k] = !!rules[k];
+  }
+  // بيع الموظفين: نسبتا الخصم (0–100) وقسط الاستقطاع الشهري
+  for (const k of ["staff_cash_discount", "staff_payroll_discount", "staff_installment"]) {
+    if (!(k in rules)) continue;
+    const v = rules[k] === "" || rules[k] == null ? 0 : Number(rules[k]);
+    if (!Number.isFinite(v) || v < 0 || (k !== "staff_installment" && v > 100)) throw badRequest("نسبة الخصم بين 0 و100، والقسط رقمٌ موجب");
+    clean[k] = v;
   }
   // أيام الاسترجاع والاستبدال: أعدادٌ صحيحة موجبة، وأودو يرفض الاستبدال أقلّ من الاسترجاع
   for (const k of ["return_days", "exchange_days"]) {
@@ -416,8 +423,20 @@ r.get("/api/sales/pos-orders/counts", run(async (req, res) => {
 const taxFreeKw = (body, out = {}) => {
   if (body.tax_free !== undefined) out.tax_free = !!body.tax_free;
   if (body.gb_shopper_id !== undefined) out.gb_shopper_id = String(body.gb_shopper_id || "").trim().slice(0, 64);
+  // بيع لموظف (أدون sharqia_sales_app_staff): الموظف وسداده، أو false لإلغائه. يُرسله التطبيق حين يكون مثبّتًا فقط
+  if (body.staff !== undefined) {
+    out.staff = body.staff && body.staff.employee_id
+      ? { employee_id: num(body.staff.employee_id), pay: body.staff.pay === "payroll" ? "payroll" : "cash" } : false;
+  }
   return out;
 };
+// بيع الموظفين: موظفو الموارد البشرية بالاسم أو الرقم الوظيفي، و«أرسل للموارد البشرية» سلفةً بالاستقطاع من الراتب
+r.get("/api/sales/staff-employees", run(async (req, res) => {
+  res.json(await execKw(APP, "app_staff_employees", [req.appToken, String(req.query.q || "").slice(0, 80)]));
+}));
+r.post("/api/sales/pos-orders/:id/staff-hr", run(async (req, res) => {
+  res.json(await execKw(APP, "app_order_staff_hr", [req.appToken, num(req.params.id)]));
+}));
 r.post("/api/sales/pos-orders", run(async (req, res) => {
   const { partner_id, lines, note, phone } = req.body || {};
   res.json(await execKw(APP, "app_order_create", [req.appToken, num(partner_id) || false, orderLines(lines), note ? String(note) : false],
