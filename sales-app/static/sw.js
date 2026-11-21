@@ -2,7 +2,11 @@
 //   • الصفحة: من الشبكة أولًا (فيصل كل تحديث فورًا)، ومن الكاش إن انقطع النت.
 //   • الملفات الثابتة والخطوط: من الكاش أولًا.
 //   • /api/*: من الشبكة دائمًا — لا تُخزَّن بيانات الفواتير والأسعار أبدًا.
-const VERSION = "sales-3.96.0";
+const VERSION = "sales-3.97.0";
+// ترجمة إشعارات الجوال بلغة التطبيق (يحفظها التطبيق في كاش «sales-prefs»). إن تعذّر تحميلها بقيت عربية.
+try { importScripts("/static/i18n-dict.js?v=3.97.0", "/static/i18n.js?v=3.97.0"); } catch (err) { /* عربي كما هو */ }
+const PREFS = "sales-prefs";
+const appLang = () => caches.open(PREFS).then((c) => c.match("/__lang")).then((r) => (r ? r.text() : "ar")).catch(() => "ar");
 const SHELL = ["/", "/static/logo.png", "/static/emblem.png", "/static/icons/icon-192.png",
   "/static/manifest.webmanifest"];
 
@@ -12,7 +16,7 @@ self.addEventListener("install", (e) => {
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys()
-    .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
+    .then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== PREFS).map((k) => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 
@@ -45,10 +49,13 @@ self.addEventListener("fetch", (e) => {
 self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : "" }; }
-  const title = d.title || "تطبيق المبيعات";
-  e.waitUntil(self.registration.showNotification(title, {
-    body: d.body || "", tag: d.tag || "sales-app", renotify: true, dir: "rtl", lang: "ar",
-    icon: "/static/icons/icon-192.png", badge: "/static/icons/icon-192.png", data: { url: d.url || "/" },
+  e.waitUntil(appLang().then((lang) => {
+    const tr = (t) => (self.I18N && t ? self.I18N.tr(t, lang) : t);
+    const ltr = lang === "en" || lang === "fr";
+    return self.registration.showNotification(tr(d.title || "تطبيق المبيعات"), {
+      body: tr(d.body || ""), tag: d.tag || "sales-app", renotify: true, dir: ltr ? "ltr" : "rtl", lang: lang || "ar",
+      icon: "/static/icons/icon-192.png", badge: "/static/icons/icon-192.png", data: { url: d.url || "/" },
+    });
   }));
 });
 

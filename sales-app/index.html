@@ -4,6 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <script>try{var t=localStorage.getItem("salesTheme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
+<script src="/static/i18n-dict.js?v=3.97.0"></script>
+<script src="/static/i18n.js?v=3.97.0"></script>
 <title>مبيعات بيت العباءة الشرقية</title>
 <meta name="description" content="فواتير ولينكات دفع ماي فاتورة بالمنتجات — موصّل بأودو." />
 <meta name="theme-color" content="#14121A" />
@@ -60,6 +62,19 @@
   .theme-btn{width:38px;height:38px;border-radius:12px;border:1px solid rgba(201,162,39,.5);background:rgba(201,162,39,.08);color:#F3D97A;
     display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
   .theme-btn svg.i{width:20px;height:20px}
+  .lang-btn{font-size:12.5px;font-weight:800;font-family:var(--font);min-width:38px;width:auto;padding:0 8px}
+  .lang-row{display:flex;align-items:center;gap:12px;width:100%;padding:14px 12px;border:1px solid var(--line);border-radius:14px;
+    background:var(--surface);color:var(--text);font:inherit;font-size:16px;font-weight:700;margin-bottom:8px;cursor:pointer;text-align:start}
+  .lang-row.on{border-color:var(--gold);background:var(--gold-soft)}
+  .lang-row .code{min-width:44px;text-align:center;font-size:12px;font-weight:800;color:var(--gold-t)}
+  /* الأوردو بخطٍّ فيه حروفها كلها (ٹ ڈ ں ے) */
+  html[lang="ur"]{--font:'Noto Naskh Arabic','Tajawal',system-ui,sans-serif;--display:'Noto Naskh Arabic','El Messiri',serif}
+  /* الإنجليزية والفرنسية من الشمال: ما كان محاذًى لليمين (البداية) أو لليسار (النهاية) ينقلب، وأسهم الرجوع تنعكس */
+  [dir="ltr"] [style*="text-align:left"]{text-align:right!important}
+  [dir="ltr"] [style*="text-align:right"]{text-align:left!important}
+  [dir="ltr"] .flip-ltr{transform:scaleX(-1)}
+  [dir="ltr"] .st-branch .chev{transform:scaleX(-1)}
+  [dir="ltr"] .st-group.open .st-branch .chev{transform:rotate(-90deg)}
   .conn{width:11px;height:11px;border-radius:50%;background:#6B6576}
   .conn.ok{background:#2BD47A} .conn.bad{background:#F05252}
 
@@ -305,7 +320,7 @@
   .rank{width:26px;height:26px;border-radius:9px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0}
   .meter{height:6px;border-radius:3px;background:var(--surface2);overflow:hidden;margin-top:6px}
   .meter i{display:block;height:100%;border-radius:3px;background:var(--gold)}
-  .action-card{display:flex;align-items:center;gap:12px;width:100%;text-align:right;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  .action-card{display:flex;align-items:center;gap:12px;width:100%;text-align:start;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
     padding:13px 14px;box-shadow:var(--shadow);margin-bottom:12px;cursor:pointer;color:var(--text);font-family:inherit}
   .action-card .avatar svg{width:22px;height:22px}
 
@@ -402,7 +417,7 @@
   .tiles.one{grid-template-columns:1fr}
   /* مهام المخزن (الاستلام والجرد) أعلى «المنتجات»: صفٌّ مضغوط فوق البحث */
   .tiles.stask{margin:0 0 12px}
-  .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;box-shadow:var(--shadow);text-align:right;
+  .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;box-shadow:var(--shadow);text-align:start;
     cursor:pointer;font-family:inherit;color:var(--text);display:flex;align-items:center;gap:10px;position:relative;min-width:0}
   .tile .avatar{width:36px;height:36px;border-radius:11px;flex:none}
   .tile .avatar svg{width:19px;height:19px}
@@ -440,7 +455,7 @@
   .log-row{display:flex;gap:10px;padding:8px 0;font-size:13px;border-bottom:1px solid var(--line)}
   .log-row:last-child{border-bottom:none}
   .pickline{display:flex;align-items:center;gap:12px;width:100%;padding:13px;border:1px solid var(--line);border-radius:14px;background:var(--surface);
-    margin-bottom:8px;font-family:inherit;font-weight:700;color:var(--text);cursor:pointer;text-align:right}
+    margin-bottom:8px;font-family:inherit;font-weight:700;color:var(--text);cursor:pointer;text-align:start}
   .pass-box{background:var(--good-soft);color:var(--good);border-radius:14px;padding:10px 12px;font-size:13px;margin-bottom:12px;line-height:1.7}
   .pass-box.warn{background:var(--warn-soft);color:var(--warn)}
 
@@ -515,6 +530,7 @@
     <button class="chip-btn" id="installChip" hidden aria-label="تثبيت التطبيق">
       <svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>تثبيت
     </button>
+    <button class="theme-btn lang-btn" id="langBtn" type="button" aria-label="اللغة"></button>
     <button class="theme-btn" id="themeBtn" type="button" aria-label="الوضع الفاتح"></button>
     <button class="me-btn" id="meBtn" hidden aria-label="حسابي"><span id="meIni"></span><span class="conn" id="conn"></span></button>
   </header>
@@ -547,7 +563,8 @@
   var main = document.getElementById("main");
 
   // ════════════ أدوات ════════════
-  function money(n){ n = Number(n) || 0; return n.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}) + " ر.س"; }
+  var LOC = window.I18N ? I18N.locale() : "ar-SA-u-nu-latn";
+  function money(n){ n = Number(n) || 0; return n.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}) + " " + (window.I18N ? I18N.cur() : "ر.س"); }
   function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
   function store(k, v){ try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e){ return null; } }
   function toast(msg){
@@ -570,17 +587,22 @@
   function parseTs(s){ return new Date(String(s).replace(" ", "T") + "Z"); }
   function ago(s){
     if (!s) return ""; var d = parseTs(s); var m = Math.round((Date.now() - d) / 60000);
-    if (m < 1) return "الآن"; if (m < 60) return "منذ " + m + " د"; var h = Math.round(m / 60); if (h < 24) return "منذ " + h + " س";
-    return d.toLocaleDateString("ar-SA-u-nu-latn", {day: "numeric", month: "short"});
+    if (m < 1) return "الآن"; if (m < 60) return agoText(m, "minute"); var h = Math.round(m / 60); if (h < 24) return agoText(h, "hour");
+    return d.toLocaleDateString(LOC, {day: "numeric", month: "short"});
   }
-  function fmtDate(s){ return s ? parseTs(s).toLocaleString("ar-SA-u-nu-latn", {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : ""; }
+  function fmtDate(s){ return s ? parseTs(s).toLocaleString(LOC, {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : ""; }
+  // «منذ 5 د» بالعربية كما كان، وبغيرها صيغة المتصفح نفسه («5 min ago»)
+  function agoText(n, unit){
+    if (!window.I18N || I18N.lang() === "ar" || !window.Intl || !Intl.RelativeTimeFormat) return "منذ " + n + (unit === "minute" ? " د" : " س");
+    try { return new Intl.RelativeTimeFormat(LOC, {numeric: "always", style: "short"}).format(-n, unit); } catch(e){ return "منذ " + n; }
+  }
   function vibrate(ms){ try { if (navigator.vibrate) navigator.vibrate(ms || 30); } catch(e){} }
   var ICON = {
     bag: '<svg class="i" viewBox="0 0 24 24"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 016 0"/></svg>',
     search: '<svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
     scan: '<svg class="i" viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 011-1h2M17 4h2a1 1 0 011 1v2M20 17v2a1 1 0 01-1 1h-2M7 20H5a1 1 0 01-1-1v-2"/><path d="M8 8v8M11 8v8M14 8v8M17 8v8"/></svg>',
     close: '<svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
-    back: '<svg class="i" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+    back: '<svg class="i flip-ltr" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
     refresh: '<svg class="i" viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/></svg>',
     copy: '<svg class="i" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 00-1-1H5a1 1 0 00-1 1v10a1 1 0 001 1h3"/></svg>',
     share: '<svg class="i" viewBox="0 0 24 24"><path d="M12 3v13M7 8l5-5 5 5M5 14v5a1 1 0 001 1h12a1 1 0 001-1v-5"/></svg>',
@@ -621,6 +643,25 @@
   };
   if (darkMQ && darkMQ.addEventListener) darkMQ.addEventListener("change", paintThemeBtn);
   paintThemeBtn();
+  // ════════════ لغة التطبيق ════════════
+  // العربية ثم الإنجليزية ثم الفرنسية ثم الأوردو. تُحفظ على الجوال، والتطبيق يُفتح من جديد بها (اتجاهه وخطّه وكلامه)
+  (function(){
+    var b = document.getElementById("langBtn"); if (!b || !window.I18N) { if (b) b.hidden = true; return; }
+    b.textContent = I18N.info().short;
+    b.onclick = function(){
+      var cur = I18N.lang();
+      var ov = sheet("اللغة", I18N.langs.map(function(l){
+        return '<button class="lang-row' + (l.code === cur ? ' on' : '') + '" data-lang="' + l.code + '" dir="' + l.dir + '" translate="no">'
+          + '<span class="code">' + l.short + '</span><span class="grow">' + l.name + '</span>' + (l.code === cur ? ICON.check : '') + '</button>';
+      }).join(""));
+      Array.prototype.forEach.call(ov.querySelectorAll("[data-lang]"), function(r){ r.onclick = function(){
+        var code = r.getAttribute("data-lang");
+        if (code === cur){ ov.remove(); return; }
+        if (typeof cart !== "undefined" && cart.length && !confirm("تغيير اللغة يعيد فتح التطبيق ويفرّغ السلة. متابعة؟")) return;
+        I18N.setLang(code); location.reload();
+      }; });
+    };
+  })();
   function thumbHtml(id, cls){ return '<img class="' + (cls || "thumb") + '" src="/api/sales/products/' + id + '/image" loading="lazy" data-thumb alt="">'; }
   function wireThumbs(el){ $$("img[data-thumb]", el).forEach(function(im){ im.onerror = function(){ this.onerror = null;
     var b = document.createElement("span"); b.className = (this.className || "thumb") + " thumb-ph"; b.innerHTML = ICON.bag;
@@ -955,7 +996,7 @@
       + '<div style="margin:14px 0"><div class="lbl">جوال العميل</div><input id="phone" dir="ltr" style="text-align:right" inputmode="tel" value="' + esc(v.phone || "") + '" placeholder="05xxxxxxxx"></div>'
       + '<button class="btn wa" id="wa" style="margin-bottom:10px">' + ICON.wa + ' إرسال واتساب بالفاتورة</button>'
       + '<div class="row" style="gap:10px"><button class="btn soft" id="shr">' + ICON.share + ' مشاركة</button><button class="btn soft" id="cpm">' + ICON.copy + ' نسخ الرسالة</button></div>'
-      + '<div class="lbl" style="margin-top:16px">نص الرسالة</div><div class="msg">' + esc(v.message) + '</div>');
+      + '<div class="lbl" style="margin-top:16px">نص الرسالة</div><div class="msg" translate="no">' + esc(v.message) + '</div>');
     $("#cpl", ov).onclick = function(){ copyText(v.url, "نُسخ الرابط"); };
     $("#cpm", ov).onclick = function(){ copyText(v.message, "نُسخت الرسالة"); };
     // واتساب يُفتح مباشرةً عند الضغط (إيماءة مستخدم) — لا يُحجب كالنوافذ المتأخّرة
@@ -2027,7 +2068,7 @@
   function screenOverview(){
     view = {name: "dash", user: null}; setNav("dash"); updateCartUI();
     var req = ++homeReq, live = function(){ return req === homeReq && view.name === "dash" && !view.user; };
-    var day = new Date().toLocaleDateString("ar-u-nu-latn", {weekday: "long"});
+    var day = new Date().toLocaleDateString(LOC, {weekday: "long"});
     var skel = '<div class="card br-card"><div class="skel" style="height:18px;width:45%"></div><div class="skel" style="height:26px;width:60%;margin-top:12px"></div>'
       + '<div class="skel" style="height:44px;margin-top:12px"></div></div>';
     main.innerHTML = installCardHtml() + mgrBarHtml() + mgrActionsHtml() + pushCardHtml()
@@ -2586,7 +2627,7 @@
     var kpis = [];
     if (can("internal")) kpis.push(["in", "وارد للفرع"], ["open", "طلبات مفتوحة"]);
     if (can("create_link")) kpis.push(["links", "لينكات لم تُدفع"]);
-    var day = new Date().toLocaleDateString("ar-u-nu-latn", {weekday: "long"});
+    var day = new Date().toLocaleDateString(LOC, {weekday: "long"});
     return '<div class="home-hero"><div class="row" style="align-items:flex-start;position:relative;z-index:1"><div class="grow">'
       + '<div class="hi">' + (new Date().getHours() < 12 ? "صباح الخير" : "مساء الخير") + ' · ' + esc(day) + '</div>'
       + '<div class="who ellip">' + esc(String(me.name || "").trim().split(/\s+/)[0]) + '</div>'
@@ -2639,7 +2680,7 @@
     if (userId) $("#dashT").textContent = d.user.name;
     var avg = d.count ? d.total / d.count : 0;
     var maxDay = Math.max.apply(null, d.days.map(function(x){ return x.amount; }).concat([0]));
-    var dayName = function(s){ return new Date(s + "T12:00:00").toLocaleDateString("ar-SA-u-nu-latn", {weekday: "short"}).replace("ال", ""); };
+    var dayName = function(s){ return new Date(s + "T12:00:00").toLocaleDateString(LOC, {weekday: "short"}).replace(/^ال/, ""); };
     var bars = d.days.map(function(x, i){
       var h = maxDay ? Math.max(Math.round(x.amount / maxDay * 84), 3) : 3;
       return '<button data-day="' + i + '" class="' + (i === d.days.length - 1 ? "on" : "") + '" aria-label="' + esc(dayName(x.date)) + ': ' + esc(money(x.amount)) + '"><i style="height:' + h + 'px"></i>' + esc(dayName(x.date)) + '</button>';
@@ -2657,7 +2698,7 @@
         }).join("") + '</div>' : '')
       + (d.branches && !userId ? branchesHtml(d.branches) : '')
       + (d.team && !userId ? teamHtml(d.team) : '');
-    function showDay(i){ var x = d.days[i]; $("#brD").textContent = new Date(x.date + "T12:00:00").toLocaleDateString("ar-SA-u-nu-latn", {weekday: "long", day: "numeric", month: "short"}); $("#brV").textContent = money(x.amount);
+    function showDay(i){ var x = d.days[i]; $("#brD").textContent = new Date(x.date + "T12:00:00").toLocaleDateString(LOC, {weekday: "long", day: "numeric", month: "short"}); $("#brV").textContent = money(x.amount);
       $$("#bars button").forEach(function(b, n){ b.classList.toggle("on", n === i); }); }
     $$("#bars button").forEach(function(b){ b.onclick = function(){ showDay(+b.getAttribute("data-day")); }; });
     showDay(d.days.length - 1);
@@ -2808,7 +2849,7 @@
     var ov = sheet("إيصال " + esc(o.name), '<div class="spin"></div>');
     api("/pos-orders/" + o.id + "/receipt").then(function(r){
       if (!ov.isConnected) return;
-      $(".sb", ov).innerHTML = '<div class="rcpt-view">' + r.html + '</div><div class="row">'
+      $(".sb", ov).innerHTML = '<div class="rcpt-view" translate="no">' + r.html + '</div><div class="row">'
         + '<button class="btn dark grow" id="rcptPrint">' + ICON.print + ' طباعة</button>'
         + '<button class="btn soft grow" id="rcptShare" disabled>' + ICON.share + ' <span>تجهيز…</span></button></div>';
       $("#rcptPrint", ov).onclick = function(){ printReceipt(r.html); };
@@ -2833,6 +2874,7 @@
     var W = 560, K = 2;
     var host = document.createElement("div");
     host.style.cssText = "position:fixed;top:0;left:-9999px;width:" + W + "px;background:#fff";
+    host.setAttribute("translate", "no"); host.setAttribute("dir", "rtl");
     host.innerHTML = html;
     var rc = $(".sharqia-receipt", host);
     if (rc){ rc.style.fontSize = "21px"; rc.style.fontFamily = "-apple-system,'SF Arabic','Segoe UI',Tahoma,'Noto Sans Arabic',Arial,sans-serif"; }
@@ -3169,7 +3211,7 @@
     for (var i = jr.stacks.length - 1; i >= 0; i--) if (stackLike(sig, jr.stacks[i].sig) >= .8) return jr.stacks[i];
     return null;
   }
-  function agoMs(t){ var m = Math.round((Date.now() - t) / 60000); return m < 1 ? "الآن" : m < 60 ? "منذ " + m + " د" : "منذ " + Math.round(m / 60) + " س"; }
+  function agoMs(t){ var m = Math.round((Date.now() - t) / 60000); return m < 1 ? "الآن" : m < 60 ? agoText(m, "minute") : agoText(Math.round(m / 60), "hour"); }
   function jrPieces(){ return Object.keys(jr.qty).reduce(function(s, k){ return s + jr.qty[k]; }, 0); }
   function jrAdd(code, n){
     code = String(code || "").trim().slice(0, 64); if (!code || !n) return 0;
