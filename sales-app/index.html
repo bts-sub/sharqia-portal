@@ -701,10 +701,11 @@
       + (me.branches && me.branches.length ? '<div class="card"><div class="kv"><span>فروعك</span><b>' + me.branches.map(function(b){ return esc(b.name); }).join("، ") + '</b></div></div>' : '')
       + (me.pos ? '<div class="card"><div class="kv"><span>نقطة البيع</span><b>' + esc(me.pos.name) + '</b></div>' + (me.pos.home ? '<div class="kv"><span>فرعك الأصلي</span><span>' + esc(me.pos.home) + '</span></div>' : '') + '<div class="kv"><span>المخزون</span><span>' + esc(me.pos.stock) + '</span></div></div>'
         : '<div class="note">حسابك غير مربوط بنقطة بيع — اطلب ربطه من مدير المبيعات.</div>')
-      + '<div class="card"><div class="h2">صلاحياتك</div>' + row(P.internal, "البيع الداخلي (عملاء المعرض)") + row(P.receive_stock, "استلام المخزن واعتماد الجودة") + row(P.count, "جرد المخزون بالكاميرا") + row(P.create_link, "إنشاء لينك دفع")
+      // الصلاحيات عند مدير الفروع وحده (قرار صاحب المعرض): لا يرى الموظف قائمة صلاحياته، ويديرها المدير من «الموظفون»
+      + (isManager() ? '<div class="card"><div class="h2">صلاحياتك</div>' + row(P.internal, "البيع الداخلي (عملاء المعرض)") + row(P.receive_stock, "استلام المخزن واعتماد الجودة") + row(P.count, "جرد المخزون بالكاميرا") + row(P.create_link, "إنشاء لينك دفع")
       + row(P.edit_price, "تعديل سعر المنتج" + (P.edit_price ? " (حتى خصم " + (+P.max_discount || 0) + "%)" : ""))
       + row(P.edit_shipping, "تعديل سعر الشحن") + row(P.create_customer, "إضافة عملاء") + row(P.create_quotation, "عروض أسعار أودو")
-      + row(P.view_all, "رؤية فواتير كل البائعين") + row(P.request_stock, "طلب بضاعة من الفروع والمخازن") + '</div>'
+      + row(P.view_all, "رؤية فواتير كل البائعين") + row(P.request_stock, "طلب بضاعة من الفروع والمخازن") + '</div>' : '')
       + (pushSupported() ? '<div class="card"><div class="kv"><span>إشعارات الجوال</span>'
         + (Notification.permission === "granted" ? '<button class="btn soft sm" id="pushTest">جرّب الإشعار</button>'
           : Notification.permission === "denied" ? '<span class="pill p-bad">مقفولة من إعدادات الجوال</span>' : '<button class="btn gold sm" data-push>تفعيل</button>')
