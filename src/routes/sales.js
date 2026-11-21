@@ -262,7 +262,11 @@ r.post("/api/sales/settings", run(async (req, res) => {
   for (const k of ["require_customer", "require_phone", "return_open", "return_approval", "return_manager_free", "staff_sale"]) {
     if (k in rules) clean[k] = !!rules[k];
   }
-  // بيع الموظفين: نسبتا الخصم (0–100) وقسط الاستقطاع الشهري
+  // بيع الموظفين: من يبيع لهم، ونسبتا الخصم (0–100) وقسط الاستقطاع الشهري
+  if ("staff_who" in rules) {
+    if (!["manager", "boss", "perm"].includes(rules.staff_who)) throw badRequest("اختر من يبيع للموظفين");
+    clean.staff_who = rules.staff_who;
+  }
   for (const k of ["staff_cash_discount", "staff_payroll_discount", "staff_installment"]) {
     if (!(k in rules)) continue;
     const v = rules[k] === "" || rules[k] == null ? 0 : Number(rules[k]);
