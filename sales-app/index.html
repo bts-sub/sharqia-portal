@@ -1958,7 +1958,7 @@
     var decide = function(path, body, msg){ return api(path, {method: "POST", body: body}).then(function(){ toast(msg); screenApprovals(tab); })
       .catch(function(e){ toast(e.message); screenApprovals(tab); }); };
     $$("[data-sok]", box).forEach(function(b){ b.onclick = function(){ b.disabled = true;
-      decide("/stock-requests/" + b.getAttribute("data-sok") + "/decide", {approve: true}, "تمت الموافقة — أُنشئ التحويل"); }; });
+      decide("/stock-requests/" + b.getAttribute("data-sok") + "/decide", {approve: true}, "تمت الموافقة — حُوِّلت البضاعة في المخزون"); }; });
     $$("[data-sno]", box).forEach(function(b){ b.onclick = function(){
       var why = prompt("سبب الرفض (اختياري):", ""); if (why === null) return;
       decide("/stock-requests/" + b.getAttribute("data-sno") + "/decide", {approve: false, reason: why}, "رُفض الطلب"); }; });
@@ -1996,13 +1996,14 @@
     api("/stock-requests").then(function(d){
       if (view.name !== "requests") return;
       var h = "";
-      if (d.outgoing.length) h += '<div class="shead"><b>مطلوبة من فرعك — جهّزها وأرسلها</b><span class="n num">' + d.outgoing.length + '</span></div>'
+      if (d.outgoing.length) h += '<div class="shead"><b>حُوِّلت من فرعك — أرسل البضاعة</b><span class="n num">' + d.outgoing.length + '</span></div>'
         + '<div class="list">' + d.outgoing.map(function(r){ return requestRowHtml(r, {outgoing: true}); }).join("") + '</div>';
       h += '<div class="shead"><b>طلبات فرعك</b></div>'
         + (d.mine.length ? '<div class="list">' + d.mine.map(function(r){ return requestRowHtml(r, {cancel: true}); }).join("") + '</div>'
           : '<div class="empty">' + ICON.truck + '<b>لا طلبات بعد</b>' + (d.can_request ? 'امسح القطعة من «باركود» ← «أضف للطلب» ← «اطلب من فرعٍ آخر أو المخزن».' : '') + '</div>');
-      if (d.mine.some(function(r){ return r.state === "approved"; }))
-        h += '<div class="muted" style="margin:8px 4px">ما وافق عليه المدير يصلك في «استلام المخزن» فتعدّه وتعتمده.</div>';
+      if (d.mine.length)
+        h += '<div class="muted" style="margin:8px 4px">ما وافق عليه المدير يتحوّل لمخزون فرعك فورًا، والفرع المصدر يرسل البضاعة.'
+          + (d.mine.some(function(r){ return r.state === "approved"; }) ? ' و«بانتظار الاستلام» (قبل التحويل الفوري) يُستلم من «استلام المخزن».' : '') + '</div>';
       $("#srBody").innerHTML = h;
       $$("[data-rcancel]").forEach(function(b){ b.onclick = function(){
         if (!confirm("تلغي طلب البضاعة؟")) return;
@@ -2029,7 +2030,7 @@
         + '<div class="lbl" style="margin-top:12px">الكمية</div><input id="srQty" class="num" type="number" inputmode="numeric" min="1" dir="ltr" value="1" style="font-size:22px;text-align:center;font-weight:800">'
         + '<div class="lbl" style="margin-top:12px">ملاحظة (اختياري)</div><textarea id="srNote" rows="2" placeholder="مثلًا: زبونة تنتظر المقاس"></textarea>'
         + '<button class="btn gold" id="srSend" style="margin-top:12px">' + ICON.truck + ' أرسل الطلب لمدير الفروع</button>'
-        + '<div class="muted" style="margin-top:8px">بعد موافقة مدير الفروع يُنشأ تحويلٌ من المصدر لفرعك، ويصلك في «استلام المخزن».</div>'
+        + '<div class="muted" style="margin-top:8px">بموافقة مدير الفروع تتحوّل البضاعة من المصدر لمخزون فرعك فورًا، ويرسلها المصدر.</div>'
       : '<div class="empty"><b>غير متوفر</b>لا قطعة منه في فرعٍ آخر ولا في المخازن الآن.</div>'));
     wireThumbs(ov);
     if (!$("#srSend", ov)) return;
