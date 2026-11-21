@@ -319,6 +319,18 @@
   .mgr-actions{margin-bottom:12px} .push-card{margin-bottom:12px} .card.apv{margin-bottom:10px}
   .kv.sw{cursor:pointer;align-items:center}
   .tiles .tile.wide{grid-column:1/-1}
+  /* الجوال بدولته: زرّ العلم والمفتاح ثم الرقم */
+  .phone-in{display:flex;align-items:stretch;gap:0;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+  .phone-in:focus-within{border-color:var(--gold)}
+  .phone-in input{flex:1;min-width:0;border:none;border-radius:0;background:none;text-align:left;box-shadow:none}
+  .phone-in input:focus{box-shadow:none;outline:none}
+  .cc-btn{display:inline-flex;align-items:center;gap:6px;padding:0 12px;border:none;border-inline-end:1px solid var(--line);
+    background:var(--surface2);color:var(--text);font:inherit;font-weight:800;cursor:pointer;white-space:nowrap}
+  .cc-btn .flag,.cc-row .flag{font-size:20px;line-height:1}
+  .cc-btn .caret{font-size:11px;color:var(--sub)}
+  .cc-list{max-height:58vh;overflow-y:auto}
+  .cc-row{width:100%;font:inherit;color:var(--text);background:var(--surface);border:0;border-bottom:1px solid var(--line);text-align:start}
+  .cc-row.on{background:var(--gold-soft)}
   .req{color:var(--bad);font-weight:800}
   #custBox.need{outline:2px solid var(--bad);outline-offset:3px}
   /* «الموظفون»: كل فرعٍ صفٌّ يُفتح، وتحته موظفوه (أزرارٌ بلون البطاقة لا لون الزرّ الافتراضي) */
@@ -1133,16 +1145,81 @@
     if ($("#newCust", ov)) $("#newCust", ov).onclick = function(){ ov.remove(); openNewCustomer(); };
     load("");
   }
+  // ════════════ دولة الجوال ════════════
+  // [رمز ISO، الاسم، مفتاح الدولة]. الخليج والعرب أولًا ثم البقية بالأبجدية. العلم من رمز ISO (رموز المناطق في يونيكود).
+  var COUNTRIES = [
+    ["SA", "السعودية", "966"], ["AE", "الإمارات", "971"], ["KW", "الكويت", "965"], ["QA", "قطر", "974"], ["BH", "البحرين", "973"],
+    ["OM", "عُمان", "968"], ["EG", "مصر", "20"], ["JO", "الأردن", "962"], ["YE", "اليمن", "967"], ["SD", "السودان", "249"],
+    ["SY", "سوريا", "963"], ["LB", "لبنان", "961"], ["IQ", "العراق", "964"], ["PS", "فلسطين", "970"], ["MA", "المغرب", "212"],
+    ["DZ", "الجزائر", "213"], ["TN", "تونس", "216"], ["LY", "ليبيا", "218"], ["MR", "موريتانيا", "222"], ["SO", "الصومال", "252"],
+    ["DJ", "جيبوتي", "253"], ["KM", "جزر القمر", "269"],
+    ["ET", "إثيوبيا", "251"], ["AZ", "أذربيجان", "994"], ["AR", "الأرجنتين", "54"], ["AM", "أرمينيا", "374"], ["ER", "إريتريا", "291"],
+    ["ES", "إسبانيا", "34"], ["AU", "أستراليا", "61"], ["AF", "أفغانستان", "93"], ["DE", "ألمانيا", "49"], ["AL", "ألبانيا", "355"],
+    ["ID", "إندونيسيا", "62"], ["UG", "أوغندا", "256"], ["UA", "أوكرانيا", "380"], ["UZ", "أوزبكستان", "998"], ["IR", "إيران", "98"],
+    ["IE", "أيرلندا", "353"], ["IT", "إيطاليا", "39"], ["PK", "باكستان", "92"], ["BR", "البرازيل", "55"], ["PT", "البرتغال", "351"],
+    ["BE", "بلجيكا", "32"], ["BG", "بلغاريا", "359"], ["BD", "بنغلاديش", "880"], ["BA", "البوسنة والهرسك", "387"], ["PL", "بولندا", "48"],
+    ["PE", "بيرو", "51"], ["TJ", "طاجيكستان", "992"], ["TH", "تايلاند", "66"], ["TW", "تايوان", "886"], ["TM", "تركمانستان", "993"],
+    ["TR", "تركيا", "90"], ["TD", "تشاد", "235"], ["CL", "تشيلي", "56"], ["TZ", "تنزانيا", "255"], ["ZA", "جنوب أفريقيا", "27"],
+    ["SS", "جنوب السودان", "211"], ["GE", "جورجيا", "995"], ["MV", "جزر المالديف", "960"], ["DK", "الدنمارك", "45"], ["RU", "روسيا", "7"],
+    ["RO", "رومانيا", "40"], ["LK", "سريلانكا", "94"], ["SG", "سنغافورة", "65"], ["SN", "السنغال", "221"], ["SE", "السويد", "46"],
+    ["CH", "سويسرا", "41"], ["CN", "الصين", "86"], ["GH", "غانا", "233"], ["FR", "فرنسا", "33"], ["PH", "الفلبين", "63"],
+    ["VE", "فنزويلا", "58"], ["FI", "فنلندا", "358"], ["VN", "فيتنام", "84"], ["CY", "قبرص", "357"], ["KG", "قيرغيزستان", "996"],
+    ["KZ", "كازاخستان", "7"], ["CM", "الكاميرون", "237"], ["KH", "كمبوديا", "855"], ["CA", "كندا", "1"], ["KR", "كوريا الجنوبية", "82"],
+    ["CO", "كولومبيا", "57"], ["KE", "كينيا", "254"], ["ML", "مالي", "223"], ["MY", "ماليزيا", "60"], ["MX", "المكسيك", "52"],
+    ["GB", "المملكة المتحدة", "44"], ["MM", "ميانمار", "95"], ["NO", "النرويج", "47"], ["AT", "النمسا", "43"], ["NP", "نيبال", "977"],
+    ["NE", "النيجر", "227"], ["NG", "نيجيريا", "234"], ["NZ", "نيوزيلندا", "64"], ["IN", "الهند", "91"], ["NL", "هولندا", "31"],
+    ["HK", "هونغ كونغ", "852"], ["US", "الولايات المتحدة", "1"], ["JP", "اليابان", "81"], ["GR", "اليونان", "30"],
+  ].map(function(c){ return {iso: c[0], name: c[1], dial: c[2]}; });
+  function flagOf(iso){ return String.fromCodePoint.apply(null, iso.split("").map(function(ch){ return 0x1F1A5 + ch.charCodeAt(0); })); }
+  function latinDigits(s){ return String(s || "").replace(/[٠-٩]/g, function(d){ return d.charCodeAt(0) - 0x660; }).replace(/[۰-۹]/g, function(d){ return d.charCodeAt(0) - 0x6F0; }); }
+  // الرقم كما يُحفظ: السعودي محليًّا كما كان (05xxxxxxxx، فتبقى رسائل لينك الدفع)، وغيره دوليًّا (+201119091234).
+  // يُرجع {phone, error}؛ والرقم الفارغ {phone: ""}.
+  function composePhone(c, raw){
+    var d = latinDigits(raw).replace(/\D/g, "");
+    if (d.indexOf("00") === 0) d = d.slice(2);
+    if (d.indexOf(c.dial) === 0 && d.length - c.dial.length >= 7) d = d.slice(c.dial.length);   // كُتب بمفتاح الدولة
+    d = d.replace(/^0+/, "");
+    if (!d) return {phone: ""};
+    if (c.dial === "966") return /^5\d{8}$/.test(d) ? {phone: "0" + d} : {error: "الجوال السعودي 9 أرقام تبدأ بـ5 (05xxxxxxxx)"};
+    return d.length >= 6 && d.length <= 14 ? {phone: "+" + c.dial + d} : {error: "رقم الجوال غير صحيح لـ" + c.name};
+  }
+  function openCountryPicker(cur, onPick){
+    var ov = sheet("دولة الجوال", '<div class="search"><div class="field">' + ICON.search + '<input id="ccq" placeholder="ابحث باسم الدولة أو المفتاح"></div></div><div id="ccl" class="list cc-list"></div>');
+    var draw = function(){
+      var q = latinDigits($("#ccq", ov).value.trim()).replace(/^\+/, "");
+      var rows = COUNTRIES.filter(function(c){ return !q || c.name.indexOf(q) >= 0 || c.dial.indexOf(q) === 0 || c.iso.toLowerCase() === q.toLowerCase(); });
+      $("#ccl", ov).innerHTML = rows.length ? rows.map(function(c){
+        return '<button class="li cc-row' + (c.iso === cur.iso ? " on" : "") + '" data-cc="' + c.iso + '"><span class="flag">' + flagOf(c.iso) + '</span>'
+          + '<span class="grow">' + esc(c.name) + '</span><span class="num muted" dir="ltr">+' + c.dial + '</span></button>';
+      }).join("") : '<div class="empty"><b>لا دولة بهذا الاسم</b></div>';
+      $$("[data-cc]", ov).forEach(function(b){ b.onclick = function(){
+        onPick(COUNTRIES.filter(function(c){ return c.iso === b.getAttribute("data-cc"); })[0]); ov.remove(); }; });
+    };
+    $("#ccq", ov).oninput = draw;
+    draw();
+  }
+  function phoneFieldHtml(c, required){
+    return '<div class="lbl">الجوال' + (required ? ' *' : '') + '</div><div class="phone-in">'
+      + '<button type="button" class="cc-btn" id="pcc" aria-label="دولة الجوال"><span class="flag">' + flagOf(c.iso) + '</span><span class="num" dir="ltr">+' + c.dial + '</span><span class="caret">▾</span></button>'
+      + '<input id="p" dir="ltr" inputmode="tel" autocomplete="tel-national" placeholder="' + (c.dial === "966" ? "5xxxxxxxx" : "رقم الجوال") + '"></div>';
+  }
+
   function openNewCustomer(){
     var pass = null;     // ما قُرئ من الجواز
+    var cc = COUNTRIES[0];   // دولة الجوال: السعودية افتراضيًا
     var ov = sheet("عميل جديد",
       '<label class="btn dark" style="margin-bottom:6px">' + ICON.id + ' مسح جواز السفر<input id="pf" type="file" accept="image/*" capture="environment" hidden></label>'
       + '<div class="muted" style="margin-bottom:12px;text-align:center">تُرسل الصورة لقراءتها فقط ولا تُحفظ.</div><div id="pbox"></div>'
       + '<div style="margin-bottom:12px"><div class="lbl">الاسم *</div><input id="n" autocomplete="name"></div>'
-      + '<div style="margin-bottom:12px"><div class="lbl">الجوال' + (rule("require_phone") ? ' *' : '') + '</div><input id="p" dir="ltr" style="text-align:right" inputmode="tel" placeholder="05xxxxxxxx"></div>'
+      + '<div style="margin-bottom:12px" id="pwrap">' + phoneFieldHtml(cc, rule("require_phone")) + '</div>'
       + '<div style="margin-bottom:12px"><div class="lbl">البريد</div><input id="e" dir="ltr" style="text-align:right" inputmode="email"></div>'
       + '<div style="margin-bottom:16px"><div class="lbl">المدينة</div><input id="ci"></div>'
       + '<button class="btn gold" id="save">حفظ العميل</button>');
+    // اختيار الدولة يبقي الرقم المكتوب
+    var wireCc = function(){ $("#pcc", ov).onclick = function(){ openCountryPicker(cc, function(c){
+      var typed = $("#p", ov).value; cc = c;
+      $("#pwrap", ov).innerHTML = phoneFieldHtml(cc, rule("require_phone")); $("#p", ov).value = typed; wireCc(); $("#p", ov).focus(); }); }; };
+    wireCc();
     $("#pf", ov).onchange = function(){
       var file = this.files && this.files[0]; this.value = ""; if (!file) return;
       var box = $("#pbox", ov), saveBtn = $("#save", ov);
@@ -1159,10 +1236,12 @@
     };
     $("#save", ov).onclick = function(){
       var name = $("#n", ov).value.trim(); if (!name){ toast("الاسم مطلوب"); $("#n", ov).focus(); return; }
-      // جوال العميل إجباري (قاعدة مدير الفروع): سبعة أرقامٍ على الأقل
-      if (rule("require_phone") && ($("#p", ov).value.match(/[0-9٠-٩۰-۹]/g) || []).length < 7){ toast("جوال العميل مطلوب"); $("#p", ov).focus(); return; }
+      // الجوال بدولته؛ وإجباريٌّ إن كانت قاعدة مدير الفروع متشغّلة
+      var ph = composePhone(cc, $("#p", ov).value);
+      if (ph.error){ toast(ph.error); $("#p", ov).focus(); return; }
+      if (rule("require_phone") && !ph.phone){ toast("جوال العميل مطلوب"); $("#p", ov).focus(); return; }
       $("#save", ov).disabled = true;
-      var body = {name: name, phone: $("#p", ov).value.trim(), email: $("#e", ov).value.trim(), city: $("#ci", ov).value.trim(), scope: isInt() ? "internal" : "external"};
+      var body = {name: name, phone: ph.phone, email: $("#e", ov).value.trim(), city: $("#ci", ov).value.trim(), scope: isInt() ? "internal" : "external"};
       if (pass){ body.passport_no = pass.passport_no; body.nationality = pass.nationality; body.birthdate = pass.birthdate;
         body.passport_expiry = pass.passport_expiry; body.gender = pass.gender; }
       api("/customers", {method: "POST", body: body})
