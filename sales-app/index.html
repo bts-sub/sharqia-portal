@@ -318,6 +318,18 @@
   /* الموافقات والصلاحيات والإشعارات */
   .mgr-actions{margin-bottom:12px} .push-card{margin-bottom:12px} .card.apv{margin-bottom:10px}
   .kv.sw{cursor:pointer;align-items:center}
+  /* «الموظفون»: كل فرعٍ صفٌّ يُفتح، وتحته موظفوه (أزرارٌ بلون البطاقة لا لون الزرّ الافتراضي) */
+  .st-branch,.st-row{width:100%;font:inherit;color:var(--text);background:var(--surface);border:0;text-align:start;cursor:pointer}
+  .st-branch{display:flex;align-items:center;gap:12px;padding:13px 14px}
+  .st-branch b{font-size:15.5px}
+  .st-branch .n{min-width:24px;height:24px;padding:0 8px;border-radius:999px;background:var(--gold-soft);color:var(--gold-t);
+    display:inline-flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800}
+  .st-branch .chev{font-size:22px;color:var(--sub);transition:transform .2s}
+  .st-group.open .st-branch{border-bottom:1px solid var(--line)}
+  .st-group.open .st-branch .chev{transform:rotate(90deg)}
+  .st-row{border-bottom:1px solid var(--line)}
+  .st-row:last-child{border-bottom:none}
+  .st-row .st-name{display:block;color:var(--text);font-size:14.5px}
   .sw input{flex:0 0 44px;width:44px;height:26px;margin:0;padding:0;border:none;border-radius:999px;background:var(--line);
     -webkit-appearance:none;appearance:none;position:relative;cursor:pointer;transition:background .2s}
   .sw input::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:20px;height:20px;border-radius:50%;background:#fff;
@@ -2035,6 +2047,7 @@
   }
 
   // ════════════ الموظفون والصلاحيات (مدير الفروع) ════════════
+  var staffOpen = {};          // الفروع المفتوحة في «الموظفون» (تبقى مفتوحة بعد حفظ صلاحيات موظف)
   function screenStaff(){
     if (!isManager()) return screenDash();
     view = {name: "staff"}; setNav("dash"); updateCartUI();
@@ -2043,20 +2056,26 @@
     $("#bk").onclick = function(){ screenHome(); };
     api("/staff").then(function(d){
       if (view.name !== "staff") return;
+      // كل فرعٍ صفٌّ مطويّ بعدد موظفيه، يُفتح بلمسه؛ والبحث يفتح كل فرعٍ فيه نتيجة
       var draw = function(){
         var q = $("#stQ").value.trim().toLowerCase(), groups = {}, order = [];
         d.staff.filter(function(s){ return !q || (s.name + " " + s.login).toLowerCase().indexOf(q) >= 0; }).forEach(function(s){
           if (!(s.branch in groups)){ groups[s.branch] = []; order.push(s.branch); } groups[s.branch].push(s); });
         $("#stBody").innerHTML = order.length ? order.map(function(br){
-          return '<div class="shead"><b>' + esc(br || "بلا فرع") + '</b><span class="n num">' + groups[br].length + '</span></div><div class="list">'
-            + groups[br].map(function(s){
+          var open = !!q || staffOpen[br];
+          return '<div class="list st-group' + (open ? " open" : "") + '"><button class="st-branch" data-stb="' + esc(br) + '" aria-expanded="' + open + '">'
+            + '<div class="avatar">' + ICON.store + '</div><b class="grow ellip">' + esc(br || "بلا فرع") + '</b>'
+            + '<span class="n num">' + groups[br].length + '</span><span class="chev" aria-hidden="true">‹</span></button>'
+            + (open ? groups[br].map(function(s){
               var on = d.labels.filter(function(l){ return s.perms[l.key]; }).length;
-              return '<button class="li" data-st="' + s.id + '" style="width:100%;text-align:inherit;font:inherit;color:inherit;cursor:pointer">'
-                + '<div class="avatar">' + esc(initials(s.name)) + '</div><div class="grow"><b class="ellip" style="display:block">' + esc(s.name) + '</b>'
+              return '<button class="li st-row" data-st="' + s.id + '">'
+                + '<div class="avatar">' + esc(initials(s.name)) + '</div><div class="grow"><b class="ellip st-name">' + esc(s.name) + '</b>'
                 + '<div class="muted">' + [s.role_label, s.shift, s.section, s.away ? "يعمل الآن في " + s.away : ""].filter(Boolean).map(esc).join(" · ") + '</div></div>'
                 + (s.locked ? '<span class="pill p-bad">مقفل</span>' : '') + '<span class="pill p-sub num">' + on + '/' + d.labels.length + '</span></button>';
-            }).join("") + '</div>';
+            }).join("") : '') + '</div>';
         }).join("") : '<div class="empty"><b>لا موظفين</b></div>';
+        $$("[data-stb]").forEach(function(b){ b.onclick = function(){
+          var br = b.getAttribute("data-stb"); staffOpen[br] = !staffOpen[br]; draw(); }; });
         $$("[data-st]").forEach(function(b){ b.onclick = function(){
           var s = d.staff.filter(function(x){ return x.id === +b.getAttribute("data-st"); })[0];
           openStaffSheet(s, d.labels, function(n){ d.staff[d.staff.indexOf(s)] = n; draw(); });
