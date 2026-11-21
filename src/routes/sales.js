@@ -260,6 +260,13 @@ r.post("/api/sales/settings", run(async (req, res) => {
   const rules = (req.body && typeof req.body.rules === "object" && req.body.rules) || {};
   const clean = {};
   for (const k of ["require_customer", "require_phone"]) if (k in rules) clean[k] = !!rules[k];
+  // حدود مبلغ الشحن: فارغٌ = صفر (بلا حدٍّ أعلى)، وأودو يرفض الأدنى فوق الأعلى
+  for (const k of ["shipping_min", "shipping_max"]) {
+    if (!(k in rules)) continue;
+    const v = rules[k] === "" || rules[k] == null ? 0 : Number(rules[k]);
+    if (!Number.isFinite(v) || v < 0) throw badRequest("حدود مبلغ الشحن أرقامٌ موجبة");
+    clean[k] = v;
+  }
   res.json(visitOut(req, await execKw(APP, "app_settings_set", [req.appToken, clean])));
 }));
 
@@ -315,6 +322,10 @@ r.post("/api/sales/passport/read", perm("create_customer"), run(async (req, res)
 r.get("/api/sales/carriers", run(async (req, res) => {
   res.json(await execKw(APP, "app_carriers", [req.appToken]));
 }));
+// «استلام من المعرض»: المعارض التي يختار منها البائع أين يستلم العميل
+r.get("/api/sales/pickup-branches", run(async (req, res) => {
+  res.json(await execKw(APP, "app_pickup_branches", [req.appToken]));
+}));
 
 // ───────────────────────── فواتير ولينكات دفع ماي فاتورة ─────────────────────────
 //   الفاتورة تُنشأ في أودو بمنتجاتها (وشحنها) باسم البائع، فيصل العميلَ لينكُ ماي فاتورة المعتاد
@@ -324,7 +335,16 @@ function mfMessage(inv) {
   return `السلام عليكم ${inv.partner || ""}\n`
     + `فاتورتكم من بيت العباءة الشرقية رقم ${inv.invoice_id}:\n${items}\n`
     + `الإجمالي: ${Number(inv.amount).toFixed(2)} ر.س (شامل الضريبة)\n`
+    + (inv.pickup ? `الاستلام من: ${inv.pickup}\n` : "")
     + `للدفع الآمن عبر ماي فاتورة (مدى، فيزا، أبل باي):\n${inv.url}`;
+}
+// «يدفع ويستلم من المعرض»: بلا لينك، رسالةٌ للعميل بالمعرض وأصنافه، ويفتح المعرض طلبه بجواله
+function pickupMessage(o) {
+  const items = (o.lines || []).map((l) => `• ${l.name} × ${l.qty} = ${Number(l.subtotal).toFixed(2)} ر.س`).join("\n");
+  return `السلام عليكم ${(o.partner && o.partner.name) || ""}\n`
+    + `طلبكم من بيت العباءة الشرقية محجوزٌ لكم في ${o.branch}، تدفعون وتستلمون هناك:\n${items}\n`
+    + `الإجمالي: ${Number(o.amount).toFixed(2)} ر.س (شامل الضريبة)\n`
+    + `عند الوصول أخبروا الموظف برقم جوالكم ${(o.partner && o.partner.phone) || ""}`;
 }
 
 r.post("/api/sales/mf-links", run(async (req, res) => {
@@ -335,11 +355,28 @@ r.post("/api/sales/mf-links", run(async (req, res) => {
     product_id: num(l.product_id), qty: Math.max(1, num(l.qty, 1)),
     price_unit: l.price_unit == null || l.price_unit === "" ? null : num(l.price_unit),
   }));
+  // طريقة الشحن إجبارية (أودو يرفض بدونها): «استلام من المعرض» بمعرضه، وغيرها بمبلغٍ يكتبه البائع
   const ship = shipping && shipping.carrier_id
-    ? { carrier_id: num(shipping.carrier_id), price: shipping.price == null || shipping.price === "" ? null : num(shipping.price) }
+    ? { carrier_id: num(shipping.carrier_id), price: shipping.price == null || shipping.price === "" ? null : num(shipping.price),
+        pickup_config_id: shipping.pickup_config_id ? num(shipping.pickup_config_id) : false }
     : null;
   const inv = await execKw(APP, "app_create_link", [req.appToken, num(partner_id), clean, ship, note ? String(note) : false]);
   res.json({ ...inv, message: mfMessage(inv) });
+}));
+
+// «يدفع ويستلم من المعرض» (صلاحية يفتحها مدير الفروع): الطلب يصل «الوارد» في المعرض المختار بلا لينك دفع
+r.post("/api/sales/pickup-orders", run(async (req, res) => {
+  const { partner_id, lines, note, config_id } = req.body || {};
+  if (!partner_id) throw badRequest("اختر العميل");
+  if (!config_id) throw badRequest("اختر المعرض الذي يستلم منه العميل");
+  if (!Array.isArray(lines) || !lines.length) throw badRequest("أضف منتجًا واحدًا على الأقل");
+  const clean = lines.map((l) => ({
+    product_id: num(l.product_id), qty: Math.max(1, num(l.qty, 1)),
+    price_unit: l.price_unit == null || l.price_unit === "" ? null : num(l.price_unit),
+  }));
+  const o = await execKw(APP, "app_pickup_order_create",
+    [req.appToken, num(partner_id), clean, num(config_id), note ? String(note) : false]);
+  res.json({ ...o, message: pickupMessage(o) });
 }));
 
 r.get("/api/sales/mf-links", run(async (req, res) => {

@@ -332,7 +332,7 @@
   .cc-row{width:100%;font:inherit;color:var(--text);background:var(--surface);border:0;border-bottom:1px solid var(--line);text-align:start}
   .cc-row.on{background:var(--gold-soft)}
   .req{color:var(--bad);font-weight:800}
-  #custBox.need{outline:2px solid var(--bad);outline-offset:3px}
+  #custBox.need,#shipBox.need{outline:2px solid var(--bad);outline-offset:3px}
   /* «الموظفون»: كل فرعٍ صفٌّ يُفتح، وتحته موظفوه (أزرارٌ بلون البطاقة لا لون الزرّ الافتراضي) */
   .st-branch,.st-row{width:100%;font:inherit;color:var(--text);background:var(--surface);border:0;text-align:start;cursor:pointer}
   .st-branch{display:flex;align-items:center;gap:12px;padding:13px 14px}
@@ -609,7 +609,7 @@
   function pill(map, s){ var m = map[s]; return m ? '<span class="pill ' + m[1] + '">' + esc(m[0]) + '</span>' : ""; }
   var PO = {open: ["مفتوح", "p-info"], transfer: ["وارد للفرع", "p-warn"], cashier: ["عند الكاشير", "p-warn"], paid: ["مدفوع", "p-good"], cancel: ["ملغي", "p-sub"]};
   var KIND = {"return": ["مرتجع", "p-bad"], exchange: ["استبدال", "p-warn"]};
-  var me = null;           // البائع: {id,name,login,role,pos:{id,name,stock},branches,section,shift,perms:{create_link,edit_price,max_discount,edit_shipping,create_customer,create_quotation,view_all,internal,receive_stock}}
+  var me = null;           // البائع: {id,name,login,role,pos:{id,name,stock},branches,section,shift,perms:{create_link,edit_price,max_discount,pay_at_branch,create_customer,create_quotation,view_all,internal,receive_stock}}
   var view = {name: "dash"};
   // الأدوار: مدير الفروع فوق المشرف — صلاحياته في كل فروعه (me.branches)، ويبدّل الفرع الذي يعمل فيه بلا موافقة
   var ROLE = {seller: "بائع", supervisor: "مشرف", manager: "مدير فروع"};
@@ -621,7 +621,7 @@
   var iorder = null;       // الطلب الداخلي المفتوح للتعديل (من أودو)، وnull لطلبٍ جديد
   var cart = [];           // [{product_id,name,code,price(شامل الضريبة),base,incl0,qty,max}]
   var customer = null;     // {id,name,phone}
-  var shipping = null;     // {carrier_id,name,price,def}
+  var shipping = null;     // {carrier_id,name,pickup,price,branch_id,branch,atBranch}
   var carriers = null;
   var note = "";
   var custPhone = "";      // جوال عميل المعرض على الطلب: به (أو بكود الطلب) يفتحه بائعٌ آخر ويكمل عليه
@@ -721,7 +721,7 @@
       // الصلاحيات عند مدير الفروع وحده (قرار صاحب المعرض): لا يرى الموظف قائمة صلاحياته، ويديرها المدير من «الموظفون»
       + (isManager() ? '<div class="card"><div class="h2">صلاحياتك</div>' + row(P.internal, "البيع الداخلي (عملاء المعرض)") + row(P.receive_stock, "استلام المخزن واعتماد الجودة") + row(P.count, "جرد المخزون بالكاميرا") + row(P.create_link, "إنشاء لينك دفع")
       + row(P.edit_price, "تعديل سعر المنتج" + (P.edit_price ? " (حتى خصم " + (+P.max_discount || 0) + "%)" : ""))
-      + row(P.edit_shipping, "تعديل سعر الشحن") + row(P.create_customer, "إضافة عملاء") + row(P.create_quotation, "عروض أسعار أودو")
+      + row(P.pay_at_branch, "يدفع ويستلم من المعرض (العميل الخارجي)") + row(P.create_customer, "إضافة عملاء") + row(P.create_quotation, "عروض أسعار أودو")
       + row(P.view_all, "رؤية فواتير كل البائعين") + row(P.request_stock, "طلب بضاعة من الفروع والمخازن") + '</div>' : '')
       + (pushSupported() ? '<div class="card"><div class="kv"><span>إشعارات الجوال</span>'
         + (Notification.permission === "granted" ? '<button class="btn soft sm" id="pushTest">جرّب الإشعار</button>'
@@ -742,7 +742,7 @@
     var go = new URLSearchParams(location.search).get("go");
     if (go === "new") screenNew(); else if (go === "scan"){ screenDash(); openScanner(); }
     else if (go === "count" && can("count")) screenCounts();
-    else if (go === "approvals" || go === "requests") goTo(go);       // من إشعار الجوال
+    else if (go === "approvals" || go === "requests" || go === "incoming") goTo(go);       // من إشعار الجوال
     else screenDash();
     syncPush(); startApprovalsWatch();
   }
@@ -904,7 +904,8 @@
         + '<span class="ln' + (dl === "delivered" ? " done" : "") + '"></span>' + step("سُلِّمت", dl === "delivered") + '</div></div>'
         + (DLV[dl] ? '<div class="card row between"><span class="muted">التسليم من المخزن</span>' + pill(DLV, dl) + '</div>' : "")
         + '<div class="card"><div class="h2">الأصناف</div>' + (lines || '<div class="muted">لا أصناف</div>')
-        + (v.carrier && !(v.shipping > 0) ? '<div class="kv"><span>الشحن (' + esc(v.carrier) + ')</span><span>مجاني</span></div>' : '')
+        + (v.pickup ? '<div class="kv"><span>يستلم من</span><span>' + esc(v.pickup) + '</span></div>'
+            : v.carrier && !(v.shipping > 0) ? '<div class="kv"><span>الشحن (' + esc(v.carrier) + ')</span><span>مجاني</span></div>' : '')
         + '<div class="tot-row"><b>الإجمالي (شامل الضريبة)</b><b class="num" style="font-size:17px">' + money(v.amount) + '</b></div></div>'
         + '<div class="card">' + (v.phone ? '<div class="kv"><span>جوال العميل</span><span dir="ltr" class="num">' + esc(v.phone) + '</span></div>' : '')
         + (v.seller ? '<div class="kv"><span>البائع</span><span>' + esc(v.seller) + '</span></div>' : '')
@@ -962,7 +963,7 @@
     wireNewCommon();
     $("#createLink").onclick = doCreateLink;
     if ($("#createOrder")) $("#createOrder").onclick = doCreateOrder;
-    renderCust(); renderShipping(); updateCartUI();
+    renderCust(); renderShipping(); updateCartUI(); renderCreateBtn();
   }
   function wireNewCommon(){
     $("#note").oninput = function(){ note = this.value; };
@@ -1063,27 +1064,83 @@
     if (carriers) return Promise.resolve(carriers);
     return api("/carriers").then(function(rows){ carriers = rows; return rows; });
   }
+  // المعارض التي يستلم منها العميل («استلام من المعرض»)
+  var pickupBranches = null;
+  function loadPickupBranches(){
+    if (pickupBranches) return Promise.resolve(pickupBranches);
+    return api("/pickup-branches").then(function(rows){ pickupBranches = rows; return rows; });
+  }
+  // حدود مبلغ الشحن من إعدادات مدير الفروع (0 = بلا حد)
+  function shipLimits(){ var r = (me && me.rules) || {}; return {min: Number(r.shipping_min) || 0, max: Number(r.shipping_max) || 0}; }
+  function shipLimitText(){
+    var L = shipLimits();
+    if (L.min && L.max) return "بين " + money(L.min) + " و" + money(L.max);
+    if (L.max) return "حتى " + money(L.max);
+    if (L.min) return money(L.min) + " أو أكثر";
+    return "";
+  }
+  // طريقة الشحن إجبارية: شركة شحن بمبلغٍ يكتبه البائع، أو «استلام من المعرض» بمعرضه (ويدفع ويستلم هناك لمن له الصلاحية)
   function renderShipping(){
     var box = $("#shipBox"); if (!box) return;
-    box.innerHTML = '<div class="h2">' + ICON.truck + '<span class="grow">الشحن</span></div><div class="chips" id="shipChips"><div class="skel" style="height:36px;width:100%"></div></div><div id="shipPrice"></div>';
+    box.classList.remove("need");
+    box.innerHTML = '<div class="h2">' + ICON.truck + '<span class="grow">الشحن أو الاستلام <span class="muted" style="font-weight:600">(إجباري)</span></span></div>'
+      + '<div class="chips" id="shipChips"><div class="skel" style="height:36px;width:100%"></div></div><div id="shipPrice"></div>';
     loadCarriers().then(function(rows){
-      $("#shipChips").innerHTML = '<button class="chip' + (shipping ? "" : " on") + '" data-car="">بدون شحن</button>'
-        + rows.map(function(c){ return '<button class="chip' + (shipping && shipping.carrier_id === c.id ? " on" : "") + '" data-car="' + c.id + '">' + esc(c.name) + '</button>'; }).join("");
+      $("#shipChips").innerHTML = rows.map(function(c){ return '<button class="chip' + (shipping && shipping.carrier_id === c.id ? " on" : "") + '" data-car="' + c.id + '">' + esc(c.name) + '</button>'; }).join("")
+        || '<div class="muted">لا شركات شحن — يضيفها المدير من أودو.</div>';
       $$("[data-car]", box).forEach(function(b){ b.onclick = function(){
         var id = +b.getAttribute("data-car");
-        if (!id) shipping = null; else { var c = rows.filter(function(x){ return x.id === id; })[0]; shipping = {carrier_id: c.id, name: c.name, price: c.price, def: c.price}; }
-        renderShipping(); renderSum(); }; });
+        if (shipping && shipping.carrier_id === id) return;
+        var c = rows.filter(function(x){ return x.id === id; })[0];
+        shipping = {carrier_id: c.id, name: c.name, pickup: !!c.pickup, price: c.pickup ? 0 : null, branch_id: null, branch: "", atBranch: false};
+        renderShipping(); renderSum(); renderCreateBtn(); }; });
       renderShipPrice();
     }).catch(function(e){ $("#shipChips").innerHTML = '<div class="muted">' + esc(e.message) + '</div>'; });
   }
   function renderShipPrice(){
     var box = $("#shipPrice"); if (!box) return;
     if (!shipping){ box.innerHTML = ""; return; }
-    var editable = can("edit_shipping");
-    box.innerHTML = '<div class="row between" style="margin-top:12px"><span class="muted">سعر الشحن (شامل الضريبة)</span>'
-      + '<input class="price-in num" id="shipIn" type="number" min="0" step="0.01" inputmode="decimal" value="' + shipping.price + '"' + (editable ? '' : ' readonly title="لا صلاحية لتعديل سعر الشحن"') + '></div>'
-      + (editable ? '<div class="muted" style="margin-top:6px">اكتب 0 للشحن المجاني.</div>' : '');
-    $("#shipIn").oninput = function(){ var v = parseFloat(this.value); shipping.price = (isFinite(v) && v >= 0) ? v : 0; renderSum(); };
+    if (shipping.pickup){
+      box.innerHTML = '<div class="lbl" style="margin-top:12px">يستلم من معرض</div><div class="chips" id="brChips"><div class="skel" style="height:36px;width:100%"></div></div>'
+        + (can("pay_at_branch") ? '<label class="row" style="gap:10px;cursor:pointer;margin-top:12px"><input type="checkbox" id="atBranch"' + (shipping.atBranch ? " checked" : "") + ' style="width:20px;height:20px;flex:none">'
+          + '<span class="grow"><b>يدفع ويستلم من المعرض (بدون لينك)</b><span class="muted" style="display:block">الطلب يوصل «الوارد» في المعرض بإشعار، والعميل يدفع للكاشير ويستلم هناك برقم جواله.</span></span></label>' : '');
+      if ($("#atBranch", box)) $("#atBranch", box).onchange = function(){ shipping.atBranch = this.checked; renderSum(); renderCreateBtn(); };
+      loadPickupBranches().then(function(rows){
+        $("#brChips").innerHTML = rows.map(function(b){ return '<button class="chip' + (shipping.branch_id === b.id ? " on" : "") + '" data-br="' + b.id + '">' + esc(b.name) + (b.mine ? ' <span class="muted">(فرعك)</span>' : '') + '</button>'; }).join("")
+          || '<div class="muted">لا معارض.</div>';
+        $$("[data-br]", box).forEach(function(b){ b.onclick = function(){
+          var id = +b.getAttribute("data-br"), r = rows.filter(function(x){ return x.id === id; })[0];
+          shipping.branch_id = r.id; shipping.branch = r.name;
+          $("#shipBox").classList.remove("need");
+          $$("[data-br]", box).forEach(function(x){ x.classList.toggle("on", x === b); }); renderSum(); }; });
+      }).catch(function(e){ $("#brChips").innerHTML = '<div class="muted">' + esc(e.message) + '</div>'; });
+      return;
+    }
+    var hint = shipLimitText();
+    box.innerHTML = '<div class="row between" style="margin-top:12px"><span class="muted">مبلغ الشحن (شامل الضريبة) *</span>'
+      + '<input class="price-in num" id="shipIn" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" value="' + (shipping.price == null ? "" : shipping.price) + '"></div>'
+      + '<div class="muted" style="margin-top:6px">اكتبه بنفسك' + (hint ? " — " + esc(hint) : "") + '، ويُضاف على الفاتورة «خدمة شحن».</div>';
+    $("#shipIn").oninput = function(){ var v = parseFloat(this.value); shipping.price = (isFinite(v) && v >= 0) ? v : null;
+      $("#shipBox").classList.remove("need"); renderSum(); };
+  }
+  // زر الإنشاء: لينك دفع، أو إرسال الطلب للمعرض («يدفع ويستلم من المعرض»)
+  function atBranchOn(){ return !!(shipping && shipping.pickup && shipping.atBranch && can("pay_at_branch")); }
+  function renderCreateBtn(){
+    var btn = $("#createLink"); if (!btn || btn.getAttribute("data-busy")) return;
+    var at = atBranchOn();
+    btn.disabled = !(at || can("create_link"));
+    btn.innerHTML = at ? ICON.truck + " إرسال الطلب للمعرض" : ICON.wa + " إنشاء لينك الدفع وإرساله";
+    if ($("#createOrder")) $("#createOrder").hidden = at;
+  }
+  // يتحقّق من الشحن قبل الإرسال لأودو، ويحدّد خانته بالأحمر
+  function shippingProblem(){
+    if (!shipping) return "اختر طريقة الشحن أو «استلام من المعرض»";
+    if (shipping.pickup) return shipping.branch_id ? "" : "اختر المعرض الذي يستلم منه العميل";
+    var p = shipping.price, L = shipLimits();
+    if (p == null || !(p > 0)) return "اكتب مبلغ الشحن";
+    if (L.min && p < L.min - 0.004) return "أقل مبلغ شحن " + money(L.min);
+    if (L.max && p > L.max + 0.004) return "أعلى مبلغ شحن " + money(L.max);
+    return "";
   }
   function renderSum(){
     var box = $("#sumBox"); if (!box) return;
@@ -1098,21 +1155,59 @@
         + '<div class="muted" style="margin-top:6px">' + (total < 0 ? "يرجّعه الكاشير للعميل" : "يحصّله الكاشير") + ' من نقطة البيع في أودو.</div>';
       return;
     }
+    var shipRow = "";
+    if (shipping && shipping.pickup) shipRow = '<div class="kv"><span>' + esc(shipping.name) + (shipping.branch ? " — " + esc(shipping.branch) : "") + '</span><span>بدون شحن</span></div>';
+    else if (shipping) shipRow = '<div class="kv"><span>خدمة شحن — ' + esc(shipping.name) + '</span><span class="num">' + (shipping.price > 0 ? money(shipping.price) : "—") + '</span></div>';
     box.innerHTML = '<div class="kv"><span>المنتجات (' + cartCount() + ' قطعة)</span><span class="num">' + money(itemsTotal()) + '</span></div>'
-      + (shipping ? '<div class="kv"><span>الشحن — ' + esc(shipping.name) + '</span><span class="num">' + ((Number(shipping.price) || 0) > 0 ? money(shipping.price) : "مجاني") + '</span></div>' : '')
+      + shipRow
       + '<div class="tot-row"><b>الإجمالي (شامل الضريبة)</b><b class="num" style="font-size:19px" id="cartTotal">' + money(cartTotal()) + '</b></div>'
-      + '<div class="muted" style="margin-top:6px">هذا ما يدفعه العميل في لينك ماي فاتورة.</div>';
+      + '<div class="muted" style="margin-top:6px">' + (atBranchOn() ? "يدفعه العميل لكاشير " + esc(shipping.branch || "المعرض") + " حين يستلم." : "هذا ما يدفعه العميل في لينك ماي فاتورة.") + '</div>';
   }
   function doCreateLink(){
     if (!customer){ toast("اختر العميل أولًا"); return; }
     if (!cart.length){ toast("أضف منتجًا واحدًا على الأقل"); return; }
+    var problem = shippingProblem();
+    if (problem){ toast(problem); var sb = $("#shipBox"); if (sb){ sb.classList.add("need"); sb.scrollIntoView({behavior: "smooth", block: "center"}); } return; }
     if (cartTotal() <= 0){ toast("الإجمالي لازم يكون أكبر من صفر"); return; }
-    var btn = $("#createLink"); btn.disabled = true; btn.innerHTML = '<span class="spin" style="width:18px;height:18px;margin:0;border-width:2px;border-top-color:#fff"></span> جارٍ إنشاء الفاتورة في ماي فاتورة…';
-    api("/mf-links", {method: "POST", body: {partner_id: customer.id, note: note,
-      lines: cart.map(function(l){ return {product_id: l.product_id, qty: l.qty, price_unit: l.price}; }),
-      shipping: shipping ? {carrier_id: shipping.carrier_id, price: shipping.price} : null}})
-      .then(function(d){ toast("أُنشئت الفاتورة " + d.invoice_id); cart = []; customer = null; shipping = null; note = ""; updateCartUI(); screenInvoice(d.id, {share: true}); })
-      .catch(function(e){ toast(e.message); btn.disabled = false; btn.innerHTML = ICON.wa + " إنشاء لينك الدفع وإرساله"; });
+    var at = atBranchOn();
+    var lines = cart.map(function(l){ return {product_id: l.product_id, qty: l.qty, price_unit: l.price}; });
+    var btn = $("#createLink"); btn.disabled = true; btn.setAttribute("data-busy", "1");
+    btn.innerHTML = '<span class="spin" style="width:18px;height:18px;margin:0;border-width:2px;border-top-color:#fff"></span> '
+      + (at ? "جارٍ إرسال الطلب للمعرض…" : "جارٍ إنشاء الفاتورة في ماي فاتورة…");
+    var done = function(){ cart = []; customer = null; shipping = null; note = ""; updateCartUI(); };
+    var failed = function(e){ toast(e.message); btn.removeAttribute("data-busy"); renderCreateBtn(); };
+    if (at){
+      api("/pickup-orders", {method: "POST", body: {partner_id: customer.id, note: note, lines: lines, config_id: shipping.branch_id}})
+        .then(function(o){ toast("وصل الطلب " + o.branch); done(); screenPickupSent(o); })
+        .catch(failed);
+      return;
+    }
+    api("/mf-links", {method: "POST", body: {partner_id: customer.id, note: note, lines: lines,
+      shipping: {carrier_id: shipping.carrier_id, price: shipping.pickup ? 0 : shipping.price, pickup_config_id: shipping.pickup ? shipping.branch_id : false}}})
+      .then(function(d){ toast("أُنشئت الفاتورة " + d.invoice_id); done(); screenInvoice(d.id, {share: true}); })
+      .catch(failed);
+  }
+  // «يدفع ويستلم من المعرض»: أُرسل الطلب — ملخّصه ورسالة للعميل بالمعرض
+  function screenPickupSent(o){
+    view = {name: "pickup-sent"}; setNav("new");
+    var lines = (o.lines || []).map(function(l){
+      return '<div class="row ln-item"><div class="grow"><div style="font-weight:700;font-size:14px">' + esc(l.name) + '</div><div class="muted num">' + l.qty + ' × ' + money(l.price) + '</div></div>'
+        + '<div class="num" style="font-weight:800">' + money(l.subtotal) + '</div></div>';
+    }).join("");
+    main.innerHTML = '<div class="h1"><span class="grow">أُرسل الطلب للمعرض</span></div>'
+      + '<div class="hero"><div class="row between"><span style="font-weight:700">' + esc(o.partner ? o.partner.name : "—") + '</span><span class="pill p-info">يدفع ويستلم</span></div>'
+      + '<div class="big">' + esc(o.branch) + '</div>'
+      + '<div class="meta">وصل «الوارد» عند موظفي المعرض بإشعار. حين يأتي العميل يفتحون طلبه برقم جواله'
+      + (o.partner && o.partner.phone ? ' <span dir="ltr" class="num">' + esc(o.partner.phone) + '</span>' : '') + ' ويرسلونه للكاشير.</div></div>'
+      + '<div class="card"><div class="h2">الأصناف</div>' + lines
+      + '<div class="tot-row"><b>يدفعه العميل في المعرض</b><b class="num" style="font-size:17px">' + money(o.amount) + '</b></div></div>'
+      + '<button class="btn wa" id="waP" style="margin-bottom:10px">' + ICON.wa + ' إرسال تفاصيل الاستلام للعميل</button>'
+      + '<button class="btn soft" id="newP">' + ICON.plus + ' فاتورة جديدة</button>';
+    $("#waP").onclick = function(){
+      var ph = waPhone(o.partner && o.partner.phone);
+      window.open("https://wa.me/" + ph + "?text=" + encodeURIComponent(o.message || ""), "_blank");
+    };
+    $("#newP").onclick = screenNew;
   }
   function doCreateOrder(){
     if (!customer){ toast("اختر العميل أولًا"); return; }
@@ -1975,7 +2070,7 @@
       + '<button class="tile" id="goStaff"><span class="avatar">' + ICON.user + '</span><span class="grow"><b>الموظفون</b>'
       + '<span class="muted">الصلاحيات</span></span></button>'
       + '<button class="tile wide" id="goSet"><span class="avatar">' + ICON.lock + '</span><span class="grow"><b>الإعدادات</b>'
-      + '<span class="muted">قواعد الطلبات والعملاء</span></span></button></div>';
+      + '<span class="muted">قواعد الطلبات والعملاء والشحن</span></span></button></div>';
   }
   // ════════════ إعدادات مدير الفروع ════════════
   // قواعد للشركة كلها، تسري على الموظفين فورًا في أودو (ويظهر أثرها في تطبيقاتهم عند فتحها من جديد)
@@ -1991,12 +2086,20 @@
         return '<label class="kv sw" style="align-items:flex-start"><span><b style="display:block">' + esc(r.label) + '</b><span class="muted" style="font-size:12.5px">' + esc(r.hint) + '</span></span>'
           + '<input type="checkbox" data-rule="' + r.key + '"' + (rule(r.key) ? ' checked' : '') + '></label>';
       }).join("") + '</div>'
+      + '<div class="card"><div class="h2">' + ICON.truck + '<span class="grow">مبلغ الشحن على لينك الدفع</span></div>'
+      + '<div class="muted" style="font-size:12.5px;margin-bottom:10px">البائع يكتب مبلغ الشحن بنفسه (شامل الضريبة) في هذه الحدود، ويُضاف على الفاتورة «خدمة شحن». «استلام من المعرض» بلا مبلغ.</div>'
+      + '<div class="row" style="gap:10px"><div class="grow"><div class="lbl">أقل مبلغ</div><input class="num" id="shipMin" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0" value="' + (Number(me.rules && me.rules.shipping_min) || "") + '"></div>'
+      + '<div class="grow"><div class="lbl">أعلى مبلغ</div><input class="num" id="shipMax" type="number" min="0" step="0.01" inputmode="decimal" placeholder="بلا حد" value="' + (Number(me.rules && me.rules.shipping_max) || "") + '"></div></div></div>'
       + '<button class="btn gold" id="setSave">' + ICON.check + ' حفظ الإعدادات</button>'
       + '<div class="muted" style="margin-top:8px">تسري على كل الفروع والموظفين، ويُكتب كل تغييرٍ في سجلك. وتُغيَّر من أودو أيضًا (تطبيق المبيعات ← إعدادات التطبيق).</div>';
     $("#bk").onclick = function(){ screenHome(); };
     $("#setSave").onclick = function(){
       var b = this, rules = {};
       $$("[data-rule]").forEach(function(c){ rules[c.getAttribute("data-rule")] = c.checked; });
+      var lo = $("#shipMin").value.trim(), hi = $("#shipMax").value.trim();
+      rules.shipping_min = lo === "" ? 0 : Number(lo); rules.shipping_max = hi === "" ? 0 : Number(hi);
+      if (!(rules.shipping_min >= 0) || !(rules.shipping_max >= 0)){ toast("حدود مبلغ الشحن أرقامٌ موجبة"); return; }
+      if (rules.shipping_max && rules.shipping_min > rules.shipping_max){ toast("أقل مبلغ أكبر من أعلاه"); $("#shipMin").focus(); return; }
       b.disabled = true;
       api("/settings", {method: "POST", body: {rules: rules}}).then(function(r){ me.rules = r; toast("حُفظت الإعدادات"); screenHome(); })
         .catch(function(e){ b.disabled = false; toast(e.message); });
@@ -2278,6 +2381,7 @@
   function goTo(go){
     if (go === "approvals" && isManager()) screenApprovals();
     else if (go === "requests") screenStockRequests();
+    else if (go === "incoming" && can("internal")){ boxFilter = "incoming"; screenInternal(); }
     else screenDash();
   }
   if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", function(e){
@@ -2530,7 +2634,7 @@
     return '<div class="li" data-po="' + o.id + '"><div class="avatar">' + esc(initials(who)) + '</div><div class="grow"><div class="ellip" style="font-weight:800">' + esc(who) + '</div>'
       + '<div class="muted num ellip">' + (o.code ? 'كود ' + o.code + ' · ' : '') + esc(o.name) + ' · ' + esc(o.pos.name) + (o.from_pos && o.state === "transfer" ? ' · من ' + esc(o.from_pos) : '') + ' · ' + esc(ago(o.updated)) + '</div>'
       + (o.locked_by ? '<div class="muted" style="color:var(--warn)">مفتوح عند ' + esc(o.locked_by) + '</div>' : '') + '</div>'
-      + '<div style="text-align:left"><div class="amt num">' + money(o.amount) + '</div><div style="margin-top:4px">' + (o.tax_free ? '<span class="pill p-info">Tax Free</span> ' : '') + pill(KIND, o.kind) + ' ' + pill(PO, o.state) + '</div></div></div>';
+      + '<div style="text-align:left"><div class="amt num">' + money(o.amount) + '</div><div style="margin-top:4px">' + (o.pickup ? '<span class="pill p-info">يدفع ويستلم</span> ' : '') + (o.tax_free ? '<span class="pill p-info">Tax Free</span> ' : '') + pill(KIND, o.kind) + ' ' + pill(PO, o.state) + '</div></div></div>';
   }
   function wirePosRows(root){ $$("[data-po]", root).forEach(function(el){ el.onclick = function(){ screenPosOrder(+el.getAttribute("data-po")); }; }); }
   // عميلٌ بدأ طلبه مع زميل: يفتحه هذا الموظف بكوده اليومي أو بجواله، فينتقل إليه ويكمل عليه
@@ -2580,7 +2684,7 @@
   function renderPosOrder(o){
     var can2 = o.can, who = o.partner ? o.partner.name : "عميل معرض";
     main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow num">' + esc(o.name) + '</span><button class="icon-btn" id="rf" aria-label="تحديث">' + ICON.refresh + '</button></div>'
-      + '<div class="hero"><div class="row between"><span style="font-weight:700">' + esc(who) + '</span><span>' + (o.tax_free ? '<span class="pill p-info">Tax Free</span> ' : '') + pill(KIND, o.kind) + ' ' + pill(PO, o.state) + '</span></div><div class="big num">' + money(o.amount) + '</div>'
+      + '<div class="hero"><div class="row between"><span style="font-weight:700">' + esc(who) + '</span><span>' + (o.pickup ? '<span class="pill p-info">يدفع ويستلم</span> ' : '') + (o.tax_free ? '<span class="pill p-info">Tax Free</span> ' : '') + pill(KIND, o.kind) + ' ' + pill(PO, o.state) + '</span></div><div class="big num">' + money(o.amount) + '</div>'
       + '<div class="meta num">' + (o.returned ? 'يرجع ' + o.returned + (o.count ? ' · بديل ' + o.count : '') : o.count + ' قطعة') + ' · بدأه ' + esc(o.seller) + (o.origin ? ' · من الفاتورة ' + esc(o.origin) : '') + (o.ticket ? ' · رقم الكاشير ' + esc(o.ticket) : '') + '</div>'
       + '<div class="route">' + o.route.map(function(r){ return '<span class="' + (r.current ? "on" : "") + '">' + esc(r.name) + '</span>'; }).join("") + '</div></div>'
       + (o.code && (o.state === "open" || o.state === "transfer") ? '<div class="card dcode"><div class="grow"><b>كود العميل</b><div class="muted">قُله للعميل: أي بائعٍ في الفرع يفتح طلبه بالكود'
