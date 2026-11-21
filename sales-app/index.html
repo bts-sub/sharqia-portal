@@ -2749,7 +2749,8 @@
       wrap.innerHTML = '<div class="list">' + rows.map(function(p){
         return '<div class="li" data-rc="' + p.id + '"><div class="avatar">' + ICON.box + '</div><div class="grow"><div style="font-weight:800" class="num">' + esc(p.name) + '</div>'
           + '<div class="muted ellip">من ' + esc(p.from) + (p.backorder ? ' · متبقٍّ من ' + esc(p.backorder) : '') + '</div>'
-          + (p.qc_state === "rejected" ? '<span class="pill p-bad" style="margin-top:4px">رُفض كاملًا</span>' : '') + '</div>'
+          + (p.qc_state === "rejected" ? '<span class="pill p-bad" style="margin-top:4px">رُفض كاملًا</span>' : '')
+          + (!p.items ? '<span class="pill p-warn" style="margin-top:4px">بلا كمية — صحّحه في أودو</span>' : '') + '</div>'
           + '<div style="text-align:left"><b class="num">' + p.items + '</b><div class="muted">قطعة</div></div></div>';
       }).join("") + '</div>';
       $$("[data-rc]").forEach(function(el){ el.onclick = function(){ screenReceipt(+el.getAttribute("data-rc")); }; });
@@ -2761,10 +2762,13 @@
     $("#bk").onclick = screenReceipts;
     api("/receipts/" + id).then(function(p){
       var rows = p.lines.map(function(l){ return {line: l, received: l.qty, rejected: 0, note: ""}; });
+      // تحويلٌ أُضيف صنفه في أودو بلا عدد: لا يُعدّ ولا يُعتمد حتى تُكتب كميته (أو يُلغى إن كان تجربة)
+      var empty = !p.lines.some(function(l){ return l.qty > 0; });
       var rowHtml = function(r, i){
         var l = r.line, bad = r.rejected > 0, diff = r.received !== l.qty;
         return '<div class="qc-row" data-row="' + i + '"><div class="row">' + thumbHtml(l.product_id) + '<div class="grow"><div style="font-weight:700;font-size:14px">' + esc(l.name) + '</div>'
-          + '<div class="muted num">المطلوب ' + l.qty + ' ' + esc(l.uom) + (l.code ? ' · ' + esc(l.code) : '') + '</div></div>' + (bad ? '<span class="pill p-bad">مرفوض ' + r.rejected + '</span>' : diff ? '<span class="pill p-warn">ناقص</span>' : '<span class="pill p-good">سليم</span>') + '</div>'
+          + '<div class="muted num">المطلوب ' + l.qty + ' ' + esc(l.uom) + (l.code ? ' · ' + esc(l.code) : '') + '</div></div>'
+          + (!l.qty ? '<span class="pill p-warn">بلا كمية في أودو</span>' : bad ? '<span class="pill p-bad">مرفوض ' + r.rejected + '</span>' : diff ? '<span class="pill p-warn">ناقص</span>' : '<span class="pill p-good">سليم</span>') + '</div>'
           + '<div class="qc-grid"><div><div class="lbl">الواصل فعليًا</div><div class="stepper sm"><button data-q="r-" aria-label="أنقص الواصل">−</button><b class="num">' + r.received + '</b><button data-q="r+" aria-label="زد الواصل">+</button></div></div>'
           + '<div><div class="lbl">المرفوض (جودة)</div><div class="stepper sm"><button data-q="b-" aria-label="أنقص المرفوض">−</button><b class="num">' + r.rejected + '</b><button data-q="b+" aria-label="زد المرفوض">+</button></div></div></div>'
           + (bad ? '<div style="margin-top:10px"><input data-why placeholder="سبب الرفض (مطلوب)" value="' + esc(r.note) + '"></div>' : '') + '</div>';
@@ -2776,10 +2780,12 @@
       };
       main.innerHTML = '<div class="h1"><button class="icon-btn" id="bk" aria-label="رجوع">' + ICON.back + '</button><span class="grow num">' + esc(p.name) + '</span></div>'
         + '<div class="card"><div class="kv"><span>من</span><span>' + esc(p.from) + '</span></div><div class="kv"><span>إلى</span><span>' + esc(p.to) + '</span></div>' + (p.origin ? '<div class="kv"><span>المرجع</span><span class="num">' + esc(p.origin) + '</span></div>' : '') + '</div>'
+        + (empty ? '<div class="note" style="margin-bottom:12px"><b>التحويل بلا كمية — صحّحه في أودو.</b> الصنف مضافٌ من غير عدد، فلا يدخل المخزن شيء. '
+          + 'افتح <span class="num">' + esc(p.name) + '</span> في أودو (المخزون ← التحويلات) واكتب الكمية المطلوبة، أو ألغِه إن كان تجربة.</div>' : '')
         + '<div class="card" id="rcLines"></div><div class="card" id="rcSum"></div>'
         + '<div class="card"><div class="lbl">ملاحظة الاستلام (اختياري)</div><textarea id="rcNote" rows="2"></textarea>'
         + '<label class="row" style="margin-top:10px;font-size:13.5px"><input type="checkbox" id="rcClose" style="width:auto"> لا يوجد متبقٍّ — أغلق الباقي</label></div>'
-        + '<button class="btn gold" id="rcOk">' + ICON.check + ' اعتماد الاستلام</button>';
+        + '<button class="btn gold" id="rcOk"' + (empty ? ' disabled' : '') + '>' + ICON.check + (empty ? ' لا يُعتمد — بلا كمية' : ' اعتماد الاستلام') + '</button>';
       $("#bk").onclick = screenReceipts;
       render();
       $("#rcLines").addEventListener("click", function(e){
