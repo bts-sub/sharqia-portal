@@ -42,6 +42,7 @@ import iclockRoutes from "./routes/iclock.js";
 import joinRoutes from "./routes/join.js";
 import supportRoutes from "./routes/support.js";
 import salesRoutes from "./routes/sales.js";
+import warehouseRoutes from "./routes/warehouse.js";
 import scheduleRoutes from "./routes/schedule.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -214,9 +215,22 @@ app.get("/api/health/odoo", async (req, res) => {
     return res.status(404).end();
   });
 
+  // ⚠️ ونطاقٌ خامسٌ لتطبيق المخازن warehouse: لا يصله إلا واجهة المخازن /api/wh/*
+  // (الواجهة من حاوية nginx مستقلّة؛ هنا الـAPI فقط). معزولٌ عن البوابة وعن المبيعات.
+  const WH_HOST = (process.env.WH_HOST || "warehouse.sharqiaa-tech.net").toLowerCase();
+  const onWhHost = (req) => String(req.hostname || "").toLowerCase() === WH_HOST;
+  app.use((req, res, next) => {
+    if (!onWhHost(req)) return next();
+    const p = req.path;
+    if (p === "/api/health" || p.startsWith("/api/wh/")) return next();
+    if (p.startsWith("/api/")) return res.status(404).json({ error: "غير متاح على هذا النطاق" });
+    return res.status(404).end();
+  });
+
 // واجهة المبيعات مع Odoo (/api/sales/*) — عامّة (محميّة بمفتاح X-Sales-Key + host-gate
 // لنطاق pos)، فتُركَّب قبل الراوترات المحميّة بتسجيل الدخول حتى لا تحجبها requireAuth.
 app.use(salesRoutes);
+app.use(warehouseRoutes);
 app.use("/api", joinRoutes);
 app.use("/api", supportRoutes);
 app.use("/api", integrationRoutes);
