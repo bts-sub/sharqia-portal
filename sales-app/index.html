@@ -4,8 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <script>try{var t=localStorage.getItem("salesTheme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
-<script src="/static/i18n-dict.js?v=3.100.0"></script>
-<script src="/static/i18n.js?v=3.100.0"></script>
+<script src="/static/i18n-dict.js?v=3.101.0"></script>
+<script src="/static/i18n.js?v=3.101.0"></script>
 <title>مبيعات بيت العباءة الشرقية</title>
 <meta name="description" content="فواتير ولينكات دفع ماي فاتورة بالمنتجات — موصّل بأودو." />
 <meta name="theme-color" content="#14121A" />
@@ -369,6 +369,7 @@
   .sw input::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:20px;height:20px;border-radius:50%;background:#fff;
     box-shadow:0 1px 3px rgba(0,0,0,.25);transition:inset-inline-start .2s}
   .sw input:checked{background:var(--good)} .sw input:checked::after{inset-inline-start:21px}
+  .sw input:disabled{opacity:.5;cursor:default}   /* ما لمدير الفروع دائمًا: ظاهرٌ مفعّلًا لا يُقفل */
   /* مدير الفروع: شريط الفروع، و«كل الفروع» بطاقة لكل فرع */
   .mgr-bar{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 12px;scrollbar-width:none;scroll-behavior:smooth}
   .mgr-bar::-webkit-scrollbar{display:none}
@@ -677,10 +678,12 @@
   var KIND = {"return": ["مرتجع", "p-bad"], exchange: ["استبدال", "p-warn"]};
   var me = null;           // البائع: {id,name,login,role,pos:{id,name,stock},branches,section,shift,perms:{create_link,edit_price,max_discount,pay_at_branch,create_customer,create_quotation,view_all,internal,receive_stock}}
   var view = {name: "dash"};
-  // الأدوار: مدير الفروع فوق المشرف — صلاحياته في كل فروعه (me.branches)، ويبدّل الفرع الذي يعمل فيه بلا موافقة
-  var ROLE = {seller: "بائع", supervisor: "مشرف", manager: "مدير فروع"};
-  function isManager(){ return !!(me && me.role === "manager"); }
-  function isBoss(){ return !!(me && (me.role === "supervisor" || me.role === "manager")); }
+  // الأدوار: مدير الفروع فوق المشرف — صلاحياته في كل فروعه (me.branches)، ويبدّل الفرع الذي يعمل فيه بلا موافقة.
+  // ومدير المبيعات فوق مديري الفروع بصلاحياتهم كلها في كل الفروع، ويضبط من «الموظفون» صلاحياتهم وفروعهم
+  var ROLE = {seller: "بائع", supervisor: "مشرف", manager: "مدير فروع", sales_manager: "مدير مبيعات"};
+  function isManager(){ return !!(me && (me.role === "manager" || me.role === "sales_manager")); }
+  function isSalesManager(){ return !!(me && me.role === "sales_manager"); }
+  function isBoss(){ return !!(me && (me.role === "supervisor" || isManager())); }
   // قواعد مدير الفروع (me.rules): require_customer العميل إجباري في الطلبات، require_phone جواله عند إضافته
   function rule(k){ return !!(me && me.rules && me.rules[k]); }
   var mode = "ext";        // نوع العميل في الطلب الجاري: int عميل المعرض (نقطة البيع)، ext عميل خارجي (لينك دفع وشحن)
@@ -791,7 +794,7 @@
       + (isManager() ? '<div class="card"><div class="h2">صلاحياتك</div>' + row(P.internal, "البيع الداخلي (عملاء المعرض)") + row(P.receive_stock, "استلام المخزن واعتماد الجودة") + row(P.count, "جرد المخزون بالكاميرا") + row(P.create_link, "إنشاء لينك دفع")
       + row(P.edit_price, "تعديل سعر المنتج" + (P.edit_price ? " (حتى خصم " + (+P.max_discount || 0) + "%)" : ""))
       + row(P.pay_at_branch, "يدفع ويستلم من المعرض (العميل الخارجي)") + row(P.create_customer, "إضافة عملاء") + row(P.create_quotation, "عروض أسعار أودو")
-      + row(P.view_all, "رؤية فواتير كل البائعين") + row(P.request_stock, "طلب بضاعة من الفروع والمخازن") + '</div>' : '')
+      + row(P.view_all, "رؤية فواتير كل البائعين") + row(P.request_stock, "طلب بضاعة من الفروع والمخازن") + row(P.settings, "تغيير إعدادات التطبيق") + '</div>' : '')
       + (pushSupported() ? '<div class="card"><div class="kv"><span>إشعارات الجوال</span>'
         + (Notification.permission === "granted" ? '<button class="btn soft sm" id="pushTest">جرّب الإشعار</button>'
           : Notification.permission === "denied" ? '<span class="pill p-bad">مقفولة من إعدادات الجوال</span>' : '<button class="btn gold sm" data-push>تفعيل</button>')
@@ -2189,9 +2192,10 @@
     return '<div class="tiles mgr-actions"><button class="tile" id="goApv"><span class="avatar">' + ICON.check + '</span><span class="grow"><b>الموافقات</b>'
       + '<span class="muted">البضاعة والعمل في فرعٍ آخر</span></span><span class="badge num apvN" hidden></span></button>'
       + '<button class="tile" id="goStaff"><span class="avatar">' + ICON.user + '</span><span class="grow"><b>الموظفون</b>'
-      + '<span class="muted">الصلاحيات</span></span></button>'
-      + '<button class="tile wide" id="goSet"><span class="avatar">' + ICON.lock + '</span><span class="grow"><b>الإعدادات</b>'
-      + '<span class="muted">الطلبات والعملاء والشحن والمرتجع وبيع الموظفين</span></span></button></div>';
+      + '<span class="muted">' + (isSalesManager() ? "الصلاحيات ومديرو الفروع" : "الصلاحيات") + '</span></span></button>'
+      // الإعدادات للشركة كلها: لمدير المبيعات، ولمدير الفروع إن منحه إياها
+      + (can("settings") ? '<button class="tile wide" id="goSet"><span class="avatar">' + ICON.lock + '</span><span class="grow"><b>الإعدادات</b>'
+      + '<span class="muted">الطلبات والعملاء والشحن والمرتجع وبيع الموظفين</span></span></button>' : '') + '</div>';
   }
   // ════════════ إعدادات مدير الفروع ════════════
   // قواعد للشركة كلها، تسري على الموظفين فورًا في أودو (ويظهر أثرها في تطبيقاتهم عند فتحها من جديد)
@@ -2209,7 +2213,7 @@
       + '<input type="checkbox" data-rule="' + r.key + '"' + (rule(r.key) ? ' checked' : '') + '></label>';
   }
   function screenSettings(){
-    if (!isManager()) return screenHome();
+    if (!isManager() || !can("settings")) return screenHome();
     view = {name: "settings"}; setNav("dash"); updateCartUI();
     var R = me.rules || {};
     var days = function(v, d){ v = Number(v); return isFinite(v) && v >= 0 ? v : d; };
@@ -2466,48 +2470,72 @@
       // كل فرعٍ صفٌّ مطويّ بعدد موظفيه، يُفتح بلمسه؛ والبحث يفتح كل فرعٍ فيه نتيجة
       var draw = function(){
         var q = $("#stQ").value.trim().toLowerCase(), groups = {}, order = [];
+        // مدير المبيعات: مديرو الفروع مجموعةٌ أولى (s.group)، وفروعهم في سطر كلٍّ منهم
         d.staff.filter(function(s){ return !q || (s.name + " " + s.login).toLowerCase().indexOf(q) >= 0; }).forEach(function(s){
-          if (!(s.branch in groups)){ groups[s.branch] = []; order.push(s.branch); } groups[s.branch].push(s); });
+          var g = s.group || s.branch;
+          if (!(g in groups)){ groups[g] = []; order.push(g); } groups[g].push(s); });
         $("#stBody").innerHTML = order.length ? order.map(function(br){
           var open = !!q || staffOpen[br];
           return '<div class="list st-group' + (open ? " open" : "") + '"><button class="st-branch" data-stb="' + esc(br) + '" aria-expanded="' + open + '">'
             + '<div class="avatar">' + ICON.store + '</div><b class="grow ellip">' + esc(br || "بلا فرع") + '</b>'
             + '<span class="n num">' + groups[br].length + '</span><span class="chev" aria-hidden="true">‹</span></button>'
             + (open ? groups[br].map(function(s){
-              var on = d.labels.filter(function(l){ return s.perms[l.key]; }).length;
+              var L = staffLabels(s, d), on = L.filter(function(l){ return s.perms[l.key]; }).length;
               return '<button class="li st-row" data-st="' + s.id + '">'
                 + '<div class="avatar">' + esc(initials(s.name)) + '</div><div class="grow"><b class="ellip st-name">' + esc(s.name) + '</b>'
-                + '<div class="muted">' + [s.role_label, s.shift, s.section, s.away ? "يعمل الآن في " + s.away : ""].filter(Boolean).map(esc).join(" · ") + '</div></div>'
-                + (s.locked ? '<span class="pill p-bad">مقفل</span>' : '') + '<span class="pill p-sub num">' + on + '/' + d.labels.length + '</span></button>';
+                + '<div class="muted">' + [s.role_label, s.group ? s.branch : "", s.shift, s.section, s.away ? "يعمل الآن في " + s.away : ""].filter(Boolean).map(esc).join(" · ") + '</div></div>'
+                + (s.locked ? '<span class="pill p-bad">مقفل</span>' : '') + '<span class="pill p-sub num">' + on + '/' + L.length + '</span></button>';
             }).join("") : '') + '</div>';
         }).join("") : '<div class="empty"><b>لا موظفين</b></div>';
         $$("[data-stb]").forEach(function(b){ b.onclick = function(){
           var br = b.getAttribute("data-stb"); staffOpen[br] = !staffOpen[br]; draw(); }; });
         $$("[data-st]").forEach(function(b){ b.onclick = function(){
           var s = d.staff.filter(function(x){ return x.id === +b.getAttribute("data-st"); })[0];
-          openStaffSheet(s, d.labels, function(n){ d.staff[d.staff.indexOf(s)] = n; draw(); });
+          openStaffSheet(s, d, function(n){ d.staff[d.staff.indexOf(s)] = n; draw(); });
         }; });
       };
       $("#stQ").oninput = draw;
       draw();
     }).catch(function(e){ $("#stBody").innerHTML = '<div class="empty"><b>تعذّر الجلب</b>' + esc(e.message) + '</div>'; });
   }
-  function openStaffSheet(s, labels, done){
+  // صلاحيات الموظف في الشاشة: صلاحيات الموظفين، ولمدير الفروع (عند مدير المبيعات) ما يُمنح له وحده
+  function staffLabels(s, d){ return d.labels.concat(s.group && d.manager_labels ? d.manager_labels : []); }
+  function openStaffSheet(s, d, done){
+    var fixed = s.fixed || [], mgr = !!s.group, ids = s.branch_ids || [];
     var ov = sheet(s.name, '<div class="muted" style="margin-bottom:8px">' + [s.role_label, s.branch, s.shift].filter(Boolean).map(esc).join(" · ")
       + ' · <span class="num" dir="ltr">' + esc(s.login) + '</span></div>'
-      + '<div class="card">' + labels.map(function(l){
-        return '<label class="kv sw"><span>' + esc(l.label) + '</span><input type="checkbox" data-perm="' + l.key + '"' + (s.perms[l.key] ? ' checked' : '') + '></label>'
+      + '<div class="card">' + d.labels.map(function(l){
+        // ما لمدير الفروع دائمًا (المرتجع، «يدفع ويستلم من المعرض»، بيع الموظفين): ظاهرٌ مفعّلًا لا يُقفل
+        var always = fixed.indexOf(l.key) >= 0;
+        return '<label class="kv sw"><span>' + esc(l.label) + (always ? '<span class="muted" style="display:block;font-size:12px">دائمًا لمدير الفروع</span>' : '') + '</span>'
+          + '<input type="checkbox" data-perm="' + l.key + '"' + (s.perms[l.key] ? ' checked' : '') + (always ? ' disabled' : '') + '></label>'
           + (l.key === "can_edit_price" ? '<div class="kv" id="stDisc"' + (s.perms.can_edit_price ? '' : ' hidden') + '><span class="muted">أقصى خصم %</span>'
             + '<input id="stMax" class="num price-in" type="number" min="0" max="100" inputmode="decimal" value="' + s.max_discount + '"></div>' : '');
       }).join("") + '</div>'
+      // مدير المبيعات على مدير الفروع: تغيير الإعدادات، وفروعه
+      + (mgr ? '<div class="card">' + (d.manager_labels || []).map(function(l){
+          return '<label class="kv sw"><span>' + esc(l.label) + '<span class="muted" style="display:block;font-size:12px">'
+            + (l.key === "can_app_settings" ? "العميل والشحن والمرتجع وبيع الموظفين، للشركة كلها" : "") + '</span></span>'
+            + '<input type="checkbox" data-perm="' + l.key + '"' + (s.perms[l.key] ? ' checked' : '') + '></label>'; }).join("") + '</div>'
+        + '<div class="card" id="stBr"><div class="h2">' + ICON.store + '<span class="grow">الفروع التي يديرها</span></div>'
+        + '<label class="kv sw"><span>كل الفروع<span class="muted" style="display:block;font-size:12px">ومنها ما يُضاف لاحقًا</span></span><input type="checkbox" id="stAll"' + (s.all_branches ? ' checked' : '') + '></label>'
+        + '<div id="stBrList"' + (s.all_branches ? ' hidden' : '') + '>' + (d.branches || []).map(function(b){
+          return '<label class="kv sw"><span>' + esc(b.name) + '</span><input type="checkbox" data-br="' + b.id + '"' + (ids.indexOf(b.id) >= 0 ? ' checked' : '') + '></label>'; }).join("") + '</div>'
+        + '<div class="muted" style="font-size:12.5px;margin-top:6px">إن خرج الفرع الذي يعمل فيه الآن من فروعه ينتقل لأولها.</div></div>' : '')
       + '<button class="btn gold" id="stSave">' + ICON.check + ' حفظ الصلاحيات</button>'
-      + '<div class="muted" style="margin-top:8px">الدور والفرع والشيفت ورمز الدخول من أودو. وكل تعديلٍ هنا يُكتب في سجل الموظف باسمك.</div>');
+      + '<div class="muted" style="margin-top:8px">' + (mgr ? "الدور ورمز الدخول من أودو." : "الدور والفرع والشيفت ورمز الدخول من أودو.") + ' وكل تعديلٍ هنا يُكتب في سجل الموظف باسمك.</div>');
     var price = $('[data-perm="can_edit_price"]', ov);
     if (price) price.onchange = function(){ $("#stDisc", ov).hidden = !this.checked; };
+    if ($("#stAll", ov)) $("#stAll", ov).onchange = function(){ $("#stBrList", ov).hidden = this.checked; };
     $("#stSave", ov).onclick = function(){
       var b = this, perms = {};
-      $$("[data-perm]", ov).forEach(function(c){ perms[c.getAttribute("data-perm")] = c.checked; });
+      $$("[data-perm]", ov).forEach(function(c){ if (!c.disabled) perms[c.getAttribute("data-perm")] = c.checked; });
       if ($("#stMax", ov)) perms.max_discount = +$("#stMax", ov).value;
+      if (mgr){
+        var all = $("#stAll", ov).checked, pick = $$("[data-br]", ov).filter(function(c){ return c.checked; }).map(function(c){ return +c.getAttribute("data-br"); });
+        if (!all && !pick.length){ toast("اختر «كل الفروع» أو فرعًا واحدًا على الأقل."); return; }
+        perms.branches = {all: all, ids: pick};
+      }
       b.disabled = true;
       api("/staff/" + s.id, {method: "POST", body: {perms: perms}}).then(function(n){ ov.remove(); toast("حُفظت صلاحيات " + s.name); done(n); })
         .catch(function(e){ b.disabled = false; toast(e.message); });
@@ -2699,7 +2727,7 @@
   }
   function homeHeroHtml(){
     var branch = me.pos && (me.pos.home ? "في " + me.pos.name + " · من " + me.pos.home : me.pos.name);
-    var tags = [isManager() ? ROLE.manager : "", branch, me.section, me.shift].filter(Boolean);
+    var tags = [isManager() ? ROLE[me.role] : "", branch, me.section, me.shift].filter(Boolean);
     var kpis = [];
     if (can("internal")) kpis.push(["in", "وارد للفرع"], ["open", "طلبات مفتوحة"]);
     if (can("create_link")) kpis.push(["links", "لينكات لم تُدفع"]);
