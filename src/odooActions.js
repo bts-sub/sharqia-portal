@@ -5266,16 +5266,25 @@ const actions = {
           description: params.description || "",
           date_deadline: params.deadline || false,
           priority: params.priority === "high" ? "1" : "0",
-          ...(requester ? { sharqia_requester_id: requester } : {}),
         };
         // ⚠️ حارسٌ صامتٌ للفحص على القاعدة الحيّة: الإنشاءُ يُشعر المسنَدَ
         //    إليه أو مديرَ القسم، والإشعارُ يخرج إلى جهازه فلا يُستعاد.
         //    ولا يضعه أيُّ مسارٍ من الهاتف — المسالكُ تُمرّر {user} وحدَها.
         const kw = ctx?.silent ? { context: { sharqia_silent: true } } : {};
+        const me = Number(empId) || 0;
         const ids = [];
         for (const who of targets) {
-          ids.push(await odoo.execKw("project.task", "create",
-            [who ? { ...base, sharqia_assignee_id: who } : base], kw));
+          const vals = who ? { ...base, sharqia_assignee_id: who } : { ...base };
+          // ⚠️ ويُسجَّل الطالبُ في كلِّ ما سلّمتَه لغيرك، لا في العابر بين
+          //    الأقسام وحدَه: المديرُ يُسند لفريقه ثمّ لا يجدها في «مهامي»
+          //    لأنّها ليست عليه — فيفتح «قسمي» يبحث عمّا أسنده بين مهامِّ
+          //    القسم كلِّها. وبهذا تعود إليه تحت «أرسلتُها».
+          // ⚠️ ومسوّدةُ المدير في وارِدِ قسمه ليست تسليمًا: لا طالبَ لها،
+          //    وإلّا عُدّت عليه مرّتين — في «قسمي» وفي «أرسلتُها».
+          if (me && (requester || (who && who !== me))) {
+            vals.sharqia_requester_id = me;
+          }
+          ids.push(await odoo.execKw("project.task", "create", [vals], kw));
         }
         return { ok: true, ids, count: ids.length, toInbox: !!requester };
       },
@@ -5583,7 +5592,7 @@ const actions = {
     const empId = ctx?.user?.odooEmployeeId;
     return withOdoo(
       async () => {
-        if (!empId) return { days: [], late: [] };
+        if (!empId) return { days: [], late: [], undated: [] };
         const from = String(params.from || "").slice(0, 10);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(from))
           throw new Error("تاريخُ البداية غير صالح");
@@ -5626,16 +5635,30 @@ const actions = {
                 place: e.location || "", link: e.videocall_location || "" })),
           });
         }
+        // ⚠️ وما لا موعدَ له: المهمّةُ تظهر في يوم استحقاقها، فما أُسند
+        //    بلا موعدٍ لا يومَ له — فلا يظهر في الجدول أبدًا، ويقرأ صاحبُه
+        //    «فارغ» سبعَ مرّاتٍ وعليه عملٌ. فيُجمع في رأس الأسبوع كالمتأخّر.
+        const undated = (await odoo.searchRead("project.task",
+          [["sharqia_department_id", "!=", false],
+            ["sharqia_assignee_id", "=", empId],
+            ["date_deadline", "=", false]],
+          ["name", "stage_id", "date_deadline", "priority",
+            "sharqia_department_id", "sharqia_progress",
+            "sharqia_return_note", "sharqia_assigned_on"],
+          { limit: 200, order: "id desc" }))
+          .filter((t) => stages.byId.get(t.stage_id && t.stage_id[0]) !== "done")
+          .map((t) => ({ ...schedTaskOut(t, stages),
+            progress: Number(t.sharqia_progress || 0) }));
         // المتأخّرُ: ما مضى موعدُه ولم ينتهِ — يُعرض فوق الأسبوع
         const late = tasks
           .filter((t) => dayOf(t.date_deadline) < iso(d0)
             && stages.byId.get(t.stage_id && t.stage_id[0]) !== "done")
           .map((t) => ({ ...schedTaskOut(t, stages),
             progress: Number(t.sharqia_progress || 0) }));
-        return { from: iso(d0), days, late };
+        return { from: iso(d0), days, late, undated };
       },
-      async () => ({ days: [], late: [] }),
-      { emptyOnError: () => ({ days: [], late: [], unavailable: true }) }
+      async () => ({ days: [], late: [], undated: [] }),
+      { emptyOnError: () => ({ days: [], late: [], undated: [], unavailable: true }) }
     );
   },
 };

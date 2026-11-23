@@ -111,15 +111,16 @@ const MY_ORDER = ["doing", "review", "new", "inbox", "done"];
 
 function taskCard(t, onAct, refresh) {
   const late = t.late && t.stage !== "done";
+  const full = Number(t.progress || 0) >= 100;
   // ⚠️ زرٌّ صريحٌ للفتح لا العنوانَ وحدَه: على الهاتف لا مؤشّرَ يتبدّل،
   //    فلا يدري المسنَدُ إليه أنّ العنوانَ بابٌ — فيقرأ سطرًا واحدًا ويظنّ
   //    أنّ هذا كلُّ ما طُلب منه، وفيها المطلوبُ والمرفقاتُ والردود.
   const acts = [["اقرأ المطلوب وردّ", () => openTask(t.id, refresh), false]];
   if (t.stage === "new") acts.push(["ابدأ العمل", () => onAct(t, "doing"), true]);
-  if (t.stage === "doing") acts.push(["أرسل للمراجعة", () => onAct(t, "review"), true]);
-  // ⚠️ العنوانُ بابٌ لا نصّ: الضغطُ عليه يفتح تفاصيلَ المهمّة — النسبةَ
-  //    والتعليقاتِ والمرفقات. وهو العنوانُ وحدَه لا البطاقةُ كلُّها، كي لا
-  //    يفتح زرُّ «ابدأ العمل» الشاشةَ مع ضغطته.
+  // ⚠️ ولا «أرسل للمراجعة» قبل المئة: المهمّةُ لا تُقفل وهي ناقصة،
+  //    والخادمُ يردُّ الإرسالَ دونها — فيُقال ما ينقص بدل زرٍّ يُردّ.
+  if (t.stage === "doing" && full)
+    acts.push(["أرسل للمراجعة", () => onAct(t, "review"), true]);
   return el("div", { class: "card" },
     el("div", { class: "row" },
       el("h3", { class: "grow", style: "cursor:pointer",
@@ -129,6 +130,12 @@ function taskCard(t, onAct, refresh) {
     el("div", { class: "meta" },
       [t.dept, t.deadline ? "الموعد: " + fmtDay(t.deadline) : null]
         .filter(Boolean).join(" · ")),
+    // ⚠️ والنسبةُ على البطاقة لا داخلَ الورقة وحدَها: صاحبُها يحتاج أن
+    //    يعرف ما ينقصه قبل أن يفتح، وبها يفهم لماذا لا يرى زرَّ الإرسال.
+    t.stage === "doing" && !full
+      ? el("div", { class: "meta", style: "margin-top:4px" },
+        `الإنجاز ${t.progress || 0}٪ — أكمله إلى ١٠٠٪ لتُرسلها للمراجعة.`)
+      : null,
     t.returnNote
       ? el("div", { class: "err", style: "margin-top:8px" }, "أُرجعت: " + t.returnNote)
       : null,
@@ -285,22 +292,36 @@ function openTask(id, refresh) {
       } });
 
     const acts = [];
+    const full = Number(t.progress || 0) >= 100;
     if (t.mine && t.stage === "new")
       acts.push(["ابدأ العمل", async () => {
         try { await api.move(t.id, "doing"); toast("بدأت"); draw(); }
         catch (e) { toast(e.message, true); } }, true]);
-    if (t.mine && t.stage === "doing")
+    // ⚠️ ولا يُعرض «أرسل للمراجعة» قبل المئة: الإرسالُ إقرارٌ بالإتمام،
+    //    والخادمُ يردُّه دونها — فزرٌّ يُضغط ليُردَّ خيرٌ منه سطرٌ يقول
+    //    ما ينقص. وهذا ما طُلب: لا تُقفل المهمّةُ إلّا بمئةٍ كاملة.
+    if (t.mine && t.stage === "doing" && full)
       acts.push(["أرسل للمراجعة", async () => {
         try { await api.move(t.id, "review"); toast("أُرسلت"); draw(); }
         catch (e) { toast(e.message, true); } }, true]);
     if (t.manages && t.stage === "review") {
-      acts.push(["اعتمد", async () => {
-        try { await api.decide(t.id, { approve: true }); toast("اعتُمدت"); close(); }
-        catch (e) { toast(e.message, true); } }, true]);
+      // ⚠️ والاعتمادُ كذلك لا يُعرض دون المئة: المديرُ يرى نسبةَ صاحبها
+      //    أمامه، فإن كانت ناقصةً فسبيلُه الإرجاعُ لا الاعتماد.
+      if (full)
+        acts.push(["اعتمد", async () => {
+          try { await api.decide(t.id, { approve: true }); toast("اعتُمدت"); close(); }
+          catch (e) { toast(e.message, true); } }, true]);
       acts.push(["أرجِع", () => returnSheet(async (note) => {
         try { await api.decide(t.id, { note }); toast("أُرجعت"); close(); }
         catch (e) { toast(e.message, true); } })]);
     }
+    // سطرٌ يقول ما ينقص قبل الإغلاق — لصاحبها وللمدير بلفظٍ يناسب كلًّا
+    const gap = !full && (
+      (t.mine && t.stage === "doing")
+        ? `أكمل النسبةَ إلى ١٠٠٪ لتُرسلها للمراجعة — الآن ${t.progress || 0}٪.`
+        : (t.manages && t.stage === "review")
+          ? `أقرّ صاحبُها بـ${t.progress || 0}٪ — لا تُعتمد ناقصةً، أرجِعها ليُكملها.`
+          : "");
 
     body.replaceChildren(
       el("div", { class: "row" },
@@ -331,6 +352,7 @@ function openTask(id, refresh) {
           try { await api.progress(t.id, Number(slider.value)); toast("حُفظت"); draw(); }
           catch (e) { ev.target.disabled = false; toast(e.message, true); }
         } }, "احفظ النسبة") : null,
+      gap ? el("div", { class: "meta", style: "margin-top:6px" }, gap) : null,
       acts.length ? el("div", { class: "row", style: "margin-top:10px" },
         acts.map(([l, fn, pri]) => el("button",
           { class: "btn" + (pri ? " pri" : ""), onclick: fn }, l))) : null,
@@ -703,6 +725,14 @@ async function viewWeek(host) {
       style: "margin:14px 2px 2px;font-weight:700;color:var(--bad)" },
       `متأخّرة (${d.late.length})`));
     for (const t of d.late) out.push(dayTask(t, refresh));
+  }
+  // ⚠️ وما لا موعدَ له فوق الأسبوع كالمتأخّر: لا يومَ له فلا موضعَ له في
+  //    الأيّام السبعة، ولو تُرك لاختفى من الجدول كلِّه وعلى صاحبه عمل.
+  if ((d.undated || []).length) {
+    out.push(el("div", { class: "meta",
+      style: "margin:14px 2px 2px;font-weight:700" },
+      `بلا موعد (${d.undated.length})`));
+    for (const t of d.undated) out.push(dayTask(t, refresh));
   }
 
   const todayIso = isoDay(new Date(Date.UTC(new Date().getFullYear(),
