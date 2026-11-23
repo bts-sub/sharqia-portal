@@ -1705,6 +1705,14 @@ async function schedProjectOf(deptId) {
  *  ⚠️ والتمييزُ بينهما يُعاد مع الجواب (mine): الصلاحياتُ تختلف —
  *     النسبةُ لصاحبها، والاعتمادُ لمديره.
  */
+/** سياقُ الصمت لفحوص القاعدة الحيّة — لا يضعه أيُّ مسارٍ من الهاتف.
+ *
+ *  ⚠️ كلُّ فعلٍ يكتب في مهمّةٍ قد يُشعر: الإسنادُ والاعتمادُ والإرجاع.
+ *     وكان الحارسُ على الإنشاء وحدَه، ففحصٌ واحدٌ دفع إلى جهاز موظّفٍ
+ *     إشعارَ «اعتُمدت مهمّتُك» عن مهمّةٍ لا وجودَ لها. وما خرج إلى الجهاز
+ *     لا يُستعاد، فالحارسُ يعمُّ كلَّ كاتبٍ لا بعضَه.
+ */
+const hush = (ctx) => (ctx?.silent ? { context: { sharqia_silent: true } } : {});
 async function schedTaskVisible(id, empId, role) {
   const tid = Number(id);
   if (!tid) throw new Error("مهمّةٌ غير محدَّدة");
@@ -5267,10 +5275,8 @@ const actions = {
           date_deadline: params.deadline || false,
           priority: params.priority === "high" ? "1" : "0",
         };
-        // ⚠️ حارسٌ صامتٌ للفحص على القاعدة الحيّة: الإنشاءُ يُشعر المسنَدَ
-        //    إليه أو مديرَ القسم، والإشعارُ يخرج إلى جهازه فلا يُستعاد.
-        //    ولا يضعه أيُّ مسارٍ من الهاتف — المسالكُ تُمرّر {user} وحدَها.
-        const kw = ctx?.silent ? { context: { sharqia_silent: true } } : {};
+        // حارسٌ صامتٌ للفحص على القاعدة الحيّة — انظر hush أعلاه.
+        const kw = hush(ctx);
         const me = Number(empId) || 0;
         const ids = [];
         for (const who of targets) {
@@ -5302,9 +5308,9 @@ const actions = {
         const task = await schedTaskForManager(id, empId, ctx?.user?.role);
         const toEmp = Number(params.employeeId || 0);
         if (!toEmp) throw new Error("اختر الموظّف");
-        await odoo.write("project.task", [task.id], {
+        await odoo.execKw("project.task", "write", [[task.id], {
           sharqia_assignee_id: toEmp,
-        });
+        }], hush(ctx));
         return { ok: true };
       },
       async () => ({ ok: false }),
@@ -5328,7 +5334,7 @@ const actions = {
         const xmlid = map[String(params.to || "")];
         if (!xmlid) throw new Error("مرحلةٌ غير مسموحة");
         await odoo.execKw("project.task", "action_sharqia_move",
-          [[id], xmlid]);
+          [[id], xmlid], hush(ctx));
         return { ok: true };
       },
       async () => ({ ok: false }),
@@ -5344,13 +5350,14 @@ const actions = {
         const id = Number(params.id);
         const task = await schedTaskForManager(id, empId, ctx?.user?.role);
         if (params.approve) {
-          await odoo.execKw("project.task", "action_sharqia_approve", [[task.id]]);
+          await odoo.execKw("project.task", "action_sharqia_approve",
+            [[task.id]], hush(ctx));
           return { ok: true, state: "approved" };
         }
         const note = String(params.note || "").trim();
         if (!note) throw new Error("اكتب سببَ الإرجاع");
         await odoo.execKw("project.task", "action_sharqia_return",
-          [[task.id], note]);
+          [[task.id], note], hush(ctx));
         return { ok: true, state: "returned" };
       },
       async () => ({ ok: false }),
@@ -5535,7 +5542,8 @@ const actions = {
         let p = Math.round(Number(params.percent));
         if (!Number.isFinite(p)) throw new Error("نسبةٌ غير صالحة");
         p = Math.max(0, Math.min(100, p));
-        await odoo.write("project.task", [task.id], { sharqia_progress: p });
+        await odoo.execKw("project.task", "write",
+          [[task.id], { sharqia_progress: p }], hush(ctx));
         return { ok: true, progress: p };
       },
       async () => ({ ok: false }),
