@@ -3,12 +3,22 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<meta name="theme-color" content="#FAF8F4"/>
+<meta name="theme-color" content="#FAFAFA"/>
 <title>مهامي وجدولي — بيت العباءة الشرقية</title>
 <link rel="icon" href="/logo-mark.png?v=2"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet"/>
+<script>
+  /* ⚠️ السمةُ تُضبَط قبل الرسم لا في schedule.js: لو انتُظرت الوحدةُ لظهرت
+     الصفحةُ بلون النظام لحظةً ثمّ انقلبت أمام عين القارئ. والداكنُ في
+     التطبيق اختيارٌ في إعداداته، فالصفحةُ الحاضنةُ هي من يُخبر. */
+  try {
+    var sqT = new URLSearchParams(location.search).get("theme");
+    if (sqT === "dark" || sqT === "light")
+      document.documentElement.setAttribute("data-theme", sqT);
+  } catch (e) { /* تبقى على تفضيل النظام */ }
+</script>
 <style>
   /* ⚠️ خطٌّ محليٌّ تحت القاهرة: من يفتح جدولَه في المصنع قد لا يصل خطُّ
      جوجل إلى جهازه، فتُقرأ الصفحةُ بخطٍّ عربيٍّ من الخادم لا بخطّ النظام. */
@@ -16,46 +26,78 @@
   @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-SemiBold.ttf") format("truetype"); font-weight: 600; font-display: swap; }
   @font-face { font-family: "PlexAr"; src: url("/fonts/IBMPlexSansArabic-Bold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
 
-  /* الألوانُ هي ألوانُ البوابة نفسُها (join.html) — لئلّا تبدو الصفحةُ
-     غريبةً عن التطبيق الذي فُتحت منه. */
+  /* ⚠️ الألوانُ والقياساتُ مأخوذةٌ من حزمةِ التطبيق نفسِها لا مقارَبةً:
+     الصفحةُ تُعرض داخلَه في إطار، فأيُّ فرقٍ في لونِ الخلفيةِ أو حدِّ
+     البطاقةِ يجعلها تبدو موقعًا آخرَ مُدرَجًا فيه. المأخوذُ من كائن
+     السمة: bg و surface و surfaceAlt و border و divider و text و
+     textSec و textMut و shadow و shadowSm، وعرضُ العمودِ ٤٤٠.
+     ⚠️ ولا تُبدَّل هذه بألوان join.html: تلك بوابةٌ خارجَ التطبيق. */
   :root {
-    --gold: #B8912A; --gold-2: #D4B155; --gold-tint: #F7F2E4;
-    --ink: #17150F; --ink-2: #3D3830; --mut: #7C756A; --faint: #A9A196;
-    --line: #E7E2D8; --line-2: #F1EDE5;
-    --bg: #FAF8F4; --card: #FFFFFF;
+    --gold: #C9A227; --gold-2: #D9B94E; --gold-tint: #FBF4DF;
+    --ink: #202020; --ink-2: #707070; --mut: #707070; --faint: #9AA0A6;
+    --line: #E7E7E7; --line-2: #ECECEC;
+    --bg: #FAFAFA; --card: #FFFFFF; --alt: #F5F5F6;
     --ok: #16794A; --ok-bg: #EBF7F0; --bad: #B4232A; --bad-bg: #FBEDED;
     --warn: #8A5A00; --warn-bg: #FBF2DF;
-    --sh-1: 0 1px 2px rgba(23,21,15,.04);
-    --sh-2: 0 2px 4px rgba(23,21,15,.04), 0 12px 32px rgba(23,21,15,.06);
+    --sh-1: 0 3px 12px rgba(17,17,17,.05);
+    --sh-2: 0 10px 30px rgba(17,17,17,.06);
     --r: 14px;
-    --pick-bg: #17150F; --pick-fg: #FFFFFF;
+    --col: 440px;
+    --pick-bg: #1B1B1B; --pick-fg: #FFFFFF;
   }
+  /* ⚠️ الداكنُ في التطبيق اختيارٌ في إعداداته لا تفضيلُ النظام: فلو تبِعنا
+     prefers-color-scheme لخرج الإطارُ داكنًا وما حولَه فاتحًا. فالسمةُ
+     تصل سِمةً على <html> من الصفحة الحاضنة (schedule-entry.js)، ولا
+     يُسأل النظامُ إلّا إن فُتحت الصفحةُ وحدَها بلا سِمة. */
+  :root { color-scheme: light dark; }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #121110; --card: #1A1917; --ink: #F3F0EA; --ink-2: #D5CFC5;
-      --mut: #948C81; --faint: #6E675E; --line: #2B2926; --line-2: #232120;
-      --gold-tint: #262014; --ok-bg: #16241D; --bad-bg: #2A1718; --warn-bg: #2A2110;
-      --sh-1: 0 1px 2px rgba(0,0,0,.4);
-      --sh-2: 0 2px 4px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.4);
-      --pick-bg: #D4B155; --pick-fg: #17150F; }
+    :root:not([data-theme="light"]):not([data-theme="dark"]) {
+      --bg: #0E0F12; --card: #17191E; --alt: #1F2228;
+      --ink: #ECEDEF; --ink-2: #B3B8C2; --mut: #B3B8C2; --faint: #858C98;
+      --line: #2B2F37; --line-2: #252830;
+      --gold: #F0CE6E; --gold-2: #F0CE6E; --gold-tint: rgba(240,206,110,.16);
+      --ok-bg: #16241D; --bad-bg: #2A1718; --warn-bg: #2A2110;
+      --sh-1: 0 3px 12px rgba(0,0,0,.35);
+      --sh-2: 0 10px 30px rgba(0,0,0,.45);
+      --pick-bg: #F0CE6E; --pick-fg: #17191E;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E0F12; --card: #17191E; --alt: #1F2228;
+    --ink: #ECEDEF; --ink-2: #B3B8C2; --mut: #B3B8C2; --faint: #858C98;
+    --line: #2B2F37; --line-2: #252830;
+    --gold: #F0CE6E; --gold-2: #F0CE6E; --gold-tint: rgba(240,206,110,.16);
+    --ok-bg: #16241D; --bad-bg: #2A1718; --warn-bg: #2A2110;
+    --sh-1: 0 3px 12px rgba(0,0,0,.35);
+    --sh-2: 0 10px 30px rgba(0,0,0,.45);
+    --pick-bg: #F0CE6E; --pick-fg: #17191E;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body { margin: 0; background: var(--bg); color: var(--ink);
     font-family: "PlexAr", "Cairo", system-ui, "Segoe UI", sans-serif;
     font-size: 15px; line-height: 1.7; -webkit-font-smoothing: antialiased; }
-  .wrap { max-width: 720px; margin: 0 auto; padding: 0 14px 96px; }
+  /* عمودُ التطبيق نفسُه: جذرُ الحزمة <div style="max-width:440;margin:0 auto">
+     وشريطُ تبويباتها كذلك. ولو اتّسعت الصفحةُ عنه لبرزت خارجَ عمودِه
+     فبانت غريبةً عنه ولو تطابقت الألوان. */
+  .wrap { max-width: var(--col); margin: 0 auto; padding: 0 16px 96px; }
   /* مُضمَّنةٌ داخل التطبيق: شريطُ التبويبات خارجَ الإطار، فلا حاجةَ
      إلى فراغٍ تحتَه داخلَه. */
   .sq-embed .wrap { padding-bottom: 24px; }
 
-  /* الرأسُ ثابتٌ أعلى الشاشة: الصفحةُ طويلةٌ، والعودةُ يجب أن تُطال
-     بالإبهام في أيّ موضعٍ من التمرير. */
-  header { position: sticky; top: 0; z-index: 20; background: var(--bg);
-    border-bottom: 1px solid var(--line-2); }
-  .hbar { max-width: 720px; margin: 0 auto; padding: 12px 14px;
-    display: flex; align-items: center; gap: 10px; }
-  .hbar h1 { margin: 0; font-size: 18px; font-weight: 700; flex: 1; }
-  .back { width: 38px; height: 38px; border-radius: 12px; border: 1px solid var(--line);
-    background: var(--card); color: var(--ink); font-size: 18px; cursor: pointer;
+  /* الرأسُ على قياس رأسِ شاشات التطبيق حرفًا بحرف: سطحٌ أبيضُ لا خلفيةٌ،
+     حشوةُ 14/16، فجوةُ 12، حدٌّ أسفلُ واحد، وزرُّ رجوعٍ ٣٦×٣٦ نصفُ قطره
+     ١٢ على surfaceAlt، وعنوانٌ ١٧ بثقل ٨٠٠. وهو لاصقٌ عند الصفر: في
+     الإطار يقع تحت شريط التطبيق العلويّ مباشرةً، فيُرى كأنّه رأسُ شاشةٍ
+     منه لا رأسُ صفحةٍ أخرى. */
+  header { position: sticky; top: 0; z-index: 20; background: var(--card);
+    border-bottom: 1px solid var(--line); }
+  .hbar { max-width: var(--col); margin: 0 auto; padding: 14px 16px;
+    display: flex; align-items: center; gap: 12px; }
+  .hbar h1 { margin: 0; font-size: 17px; font-weight: 800; flex: 1; }
+  .back { width: 36px; height: 36px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--alt); color: var(--ink); font-size: 18px; cursor: pointer;
     display: grid; place-items: center; }
 
   .seg { display: flex; gap: 6px; background: var(--line-2); padding: 4px;
@@ -117,6 +159,6 @@
   <div class="seg" role="tablist" id="sq-seg"></div>
   <div id="sq-body"></div>
 </div>
-<script src="/schedule.js?v=1" type="module"></script>
+<script src="/schedule.js?v=2" type="module"></script>
 </body>
 </html>

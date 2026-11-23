@@ -84,8 +84,14 @@
   // ══ الفتحُ داخل التطبيق لا في صفحةٍ أخرى ════════════════════════════
   // ⚠️ كان الضغطُ يُغادر إلى /schedule، فيختفي شريطُ التبويبات ويبدو
   //    كأنّه موقعٌ خارجيّ. والصفحةُ لا يمكن أن تُرسَم داخل شجرة React
-  //    (لا مصدرَ للحزمة)، فتُعرض في إطارٍ على نفس النطاق فوق التطبيق
-  //    وتحت الشريط — فيبقى الشريطُ ظاهرًا عاملًا كما في بقيّة الخدمات.
+  //    (لا مصدرَ للحزمة)، فتُعرض في إطارٍ على نفس النطاق فوق التطبيق.
+  //
+  // ⚠️ والطبقةُ تُقصَر على **جوف** قشرةِ التطبيق لا على الشاشة كلِّها:
+  //    تحت الشريط العلويّ (التحيّةُ والصورة)، وفوق شريط التبويبات، وفي
+  //    عرض عمودِه (٤٤٠ متوسِّطة). وأوّلُ محاولةٍ بدأت من أعلى الشاشة
+  //    وامتدّت إلى حافّتيها، فغطّت الشريطَ العلويَّ وبرزت خارج العمود —
+  //    فبقي المستخدمُ يراها «صفحةً جديدة» وإن كانت داخلَه فعلًا.
+  //    والقياسُ من الشريطين أنفسِهما لا بأرقامٍ منسوخةٍ من الحزمة.
   var OV = "sq-schedule-overlay";
 
   // شريطُ التبويبات: عنصرٌ ثابتٌ أسفلَ الشاشة فيه «الرئيسية».
@@ -106,24 +112,78 @@
     if (ov) ov.remove();
   }
 
-  function openSchedule() {
-    if (document.getElementById(OV)) return;
+  // شريطُ التطبيقِ العلويّ: لاصقٌ عند الصفر فيه تحيّةُ المستخدم وصورتُه.
+  // ⚠️ وهو موضعُ العلّة الأولى: كان الإطارُ يبدأ من أعلى الشاشة فيُغطّيه،
+  //    فتختفي هُويّةُ التطبيق ويبدو ما تحتَها صفحةً أخرى. (وفي الحزمة:
+  //    رأسُ كلِّ شاشةٍ لاصقٌ عند top:78 — أي أنّ فوقه هذا الشريط.)
+  function findTopBar() {
+    var all = document.body.getElementsByTagName("div");
+    for (var i = 0; i < all.length; i++) {
+      var n = all[i], s, r;
+      if (n.offsetHeight < 44 || n.offsetHeight > 150) continue;
+      try { s = getComputedStyle(n); } catch (e) { continue; }
+      if (s.position !== "sticky" || parseInt(s.top, 10) !== 0) continue;
+      if (parseInt(s.zIndex, 10) < 10) continue;
+      r = n.getBoundingClientRect();
+      if (r.top > 2 || r.width < 120) continue;
+      return n;
+    }
+    return null;
+  }
+
+  // داكنٌ أم فاتح؟ يُقرأ من خلفية التطبيق لا من تفضيل النظام: الداكنُ في
+  // التطبيق اختيارٌ في إعداداته، فلو سألنا النظامَ لخرج الإطارُ داكنًا
+  // وما حولَه فاتحًا.
+  function themeOf() {
+    var c = "";
+    try { c = getComputedStyle(document.body).backgroundColor || ""; } catch (e) { return "light"; }
+    var m = c.match(/(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+    if (!m) return "light";
+    var lum = (0.299 * +m[1] + 0.587 * +m[2] + 0.114 * +m[3]) / 255;
+    return lum < 0.5 ? "dark" : "light";
+  }
+
+  function openSchedule(tab) {
+    // مفتوحٌ أصلًا وجاء إشعارٌ بتبويبٍ آخر: يُنقل الإطارُ إليه بدل أن
+    // يُترك على ما كان، فالمُشعَرُ ضغط ليرى شيئًا بعينه.
+    var cur = document.getElementById(OV);
+    if (cur) {
+      if (tab) {
+        var f0 = cur.querySelector("iframe");
+        if (f0) f0.src = "/schedule?embed=1&theme=" + themeOf() + "&t=" + tab;
+      }
+      return;
+    }
     var nav = findNav();
+    var bar = findTopBar();
     var navH = nav ? nav.offsetHeight : 0;
+    var topH = bar ? Math.round(bar.getBoundingClientRect().bottom) : 0;
     var z = 900;
     try {
       var nz = nav ? parseInt(getComputedStyle(nav).zIndex, 10) : 0;
       if (nz > 1) z = nz - 1;
+      var bz = bar ? parseInt(getComputedStyle(bar).zIndex, 10) : 0;
+      if (bz > 1 && bz - 1 < z) z = bz - 1;
     } catch (e) { /* يبقى الافتراضيّ */ }
-    var bg = "#FAF8F4";
+    var bg = "#FAFAFA";
     try { bg = getComputedStyle(document.body).backgroundColor || bg; } catch (e) {}
+
+    // ⚠️ وعرضُ الإطارِ عرضُ عمودِ التطبيق لا عرضَ الشاشة: الحزمةُ تحصر
+    //    نفسَها في ٤٤٠ متوسِّطة، فإطارٌ يمتدّ إلى الحافّتين يبرز خارجَ
+    //    العمود فيبين غريبًا ولو تطابقت الألوانُ كلُّها. ويُقاس من الشريط
+    //    السفليّ نفسِه ليحاذيَه تمامًا مهما تغيّر الرقمُ في الحزمة.
+    var ref = nav || bar;
+    var box = ref ? ref.getBoundingClientRect() : null;
 
     var ov = document.createElement("div");
     ov.id = OV;
-    ov.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:" + navH
-      + "px;z-index:" + z + ";background:" + bg;
+    ov.style.cssText = "position:fixed;top:" + topH + "px;bottom:" + navH
+      + "px;z-index:" + z + ";background:" + bg
+      + (box && box.width > 80
+        ? ";left:" + Math.round(box.left) + "px;width:" + Math.round(box.width) + "px"
+        : ";left:0;right:0");
     var fr = document.createElement("iframe");
-    fr.src = "/schedule";
+    fr.src = "/schedule?embed=1&theme=" + themeOf() + (tab ? "&t=" + tab : "");
     fr.setAttribute("title", "مهامي وجدولي");
     fr.style.cssText = "width:100%;height:100%;border:0;display:block";
     ov.appendChild(fr);
@@ -135,8 +195,65 @@
       nav.__sqBound = true;
       nav.addEventListener("click", function () { closeSchedule(); }, true);
     }
+    // ⚠️ وتدويرُ الجهازِ يُغيّر العمودَ والارتفاعات: تُعاد القياسات، وإلّا
+    //    بقي الإطارُ على مقاس الوضع السابق.
+    if (!window.__sqFit) {
+      window.__sqFit = function () {
+        var o = document.getElementById(OV);
+        if (!o) return;
+        var n2 = findNav(), b2 = findTopBar();
+        var x2 = (n2 || b2) ? (n2 || b2).getBoundingClientRect() : null;
+        o.style.top = (b2 ? Math.round(b2.getBoundingClientRect().bottom) : 0) + "px";
+        o.style.bottom = (n2 ? n2.offsetHeight : 0) + "px";
+        if (x2 && x2.width > 80) {
+          o.style.left = Math.round(x2.left) + "px";
+          o.style.width = Math.round(x2.width) + "px";
+          o.style.right = "auto";
+        }
+      };
+      window.addEventListener("resize", window.__sqFit);
+      window.addEventListener("orientationchange", window.__sqFit);
+    }
   }
 
+
+  // ══ الفتحُ من إشعار ═══════════════════════════════════════════════
+  // ⚠️ قشرةُ التطبيق تُرسَم بعد لحظةٍ من الإقلاع: لو قيس الشريطُ قبلها
+  //    لخرجت الطبقةُ بمقاسٍ خاطئ. فيُنتظر وجودُه ثمّ تُفتح، وإن لم يظهر
+  //    (شبكةٌ بطيئة) فُتحت على الشاشة كلِّها — داخل التطبيق على كلّ حال.
+  function openWhenReady(tab) {
+    var tries = 0;
+    (function again() {
+      if (document.getElementById(OV)) return;
+      if (findNav() || ++tries > 30) { openSchedule(tab); return; }
+      setTimeout(again, 200);
+    })();
+  }
+
+  // نافذةٌ مفتوحةٌ ضُغط إشعارُها: العاملُ يُبلّغ ولا يَنقل.
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener("message", function (e) {
+      var d = e.data || {};
+      if (d.sq === "schedule-open") openWhenReady(d.t || "");
+    });
+  }
+
+  // إقلاعٌ باردٌ من إشعار: العلامةُ في الرابط. وتُمحى بعد القراءة
+  // بـreplaceState — بلا دفعِ سجلٍّ جديد، فـ«اضغط رجوع مرّةً أخرى
+  // للخروج» في التطبيق يبقى على حاله.
+  function fromUrl() {
+    var p;
+    try { p = new URLSearchParams(location.search); } catch (e) { return; }
+    if (p.get("sq") !== "schedule") return;
+    var tab = p.get("t") || "";
+    p.delete("sq"); p.delete("t");
+    var rest = p.toString();
+    try {
+      history.replaceState(history.state, "",
+        location.pathname + (rest ? "?" + rest : "") + location.hash);
+    } catch (e) { /* لا يضرّ بقاؤها */ }
+    openWhenReady(tab);
+  }
   window.addEventListener("message", function (e) {
     if (e.origin !== location.origin) return;
     if (e.data && e.data.sq === "schedule-close") closeSchedule();
@@ -164,6 +281,7 @@
     new MutationObserver(schedule).observe(document.body,
       { childList: true, subtree: true });
     schedule();
+    fromUrl();
   }
   if (document.body) start();
   else document.addEventListener("DOMContentLoaded", start);
