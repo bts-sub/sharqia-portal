@@ -51,8 +51,9 @@ const api = {
   depts: () => call("/api/schedule/depts"),
   week: (from) => call("/api/schedule/week?from=" + encodeURIComponent(from)),
   one: (id) => call("/api/schedule/tasks/" + id),
-  progress: (id, percent) => call("/api/schedule/tasks/" + id + "/progress",
-    { method: "POST", body: JSON.stringify({ percent }) }),
+  progress: (id, percent, text, final) =>
+    call("/api/schedule/tasks/" + id + "/progress",
+      { method: "POST", body: JSON.stringify({ percent, text, final }) }),
   comment: (id, text) => call("/api/schedule/tasks/" + id + "/comment",
     { method: "POST", body: JSON.stringify({ text }) }),
   upload: (b) => call("/api/attachments", { method: "POST", body: JSON.stringify(b) }),
@@ -94,8 +95,8 @@ function goBack() {
   }
   if (history.length > 1) history.back(); else location.href = "/";
 }
-const STAGE_AR = { inbox: "وارد", new: "جديدة", doing: "قيد التنفيذ",
-  review: "مراجعة", done: "منتهية" };
+const STAGE_AR = { inbox: "وارد", new: "جديدة", received: "مستلمة",
+  doing: "قيد التنفيذ", review: "بانتظار الاعتماد", done: "مكتملة" };
 
 function toast(msg, bad = false) {
   const t = el("div", { class: bad ? "err" : "card",
@@ -107,7 +108,7 @@ function toast(msg, bad = false) {
 // ══ مهامّي ════════════════════════════════════════════════════════════
 // ⚠️ الترتيبُ بالمرحلة لا بالتاريخ: الموظّفُ يفتح جدولَه ليعرف ما يعمله
 //    الآن، فما هو «قيد التنفيذ» فوق ما لم يبدأ. والمنتهيةُ آخرًا ومطويّة.
-const MY_ORDER = ["doing", "review", "new", "inbox", "done"];
+const MY_ORDER = ["doing", "review", "received", "new", "inbox", "done"];
 
 function taskCard(t, onAct, refresh) {
   const late = t.late && t.stage !== "done";
@@ -116,11 +117,14 @@ function taskCard(t, onAct, refresh) {
   //    فلا يدري المسنَدُ إليه أنّ العنوانَ بابٌ — فيقرأ سطرًا واحدًا ويظنّ
   //    أنّ هذا كلُّ ما طُلب منه، وفيها المطلوبُ والمرفقاتُ والردود.
   const acts = [["اقرأ المطلوب وردّ", () => openTask(t.id, refresh), false]];
-  if (t.stage === "new") acts.push(["ابدأ العمل", () => onAct(t, "doing"), true]);
-  // ⚠️ ولا «أرسل للمراجعة» قبل المئة: المهمّةُ لا تُقفل وهي ناقصة،
-  //    والخادمُ يردُّ الإرسالَ دونها — فيُقال ما ينقص بدل زرٍّ يُردّ.
+  // ⚠️ «استلمتُها» قبل «ابدأ العمل»: الاستلامُ خبرٌ لمن أسندها — يُسند
+  //    ثمّ ينتظر فلا يدري أوصلت أم ضاعت.
+  if (t.stage === "new") acts.push(["استلمتُها", () => onAct(t, "received"), true]);
+  if (t.stage === "received") acts.push(["ابدأ العمل", () => onAct(t, "doing"), true]);
+  // ⚠️ والرفعُ للاعتماد من داخل الورقة لا من البطاقة: صار يلزمه تقريرٌ
+  //    ختاميٌّ يُكتب، ولا موضعَ لكتابته هنا.
   if (t.stage === "doing" && full)
-    acts.push(["أرسل للمراجعة", () => onAct(t, "review"), true]);
+    acts.push(["ارفعها للاعتماد", () => openTask(t.id, refresh), true]);
   return el("div", { class: "card" },
     el("div", { class: "row" },
       el("h3", { class: "grow", style: "cursor:pointer",
@@ -319,7 +323,7 @@ function openTask(id, refresh) {
     const late = t.late && t.stage !== "done";
 
     // ── النسبة ──
-    let bar, pct;
+    let bar, pct, rep;
     const setPct = (v) => {
       pct.textContent = v + "%";
       bar.style.width = Math.max(2, v) + "%";
@@ -370,16 +374,22 @@ function openTask(id, refresh) {
     const acts = [];
     const full = Number(t.progress || 0) >= 100;
     if (t.mine && t.stage === "new")
+      acts.push(["استلمتُها", async () => {
+        try { await api.move(t.id, "received"); toast("استُلمت"); draw(); }
+        catch (e) { toast(e.message, true); } }, true]);
+    if (t.mine && t.stage === "received")
       acts.push(["ابدأ العمل", async () => {
         try { await api.move(t.id, "doing"); toast("بدأت"); draw(); }
         catch (e) { toast(e.message, true); } }, true]);
-    // ⚠️ ولا يُعرض «أرسل للمراجعة» قبل المئة: الإرسالُ إقرارٌ بالإتمام،
-    //    والخادمُ يردُّه دونها — فزرٌّ يُضغط ليُردَّ خيرٌ منه سطرٌ يقول
-    //    ما ينقص. وهذا ما طُلب: لا تُقفل المهمّةُ إلّا بمئةٍ كاملة.
+    // ⚠️ والرفعُ للاعتماد بتقريرٍ ختاميٍّ لا بضغطةٍ مجرّدة: المئةُ رقمٌ،
+    //    والتقريرُ ما يُقرأ ويُراجَع. والخادمُ يردُّ الرفعَ بلا ختاميّ.
     if (t.mine && t.stage === "doing" && full)
-      acts.push(["أرسل للمراجعة", async () => {
-        try { await api.move(t.id, "review"); toast("أُرسلت"); draw(); }
-        catch (e) { toast(e.message, true); } }, true]);
+      acts.push(["ارفعها للاعتماد", () => finalSheet(async (txt) => {
+        try {
+          await api.progress(t.id, 100, txt, true);
+          toast("رُفعت للاعتماد"); draw();
+        } catch (e) { toast(e.message, true); }
+      }), true]);
     if (t.manages && t.stage === "review") {
       // ⚠️ والاعتمادُ كذلك لا يُعرض دون المئة: المديرُ يرى نسبةَ صاحبها
       //    أمامه، فإن كانت ناقصةً فسبيلُه الإرجاعُ لا الاعتماد.
@@ -422,12 +432,21 @@ function openTask(id, refresh) {
       el("label", {}, "نسبة الإنجاز"),
       el("div", { class: "row" }, pct, el("div", { class: "grow" }, track)),
       t.mine ? slider : null,
+      // ⚠️ ولا تُحفظ نسبةٌ بلا تقرير: من قرأ «ستّين» يحتاج أن يعرف بأيِّ
+      //    شيءٍ بلغها. والخادمُ يردُّها بلا نصّ، فيُسأل عنه هنا في موضعه.
+      t.mine ? el("label", {}, "ما أنجزتَه (يُحفظ مع النسبة)") : null,
+      t.mine ? (rep = el("textarea", { style: "min-height:58px",
+        placeholder: "مثلًا: رُوجعت العقودُ الخمسةُ وبقي اثنان" })) : null,
       t.mine ? el("button", { class: "btn", style: "margin-top:6px",
         onclick: async (ev) => {
+          const txt = rep.value.trim();
+          if (!txt) { toast("اكتب ما أنجزتَه", true); return; }
           ev.target.disabled = true;
-          try { await api.progress(t.id, Number(slider.value)); toast("حُفظت"); draw(); }
-          catch (e) { ev.target.disabled = false; toast(e.message, true); }
-        } }, "احفظ النسبة") : null,
+          try {
+            await api.progress(t.id, Number(slider.value), txt, false);
+            toast("حُفظت"); draw();
+          } catch (e) { ev.target.disabled = false; toast(e.message, true); }
+        } }, "احفظ النسبة والتقرير") : null,
       gap ? el("div", { class: "meta", style: "margin-top:6px" }, gap) : null,
       acts.length ? el("div", { class: "row", style: "margin-top:10px" },
         acts.map(([l, fn, pri]) => el("button",
@@ -461,7 +480,7 @@ function openTask(id, refresh) {
 // ══ قسمي — للمدير ════════════════════════════════════════════════════
 // ⚠️ «الوارد» أوّلًا ثمّ «المراجعة»: هذان ما ينتظران قرارَ المدير،
 //    وبقيّةُ المراحل تُقرأ ولا تُنتظر.
-const DEPT_ORDER = ["inbox", "review", "doing", "new", "done"];
+const DEPT_ORDER = ["inbox", "review", "doing", "received", "new", "done"];
 // ⚠️ «الوارد» عند المدير مسوّداتُه: ما كتبه ولم يوزّعه بعد — تذكيرٌ له
 //    لا طابورُ انتظار. والاسمُ يقول ذلك كي لا يظنّها مهامَّ ضائعة.
 const DEPT_STAGE_AR = { inbox: "مسوّدات وتذكيرات (وارد)" };
@@ -487,6 +506,29 @@ function pickSheet(title, team, onPick) {
   document.body.append(sheet);
 }
 
+
+// ⚠️ ورقةُ التقرير الختاميّ: الرفعُ للاعتماد يلزمه نصٌّ يُقرأ، فلا يُترك
+//    صاحبُ الطلب أمام رقمٍ وحدَه. وهي ورقةٌ مستقلّةٌ كورقةِ الإرجاع.
+function finalSheet(onSend) {
+  let box;
+  const sheet = el("div", { class: "sheet", onclick: (e) => {
+    if (e.target === sheet) sheet.remove();
+  } },
+    el("div", {},
+      el("h3", { style: "margin:4px 0 2px" }, "التقريرُ الختاميّ"),
+      el("div", { class: "meta" },
+        "اكتب ما أنجزتَه — يقرؤه من أسند إليك المهمّة قبل أن يعتمدها."),
+      (box = el("textarea", { placeholder: "ما الذي أُنجز؟" })),
+      el("div", { class: "row", style: "margin-top:10px" },
+        el("button", { class: "btn pri grow", onclick: () => {
+          const v = box.value.trim();
+          if (!v) { toast("اكتب التقرير", true); return; }
+          sheet.remove(); onSend(v);
+        } }, "ارفعها للاعتماد"),
+        el("button", { class: "btn", onclick: () => sheet.remove() }, "إلغاء"))));
+  document.body.append(sheet);
+  setTimeout(() => box.focus(), 50);
+}
 function returnSheet(onSend) {
   let box;
   const sheet = el("div", { class: "sheet", onclick: (e) => {

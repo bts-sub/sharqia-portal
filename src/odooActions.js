@@ -1638,7 +1638,7 @@ async function resolveBeneficiary(params, ctx) {
 //    تسميتُه من شاشة أودو، والمعرّفُ لا يتبدّل. ويُحفظ الجوابُ لأنّ
 //    أرقامَها ثابتةٌ ما دامت القاعدةُ قائمة.
 let schedStagesCache = null;
-const SCHED_STAGE_KEYS = ["inbox", "new", "doing", "review", "done"];
+const SCHED_STAGE_KEYS = ["inbox", "new", "received", "doing", "review", "done"];
 
 async function schedStages() {
   if (schedStagesCache) return schedStagesCache;
@@ -1712,7 +1712,18 @@ async function schedProjectOf(deptId) {
  *     إشعارَ «اعتُمدت مهمّتُك» عن مهمّةٍ لا وجودَ لها. وما خرج إلى الجهاز
  *     لا يُستعاد، فالحارسُ يعمُّ كلَّ كاتبٍ لا بعضَه.
  */
-const hush = (ctx) => (ctx?.silent ? { context: { sharqia_silent: true } } : {});
+// ⚠️ ويحمل **الفاعلَ** معه، لا الصمتَ وحدَه: أودو يُنادى بحسابٍ خدميٍّ
+//    واحد، وقواعدُ الموديل تسأل «من يفعل؟» — الاعتمادُ لمن أنشأ،
+//    والاستلامُ لمن أُسندت إليه، والتقريرُ بقلم كاتبه. فلولا هذا السياقُ
+//    لصار كلُّ فعلٍ باسم الحساب الخدميّ ولانهارت القواعدُ من أصلها.
+const hush = (ctx) => ({
+  context: {
+    lang: "ar_001",
+    tz: "Asia/Riyadh",
+    sharqia_actor_employee_id: Number(ctx?.user?.odooEmployeeId || 0) || false,
+    ...(ctx?.silent ? { sharqia_silent: true } : {}),
+  },
+});
 async function schedTaskVisible(id, empId, role) {
   const tid = Number(id);
   if (!tid) throw new Error("مهمّةٌ غير محدَّدة");
@@ -5328,6 +5339,7 @@ const actions = {
           [["id", "=", id], ["sharqia_assignee_id", "=", empId]], ["id"], { limit: 1 });
         if (!task) throw new Error("ليست من مهامّك");
         const map = {
+          received: "sharqia_portal.task_stage_received",
           doing: "sharqia_portal.task_stage_doing",
           review: "sharqia_portal.task_stage_review",
         };
@@ -5542,9 +5554,23 @@ const actions = {
         let p = Math.round(Number(params.percent));
         if (!Number.isFinite(p)) throw new Error("نسبةٌ غير صالحة");
         p = Math.max(0, Math.min(100, p));
-        await odoo.execKw("project.task", "write",
-          [[task.id], { sharqia_progress: p }], hush(ctx));
-        return { ok: true, progress: p };
+        // ⚠️ النسبةُ لا تُكتب وحدَها بعد اليوم: الموديلُ يردُّ كتابتَها
+        //    مباشرةً، ومصدرُها الوحيد تقريرُ متابعةٍ يقول ما أُنجز. فمن
+        //    قرأ «ستّين» قرأ معها بأيِّ شيءٍ بلغها.
+        const text = String(params.text || "").trim();
+        if (!text) throw new Error("اكتب ما أنجزتَه مع النسبة");
+        const final = !!params.final;
+        if (final && p < 100)
+          throw new Error("التقريرُ الختاميُّ بنسبة مئةٍ كاملة");
+        await odoo.execKw("sharqia.task.report", "create", [{
+          task_id: task.id, progress: p, body: text,
+          is_final: final, employee_id: Number(empId),
+        }], hush(ctx));
+        if (final) {
+          await odoo.execKw("project.task", "action_sharqia_move",
+            [[task.id], "sharqia_portal.task_stage_review"], hush(ctx));
+        }
+        return { ok: true, progress: p, final };
       },
       async () => ({ ok: false }),
       { forceLiveErrors: true }

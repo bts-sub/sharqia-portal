@@ -95,8 +95,9 @@ router.get("/schedule/tasks/:id", async (req, res, next) => {
 
 router.post("/schedule/tasks/:id/progress", async (req, res, next) => {
   try {
+    const b = req.body || {};
     const { data } = await runAction("task.progress",
-      { id: req.params.id, percent: (req.body || {}).percent },
+      { id: req.params.id, percent: b.percent, text: b.text, final: b.final },
       { user: req.user });
     res.json(data);
   } catch (e) { next(e); }

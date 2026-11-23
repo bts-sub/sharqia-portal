@@ -14,8 +14,33 @@ import { notifyOdooUserEvent } from "../lib/odooBridge.js";
 import { syncRoleFromOdoo } from "../lib/roleSync.js";
 import { userPerms, isoDate } from "../lib/permissions.js";
 import * as odoo from "../lib/odooClient.js";
+import crypto from "crypto";
 
 const router = Router();
+
+// ══ تجزئةُ كلمة المرور لواجهة أودو ═══════════════════════════════════
+// ⚠️ تطبيقُ الجوّال يُصادق على أودو مباشرةً (/sharqia_portal/api/login)،
+//    وأودو لا يملك كلمةَ المرور العاملة: نسختُه (app_password) يكتبها
+//    موظّفُ الموارد البشرية ولا تتبدّل حين يُغيّرها الموظّفُ من التطبيق
+//    — فتبقى القديمةُ صالحةً هناك إلى الأبد. فتُدفع التجزئةُ من هنا عند
+//    كلِّ دخولٍ ناجح، فهي صورةُ الكلمة العاملة لا صورةُ ما كُتب يومًا.
+//
+// ⚠️ وتُدفع التجزئةُ لا الكلمة: لا يمرّ نصٌّ صريحٌ على السلك ولا يُخزَّن.
+// ⚠️ وبصيغة pbkdf2-sha512 نفسِها التي يقرؤها أودو (٢٦٠ ألف دورة، ٦٤
+//    بايت) — وأيُّ اختلافٍ في الدورات أو الطول يجعلها لا تتحقّق أبدًا.
+// ⚠️ وبعد الردّ لا قبلَه: الاشتقاقُ مئاتُ المللي ثانية، ولو انتُظر
+//    لتأخّر دخولُ كلِّ موظّفٍ بقدره. وإخفاقُه لا يمسّ الدخول.
+const PBKDF2_ROUNDS = 260000;
+function pushApiHash(login, password) {
+  const salt = crypto.randomBytes(16);
+  crypto.pbkdf2(password, salt, PBKDF2_ROUNDS, 64, "sha512", (err, dk) => {
+    if (err) return;
+    const h = "pbkdf2_sha512$" + PBKDF2_ROUNDS + "$"
+      + salt.toString("hex") + "$" + dk.toString("hex");
+    odoo.execKw("sharqia.portal.user", "portal_api_set_hash", [login, h])
+      .catch((e) => console.warn("⚠️ تعذّر دفعُ تجزئة التطبيق:", e.message));
+  });
+}
 
 /** استثناءاتُ صاحب الجلسة من أودو — وتعذّرُها لا يمنع الدخول. */
 async function sessionPerms(login) {
@@ -60,6 +85,7 @@ router.post("/login", loginLimiter, async (req, res, next) => {
     user = (await syncRoleFromOdoo(login, { force: true })) || user;
     touchLastLogin(user.id);
     notifyOdooUserEvent(user.login);   // بلا await — لا يؤخّر الرد ولا يُفشله
+    pushApiHash(user.login, password); // تجزئةُ واجهة أودو — انظر أعلاه
     const token = signToken({ sub: user.id, role: user.role, login: user.login });
     setSessionCookie(res, token);
     const { passwordHash, ...safe } = user;
