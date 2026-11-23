@@ -74,7 +74,12 @@ router.get("/schedule/week", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get("/schedule/tasks/:id(\d+)", async (req, res, next) => {
+// ⚠️ ولا قيدَ رقميًّا في المسار: لو كُتب «:id» وبعده قوسٌ فيه شرطةٌ مائلةٌ
+//    واحدةٌ ثمّ d+، أكلت جافاسكربت الشرطةَ في النصّ المزدوج فصار القيدُ
+//    «d+» يُطابق «ddd» لا رقمًا — فلا تُفتح مهمّةٌ أبدًا. والقيدُ غيرُ لازم:
+//    «/tasks/dept» مُعلَنٌ قبلَه فيُطابَق أوّلًا، و task.one ترفض ما ليس
+//    رقمًا برسالةٍ عربيّة. (ولو احتاج يومًا: شرطتان.)
+router.get("/schedule/tasks/:id", async (req, res, next) => {
   try {
     const { data } = await runAction("task.one", { id: req.params.id },
       { user: req.user });

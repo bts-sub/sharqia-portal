@@ -1733,6 +1733,23 @@ async function schedTaskForManager(id, empId, role) {
   return t;
 }
 
+/** نصُّ تعليقٍ من جسمِ رسالةٍ في أودو: تُنزع الوسومُ وتُفكُّ الكُنى.
+ *
+ *  ⚠️ وتُفكُّ «amp» آخرًا: لو فُكّت أوّلًا لعاد «&amp;lt;» وسمًا من جديد.
+ *  ⚠️ والبرُّ والفاصلةُ مسافةً قبل النزع: «سطرٌ<br>سطر» بلا ذلك يلتصق.
+ */
+function schedMsgText(body) {
+  return String(body || "")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"").replace(/&#0?39;/g, "'").replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 /** شكلُ المهمّة كما يقرؤها التطبيق. */
 function schedTaskOut(r, stages) {
   const key = stages.byId.get(r.stage_id?.[0]) || "";
@@ -5394,8 +5411,7 @@ const actions = {
           comments: msgs.map((m) => ({
             id: m.id, who: m.author_id ? m.author_id[1] : "—",
             at: m.date,
-            text: String(m.body || "").replace(/<[^>]*>/g, " ")
-              .replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim(),
+            text: schedMsgText(m.body),
           })).filter((c) => c.text),
           files: files.map((f) => ({
             id: f.id, name: f.name, size: f.file_size, at: f.create_date,
@@ -5433,17 +5449,25 @@ const actions = {
    */
   async "task.comment"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
-    const who = ctx?.user?.name || "";
     return withOdoo(
       async () => {
         const { task } = await schedTaskVisible(
           params.id, empId, ctx?.user?.role);
         const text = String(params.text || "").trim();
         if (!text) throw new Error("اكتب التعليق");
-        const esc = (s) => s.replace(/[&<>]/g,
-          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+        // ⚠️ بلا وسمِ HTML: أودو ١٩ يُفلّت الجسمَ الآتيَ عبر RPC، فالوسمُ
+        //    يظهر للقارئ حروفًا لا خطًّا عريضًا — أُثبت على القاعدة الحيّة.
+        // ⚠️ والاسمُ يُقرأ من بطاقة الموظف لا من الجلسة: أودو يُنادى بحسابٍ
+        //    خدميٍّ واحدٍ فمؤلّفُ كلِّ التعليقات هو، ولولا الاسمُ في النصّ
+        //    لما عُرف قائلُها. و«name» ليس في رِمز الجلسة أصلًا.
+        let who = String(ctx?.user?.login || "");
+        if (empId) {
+          const [me] = await odoo.searchRead("hr.employee",
+            [["id", "=", Number(empId)]], ["name"], { limit: 1 });
+          if (me && me.name) who = me.name;
+        }
         await odoo.execKw("project.task", "message_post", [[task.id]], {
-          body: `<b>${esc(who)}</b>: ${esc(text)}`,
+          body: who ? `${who}: ${text}` : text,
           message_type: "comment", subtype_xmlid: "mail.mt_comment",
         });
         return { ok: true };
