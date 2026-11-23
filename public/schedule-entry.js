@@ -68,8 +68,8 @@
     }
     var block = card.children[1];
     if (block && block.children.length) {
-      if (block.children[0]) block.children[0].textContent = "جدولي";
-      if (block.children[1]) block.children[1].textContent = "مهامي واجتماعاتي";
+      if (block.children[0]) block.children[0].textContent = "مهامي وجدولي";
+      if (block.children[1]) block.children[1].textContent = "المهامّ والجدول الأسبوعي";
     }
     card.style.cursor = "pointer";
     // المرحلةُ الملتقِطة: الحزمةُ تلتقط النقراتِ من الجذر، فلو تُركت تصعد
@@ -124,7 +124,7 @@
       + "px;z-index:" + z + ";background:" + bg;
     var fr = document.createElement("iframe");
     fr.src = "/schedule";
-    fr.setAttribute("title", "جدولي");
+    fr.setAttribute("title", "مهامي وجدولي");
     fr.style.cssText = "width:100%;height:100%;border:0;display:block";
     ov.appendChild(fr);
     document.body.appendChild(ov);

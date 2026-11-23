@@ -48,6 +48,13 @@ const api = {
   deptTasks: () => call("/api/schedule/tasks/dept"),
   team: () => call("/api/schedule/team"),
   people: (q) => call("/api/schedule/people" + (q ? "?q=" + encodeURIComponent(q) : "")),
+  week: (from) => call("/api/schedule/week?from=" + encodeURIComponent(from)),
+  one: (id) => call("/api/schedule/tasks/" + id),
+  progress: (id, percent) => call("/api/schedule/tasks/" + id + "/progress",
+    { method: "POST", body: JSON.stringify({ percent }) }),
+  comment: (id, text) => call("/api/schedule/tasks/" + id + "/comment",
+    { method: "POST", body: JSON.stringify({ text }) }),
+  upload: (b) => call("/api/attachments", { method: "POST", body: JSON.stringify(b) }),
   createTask: (b) => call("/api/schedule/tasks", { method: "POST", body: JSON.stringify(b) }),
   assign: (id, employeeId) => call(`/api/schedule/tasks/${id}/assign`,
     { method: "POST", body: JSON.stringify({ employeeId }) }),
@@ -101,14 +108,18 @@ function toast(msg, bad = false) {
 //    الآن، فما هو «قيد التنفيذ» فوق ما لم يبدأ. والمنتهيةُ آخرًا ومطويّة.
 const MY_ORDER = ["doing", "review", "new", "inbox", "done"];
 
-function taskCard(t, onAct) {
+function taskCard(t, onAct, refresh) {
   const late = t.late && t.stage !== "done";
   const acts = [];
   if (t.stage === "new") acts.push(["ابدأ العمل", () => onAct(t, "doing"), true]);
   if (t.stage === "doing") acts.push(["أرسل للمراجعة", () => onAct(t, "review"), true]);
+  // ⚠️ العنوانُ بابٌ لا نصّ: الضغطُ عليه يفتح تفاصيلَ المهمّة — النسبةَ
+  //    والتعليقاتِ والمرفقات. وهو العنوانُ وحدَه لا البطاقةُ كلُّها، كي لا
+  //    يفتح زرُّ «ابدأ العمل» الشاشةَ مع ضغطته.
   return el("div", { class: "card" },
     el("div", { class: "row" },
-      el("h3", { class: "grow" }, t.name),
+      el("h3", { class: "grow", style: "cursor:pointer",
+        onclick: () => openTask(t.id, refresh) }, t.name),
       el("span", { class: "pill" + (late ? " late" : "") },
         late ? "متأخّرة" : STAGE_AR[t.stage] || t.stageName || "")),
     el("div", { class: "meta" },
@@ -164,11 +175,145 @@ async function viewMine(host) {
     if (!list || !list.length) continue;
     out.push(el("div", { class: "meta", style: "margin:14px 2px 2px;font-weight:700" },
       `${STAGE_AR[st] || st} (${list.length})`));
-    for (const t of list) out.push(taskCard(t, onAct));
+    for (const t of list) out.push(taskCard(t, onAct, refresh));
   }
   host.replaceChildren(...out);
 }
 
+
+// ══ تفاصيلُ المهمّة: النسبةُ والتعليقاتُ والمرفقات ═══════════════════
+// ⚠️ شاشةٌ واحدةٌ لكلِّ ما يخصّ المهمّة: كان الموظّفُ ينقلها من البطاقة
+//    ولا يملك أن يقول «أنجزتُ ستّين» ولا أن يسأل سؤالًا ولا أن يُرفق
+//    ورقة. فصارت البطاقةُ بابًا يُفتح على كلِّ ذلك.
+function openTask(id, refresh) {
+  const body = el("div", {}, el("div", { class: "sk" }), el("div", { class: "sk" }));
+  const sheet = el("div", { class: "sheet", onclick: (e) => {
+    if (e.target === sheet) sheet.remove();
+  } }, el("div", {}, body));
+  document.body.append(sheet);
+
+  const close = () => { sheet.remove(); if (refresh) refresh(); };
+
+  const draw = async () => {
+    let d;
+    try { d = await api.one(id); }
+    catch (e) { body.replaceChildren(el("div", { class: "err" }, e.message)); return; }
+    const t = d.task;
+    const late = t.late && t.stage !== "done";
+
+    // ── النسبة ──
+    let bar, pct;
+    const setPct = (v) => {
+      pct.textContent = v + "%";
+      bar.style.width = Math.max(2, v) + "%";
+    };
+    const slider = el("input", { type: "range", min: "0", max: "100", step: "5",
+      value: String(t.progress || 0),
+      oninput: (e) => setPct(Number(e.target.value)) });
+    const track = el("div", { style: "height:8px;border-radius:99px;"
+      + "background:var(--line-2);overflow:hidden;margin:6px 0" },
+      (bar = el("div", { style: "height:100%;border-radius:99px;"
+        + "background:var(--gold);width:2%" })));
+    pct = el("span", { class: "pill" }, (t.progress || 0) + "%");
+
+    // ── التعليقات ──
+    let cbox;
+    const clist = el("div", {}, ...(d.comments.length
+      ? d.comments.map((c) => el("div", { class: "card",
+        style: "padding:9px 11px;margin:6px 0" },
+        el("div", { class: "meta", style: "font-weight:700" },
+          c.who + " · " + fmtWhen(c.at)),
+        el("div", {}, c.text)))
+      : [el("div", { class: "meta" }, "لا تعليقات.")]));
+
+    // ── المرفقات ──
+    const flist = el("div", { class: "row", style: "gap:6px" },
+      ...(d.files.length
+        ? d.files.map((f) => el("a", { class: "slot", href: "/api/attachments/" + f.id,
+          target: "_blank", rel: "noopener" }, f.name))
+        : [el("div", { class: "meta" }, "لا مرفقات.")]));
+    const picker = el("input", { type: "file", style: "display:none",
+      onchange: async (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        if (f.size > 8 * 1024 * 1024) { toast("الملفُّ أكبر من ٨ ميجابايت", true); return; }
+        toast("يُرفع…");
+        const rd = new FileReader();
+        rd.onload = async () => {
+          try {
+            await api.upload({ fileName: f.name,
+              base64: String(rd.result).split(",")[1] || "",
+              resModel: "project.task", resId: t.id });
+            toast("رُفع"); draw();
+          } catch (er) { toast(er.message, true); }
+        };
+        rd.readAsDataURL(f);
+      } });
+
+    const acts = [];
+    if (t.mine && t.stage === "new")
+      acts.push(["ابدأ العمل", async () => {
+        try { await api.move(t.id, "doing"); toast("بدأت"); draw(); }
+        catch (e) { toast(e.message, true); } }, true]);
+    if (t.mine && t.stage === "doing")
+      acts.push(["أرسل للمراجعة", async () => {
+        try { await api.move(t.id, "review"); toast("أُرسلت"); draw(); }
+        catch (e) { toast(e.message, true); } }, true]);
+    if (!t.mine && t.stage === "review") {
+      acts.push(["اعتمد", async () => {
+        try { await api.decide(t.id, { approve: true }); toast("اعتُمدت"); close(); }
+        catch (e) { toast(e.message, true); } }, true]);
+      acts.push(["أرجِع", () => returnSheet(async (note) => {
+        try { await api.decide(t.id, { note }); toast("أُرجعت"); close(); }
+        catch (e) { toast(e.message, true); } })]);
+    }
+
+    body.replaceChildren(
+      el("div", { class: "row" },
+        el("h3", { class: "grow", style: "margin:2px 0" }, t.name),
+        el("span", { class: "pill" + (late ? " late" : "") },
+          late ? "متأخّرة" : STAGE_AR[t.stage] || t.stageName || "")),
+      el("div", { class: "meta" },
+        [t.dept, t.assignee ? "المسنَد إليه: " + t.assignee : null,
+          t.deadline ? "الموعد: " + fmtDay(t.deadline) : null]
+          .filter(Boolean).join(" · ")),
+      t.returnNote ? el("div", { class: "err", style: "margin-top:8px" },
+        "أُرجعت: " + t.returnNote) : null,
+      t.description ? el("div", { class: "meta", style: "margin-top:6px",
+        html: t.description }) : null,
+      el("label", {}, "نسبة الإنجاز"),
+      el("div", { class: "row" }, pct, el("div", { class: "grow" }, track)),
+      t.mine ? slider : null,
+      t.mine ? el("button", { class: "btn", style: "margin-top:6px",
+        onclick: async (ev) => {
+          ev.target.disabled = true;
+          try { await api.progress(t.id, Number(slider.value)); toast("حُفظت"); draw(); }
+          catch (e) { ev.target.disabled = false; toast(e.message, true); }
+        } }, "احفظ النسبة") : null,
+      acts.length ? el("div", { class: "row", style: "margin-top:10px" },
+        acts.map(([l, fn, pri]) => el("button",
+          { class: "btn" + (pri ? " pri" : ""), onclick: fn }, l))) : null,
+      el("label", {}, "المرفقات"),
+      flist,
+      el("button", { class: "btn", style: "margin-top:6px",
+        onclick: () => picker.click() }, "+ أرفق ملفًّا"),
+      picker,
+      el("label", {}, "التعليقات"),
+      clist,
+      (cbox = el("textarea", { placeholder: "اكتب تعليقًا…" })),
+      el("div", { class: "row", style: "margin-top:8px" },
+        el("button", { class: "btn pri grow", onclick: async (ev) => {
+          const v = cbox.value.trim();
+          if (!v) { toast("اكتب التعليق", true); return; }
+          ev.target.disabled = true;
+          try { await api.comment(t.id, v); cbox.value = ""; toast("أُضيف"); draw(); }
+          catch (e) { ev.target.disabled = false; toast(e.message, true); }
+        } }, "أضف تعليقًا"),
+        el("button", { class: "btn", onclick: close }, "إغلاق")));
+    setPct(t.progress || 0);
+  };
+  draw();
+}
 // ══ قسمي — للمدير ════════════════════════════════════════════════════
 // ⚠️ «الوارد» أوّلًا ثمّ «المراجعة»: هذان ما ينتظران قرارَ المدير،
 //    وبقيّةُ المراحل تُقرأ ولا تُنتظر.
@@ -279,7 +424,8 @@ function deptCard(t, team, refresh) {
 
   return el("div", { class: "card" },
     el("div", { class: "row" },
-      el("h3", { class: "grow" }, t.name),
+      el("h3", { class: "grow", style: "cursor:pointer",
+        onclick: () => openTask(t.id, refresh) }, t.name),
       el("span", { class: "pill" + (t.late && t.stage !== "done" ? " late" : "") },
         t.late && t.stage !== "done" ? "متأخّرة" : STAGE_AR[t.stage] || "")),
     el("div", { class: "meta" },
@@ -315,15 +461,22 @@ function newTaskSheet(depts, team, refresh) {
         ? (dept = el("select", {}, ...depts.map((d) =>
           el("option", { value: d.id }, d.name))))
         : null,
-      mgr ? el("label", {}, "المسنَد إليه") : null,
-      // ⚠️ «اتركها في الوارد» خيارٌ أوّل لا استثناء: المديرُ يكتب المهمّةَ
-      //    حين تخطر له ويوزّعها حين يرى الحِمل. وما بقي في «الوارد» هو
-      //    مسوّدتُه وتذكيرُه.
-      mgr ? (who = el("select", {},
-        el("option", { value: "" }, "اتركها في «الوارد» — مسوّدةٌ وتذكيرٌ لي"),
-        ...[...team].sort((a, b) => a.openTasks - b.openTasks).map((m) =>
-          el("option", { value: m.id }, `${m.name} — ${m.openTasks} مهمّة`))))
-        : null,
+      mgr ? el("label", {}, "المسنَد إليهم — واحدٌ أو أكثر") : null,
+      // ⚠️ «اتركها في الوارد» هو الأصل: المديرُ يكتب المهمّةَ حين تخطر له
+      //    ويوزّعها حين يرى الحِمل. وما بقي بلا اختيارٍ فهو مسوّدتُه.
+      // ⚠️ واختيارُ عدّةٍ يُنشئ مهمّةً لكلِّ واحد لا مهمّةً يتقاسمونها:
+      //    النسبةُ والمراجعةُ والاعتمادُ لشخصٍ بعينه.
+      mgr ? el("div", { class: "meta" },
+        "بلا اختيارٍ تبقى في «الوارد» مسوّدةً لك.") : null,
+      mgr ? (who = el("div", { class: "row", style: "gap:6px;margin-top:4px" },
+        ...[...team].sort((a, b) => a.openTasks - b.openTasks).map((m) => {
+          const b = el("button", { class: "slot", "aria-pressed": "false",
+            "data-emp": String(m.id),
+            onclick: () => b.setAttribute("aria-pressed",
+              b.getAttribute("aria-pressed") === "true" ? "false" : "true") },
+            `${m.name} · ${m.openTasks}`);
+          return b;
+        }))) : null,
       el("label", {}, "الموعد النهائي (اختياري)"),
       (due = el("input", { type: "date" })),
       el("label", {}, "تفصيل (اختياري)"),
@@ -334,16 +487,19 @@ function newTaskSheet(depts, team, refresh) {
           if (!title) { toast("اكتب العنوان", true); return; }
           ev.target.disabled = true;
           try {
-            await api.createTask({
+            const r = await api.createTask({
               name: title,
               ...(mgr ? {
                 departmentId: dept ? Number(dept.value) : depts[0].id,
-                employeeId: who && who.value ? Number(who.value) : 0,
+                employeeIds: who ? [...who.querySelectorAll('[aria-pressed="true"]')]
+                  .map((b) => Number(b.dataset.emp)) : [],
               } : {}),
               deadline: due.value ? due.value + " 12:00:00" : null,
               description: desc.value.trim(),
             });
-            sheet.remove(); toast("أُنشئت"); refresh();
+            sheet.remove();
+            toast(r && r.count > 1 ? `أُنشئت ${r.count} مهمّات` : "أُنشئت");
+            refresh();
           } catch (e) { ev.target.disabled = false; toast(e.message, true); }
         } }, "أنشئ"),
         el("button", { class: "btn", onclick: () => sheet.remove() }, "إلغاء"))));
@@ -351,6 +507,102 @@ function newTaskSheet(depts, team, refresh) {
   setTimeout(() => name.focus(), 50);
 }
 
+
+// ══ جدولي — الأسبوع ══════════════════════════════════════════════════
+// ⚠️ الأسبوعُ يبدأ الأحد لا الاثنين: هو أوّلُ الدوام هنا، ولو بدأ
+//    الاثنين لظهر أوّلُ أيّام العمل في آخر العمود.
+// ⚠️ والمتأخّرُ فوق الأسبوع لا داخلَه: موعدُه مضى فلا يومَ له في هذه
+//    الأيّام السبعة، ولو تُرك بلا موضعٍ لاختفى من الجدول كلِّه.
+let weekStart = null;
+
+function sundayOf(d) {
+  const x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 7) % 7));
+  return x;
+}
+const isoDay = (d) => d.toISOString().slice(0, 10);
+const AR_WD = new Intl.DateTimeFormat("ar-SA-u-ca-gregory", { weekday: "long" });
+const AR_DM = new Intl.DateTimeFormat("ar-SA-u-ca-gregory",
+  { day: "numeric", month: "short" });
+
+async function viewWeek(host) {
+  if (!weekStart) weekStart = sundayOf(new Date());
+  host.replaceChildren(el("div", { class: "sk" }), el("div", { class: "sk" }));
+  let d;
+  try { d = await api.week(isoDay(weekStart)); }
+  catch (e) { host.replaceChildren(el("div", { class: "err" }, e.message)); return; }
+
+  const refresh = () => viewWeek(host);
+  const hop = (n) => {
+    weekStart = new Date(weekStart.getTime() + n * 7 * 864e5);
+    viewWeek(host);
+  };
+  const end = new Date(weekStart.getTime() + 6 * 864e5);
+  const today = isoDay(sundayOf(new Date())) === isoDay(weekStart);
+
+  const head = el("div", { class: "row", style: "margin:12px 0 4px" },
+    el("button", { class: "btn", onclick: () => hop(-1) }, "‹ السابق"),
+    el("div", { class: "grow meta",
+      style: "font-weight:700;text-align:center" },
+      `${AR_DM.format(weekStart)} — ${AR_DM.format(end)}`),
+    el("button", { class: "btn", onclick: () => hop(1) }, "التالي ›"));
+  const nowBtn = today ? null
+    : el("button", { class: "btn", style: "width:100%;margin-top:6px",
+      onclick: () => { weekStart = sundayOf(new Date()); viewWeek(host); } },
+      "ارجع إلى هذا الأسبوع");
+
+  const out = [head];
+  if (nowBtn) out.push(nowBtn);
+
+  if ((d.late || []).length) {
+    out.push(el("div", { class: "meta",
+      style: "margin:14px 2px 2px;font-weight:700;color:var(--bad)" },
+      `متأخّرة (${d.late.length})`));
+    for (const t of d.late) out.push(dayTask(t, refresh));
+  }
+
+  const todayIso = isoDay(new Date(Date.UTC(new Date().getFullYear(),
+    new Date().getMonth(), new Date().getDate())));
+  for (const day of (d.days || [])) {
+    const dt = new Date(day.date + "T00:00:00Z");
+    const isToday = day.date === todayIso;
+    const n = day.tasks.length + day.meetings.length;
+    out.push(el("div", { class: "card",
+      style: "padding:10px 12px" + (isToday ? ";border-color:var(--gold)" : "") },
+      el("div", { class: "row" },
+        el("div", { class: "grow", style: "font-weight:700" },
+          `${AR_WD.format(dt)} · ${AR_DM.format(dt)}`),
+        isToday ? el("span", { class: "pill ok" }, "اليوم") : null,
+        el("span", { class: "meta" }, n ? `${n}` : "—")),
+      ...(n
+        ? [...day.tasks.map((t) => dayTask(t, refresh)),
+          ...day.meetings.map((m) => dayMeet(m))]
+        : [el("div", { class: "meta", style: "padding:4px 2px" }, "فارغ")])));
+  }
+  host.replaceChildren(...out);
+}
+
+function dayTask(t, refresh) {
+  const late = t.late && t.stage !== "done";
+  return el("div", { class: "row",
+    style: "gap:8px;padding:7px 2px;cursor:pointer;border-top:1px solid var(--line-2)",
+    onclick: () => openTask(t.id, refresh) },
+    el("span", { class: "pill" + (late ? " late" : t.stage === "done" ? " ok" : "") },
+      `${t.progress || 0}%`),
+    el("div", { class: "grow" }, t.name),
+    el("span", { class: "meta" }, STAGE_AR[t.stage] || ""));
+}
+
+function dayMeet(m) {
+  return el("div", { class: "row",
+    style: "gap:8px;padding:7px 2px;border-top:1px solid var(--line-2)" },
+    el("span", { class: "pill" }, m.allday ? "طوال اليوم" : fmtTime(m.start)),
+    el("div", { class: "grow" }, m.title),
+    m.mode === "online" && m.link
+      ? el("a", { class: "btn", style: "padding:3px 9px", href: m.link,
+        target: "_blank", rel: "noopener" }, "ادخل")
+      : el("span", { class: "meta" }, m.place || "حضوري"));
+}
 // ══ اجتماعاتي ═════════════════════════════════════════════════════════
 const RESP_AR = { accepted: "قبلتَ", declined: "اعتذرتَ", tentative: "ربّما",
   needsAction: "بانتظار ردّك" };
@@ -563,8 +815,9 @@ function bookSheet(refresh) {
 //    أيَّ قسمٍ يدير، وقد يحمله من لا قسمَ له.
 const TABS = [
   { k: "mine", l: "مهامي", view: viewMine },
-  { k: "dept", l: "قسمي", view: viewDept, managerOnly: true },
+  { k: "week", l: "جدولي", view: viewWeek },
   { k: "meetings", l: "اجتماعاتي", view: viewMeetings },
+  { k: "dept", l: "قسمي", view: viewDept, managerOnly: true },
 ];
 
 async function boot() {

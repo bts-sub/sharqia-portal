@@ -65,6 +65,39 @@ router.post("/schedule/tasks", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+
+router.get("/schedule/week", async (req, res, next) => {
+  try {
+    const { data } = await runAction("week.load",
+      { from: req.query.from || "" }, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+router.get("/schedule/tasks/:id(\d+)", async (req, res, next) => {
+  try {
+    const { data } = await runAction("task.one", { id: req.params.id },
+      { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+router.post("/schedule/tasks/:id/progress", async (req, res, next) => {
+  try {
+    const { data } = await runAction("task.progress",
+      { id: req.params.id, percent: (req.body || {}).percent },
+      { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+router.post("/schedule/tasks/:id/comment", async (req, res, next) => {
+  try {
+    const { data } = await runAction("task.comment",
+      { id: req.params.id, text: (req.body || {}).text }, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
 router.post("/schedule/tasks/:id/assign", async (req, res, next) => {
   try {
     const { data } = await runAction("task.assign",

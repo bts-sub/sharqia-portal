@@ -1699,6 +1699,28 @@ async function schedProjectOf(deptId) {
     [Number(deptId)]);
 }
 
+
+/** مهمّةٌ يراها هذا المستخدم: صاحبُها، أو مديرُ قسمها.
+ *
+ *  ⚠️ والتمييزُ بينهما يُعاد مع الجواب (mine): الصلاحياتُ تختلف —
+ *     النسبةُ لصاحبها، والاعتمادُ لمديره.
+ */
+async function schedTaskVisible(id, empId, role) {
+  const tid = Number(id);
+  if (!tid) throw new Error("مهمّةٌ غير محدَّدة");
+  const [t] = await odoo.searchRead("project.task",
+    [["id", "=", tid], ["sharqia_department_id", "!=", false]],
+    ["name", "description", "stage_id", "date_deadline", "priority",
+      "sharqia_department_id", "sharqia_assignee_id", "sharqia_progress",
+      "sharqia_return_note", "sharqia_assigned_on"], { limit: 1 });
+  if (!t) throw new Error("المهمّة غير موجودة");
+  const mine = (t.sharqia_assignee_id || [0])[0] === Number(empId);
+  if (mine) return { task: t, mine: true };
+  const depts = await schedManagedDepts(empId, role);
+  const ok = depts.some((d) => d.id === (t.sharqia_department_id || [0])[0]);
+  if (!ok) throw new Error("ليست من مهامّك ولا من مهامّ قسمك");
+  return { task: t, mine: false };
+}
 /** مهمّةٌ يملك هذا المديرُ أمرَها — وإلّا رُفض الطلب. */
 async function schedTaskForManager(id, empId, role) {
   const depts = await schedManagedDepts(empId, role);
@@ -5108,23 +5130,29 @@ const actions = {
         //    «جدولي» جدولُ صاحبه قبل أن يكون لوحةَ توزيع. ومن لا يملك أن
         //    يكتب لنفسه مهمّةً لا يفتح الشاشةَ إلّا ليُنفّذ ما أُملي عليه.
         let deptId;
-        let toEmp;
+        let targets;
         if (isMgr) {
           deptId = Number(params.departmentId || depts[0].id);
           if (!depts.some((d) => d.id === deptId))
             throw new Error("ليس قسمَك");
-          toEmp = Number(params.employeeId || 0);
+          // ⚠️ عدّةُ موظّفين = مهمّةٌ لكلِّ واحد، لا مهمّةٌ واحدةٌ يتقاسمونها:
+          //    النسبةُ والمراجعةُ والاعتمادُ كلُّها لشخصٍ بعينه، ولو جُمعوا
+          //    على سجلٍّ واحدٍ لما عُرف مَن أنجز ومَن تأخّر، ولا استطاع
+          //    المديرُ أن يعتمد عملَ أحدهم ويردَّ عملَ الآخر.
+          const many = Array.isArray(params.employeeIds)
+            ? [...new Set(params.employeeIds.map(Number).filter(Boolean))] : [];
+          targets = many.length ? many : [Number(params.employeeId || 0)];
         } else {
           deptId = await schedEmpDept(empId);
           if (!deptId)
             throw new Error("لا قسمَ في بطاقتك — راجع الموارد البشرية");
           // ولا يكتب لغيره ولو أرسل رقمًا آخر
-          toEmp = Number(empId);
+          targets = [Number(empId)];
         }
 
         const projectId = await schedProjectOf(deptId);
         const stages = await schedStages();
-        const id = await odoo.create("project.task", {
+        const base = {
           name,
           project_id: projectId,
           // تُنشأ في «الوارد» دائمًا؛ فإن كان لها مسنَدٌ إليه نقلها
@@ -5134,9 +5162,13 @@ const actions = {
           description: params.description || "",
           date_deadline: params.deadline || false,
           priority: params.priority === "high" ? "1" : "0",
-          ...(toEmp ? { sharqia_assignee_id: toEmp } : {}),
-        });
-        return { ok: true, id };
+        };
+        const ids = [];
+        for (const who of targets) {
+          ids.push(await odoo.create("project.task",
+            who ? { ...base, sharqia_assignee_id: who } : base));
+        }
+        return { ok: true, ids, count: ids.length };
       },
       async () => ({ ok: false }),
       { forceLiveErrors: true }
@@ -5331,6 +5363,163 @@ const actions = {
       },
       async () => ({ ok: false }),
       { forceLiveErrors: true }
+    );
+  },
+
+  // ══════════════════════════════════════════════════════════════════
+  //  تفاصيلُ المهمّة: النسبةُ والتعليقاتُ والمرفقات
+  // ══════════════════════════════════════════════════════════════════
+
+  /** مهمّةٌ واحدةٌ بتفاصيلها — لصاحبها أو لمدير قسمها. */
+  async "task.one"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const { task, mine } = await schedTaskVisible(
+          params.id, empId, ctx?.user?.role);
+        const stages = await schedStages();
+        const msgs = await odoo.searchRead("mail.message",
+          [["model", "=", "project.task"], ["res_id", "=", task.id],
+            ["message_type", "=", "comment"]],
+          ["body", "author_id", "date"], { limit: 60, order: "id desc" });
+        const files = await odoo.searchRead("ir.attachment",
+          [["res_model", "=", "project.task"], ["res_id", "=", task.id]],
+          ["name", "mimetype", "file_size", "create_date"],
+          { limit: 60, order: "id desc" });
+        return {
+          task: { ...schedTaskOut(task, stages), mine,
+            progress: Number(task.sharqia_progress || 0),
+            assignee: task.sharqia_assignee_id
+              ? task.sharqia_assignee_id[1] : "" },
+          comments: msgs.map((m) => ({
+            id: m.id, who: m.author_id ? m.author_id[1] : "—",
+            at: m.date,
+            text: String(m.body || "").replace(/<[^>]*>/g, " ")
+              .replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim(),
+          })).filter((c) => c.text),
+          files: files.map((f) => ({
+            id: f.id, name: f.name, size: f.file_size, at: f.create_date,
+          })),
+        };
+      },
+      async () => ({ task: null, comments: [], files: [] }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** نسبةُ الإنجاز — يكتبها صاحبُ المهمّة وحدَه. */
+  async "task.progress"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const { task, mine } = await schedTaskVisible(
+          params.id, empId, ctx?.user?.role);
+        if (!mine) throw new Error("النسبةُ يكتبها صاحبُ المهمّة");
+        let p = Math.round(Number(params.percent));
+        if (!Number.isFinite(p)) throw new Error("نسبةٌ غير صالحة");
+        p = Math.max(0, Math.min(100, p));
+        await odoo.write("project.task", [task.id], { sharqia_progress: p });
+        return { ok: true, progress: p };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** تعليقٌ على المهمّة — يُكتب في شاتر أودو نفسِه.
+   *
+   *  ⚠️ واسمُ الكاتب يُكتب في متن التعليق: نداءُ البوابة يمرّ بحساب خدمةٍ
+   *     واحد، فلو تُرك لنُسبت تعليقاتُ الناس كلِّها إليه.
+   */
+  async "task.comment"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    const who = ctx?.user?.name || "";
+    return withOdoo(
+      async () => {
+        const { task } = await schedTaskVisible(
+          params.id, empId, ctx?.user?.role);
+        const text = String(params.text || "").trim();
+        if (!text) throw new Error("اكتب التعليق");
+        const esc = (s) => s.replace(/[&<>]/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+        await odoo.execKw("project.task", "message_post", [[task.id]], {
+          body: `<b>${esc(who)}</b>: ${esc(text)}`,
+          message_type: "comment", subtype_xmlid: "mail.mt_comment",
+        });
+        return { ok: true };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  // ══════════════════════════════════════════════════════════════════
+  //  جدولي — الأسبوع: مهامٌّ تستحقّ واجتماعاتٌ تُعقد
+  // ══════════════════════════════════════════════════════════════════
+
+  /** أسبوعٌ واحد: لكلِّ يومٍ ما يستحقّ فيه وما يُعقد.
+   *
+   *  ⚠️ المهمّةُ تظهر في يوم استحقاقها لا في كلِّ يومٍ حتّى تنتهي: جدولٌ
+   *     تتكرّر فيه المهمّةُ سبعَ مرّاتٍ لا يُقرأ. والمتأخّرةُ تُجمع في
+   *     رأس الأسبوع كي لا تضيع خلفَ تاريخٍ مضى.
+   */
+  async "week.load"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        if (!empId) return { days: [], late: [] };
+        const from = String(params.from || "").slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(from))
+          throw new Error("تاريخُ البداية غير صالح");
+        const d0 = new Date(from + "T00:00:00Z");
+        const d7 = new Date(d0.getTime() + 7 * 864e5);
+        const iso = (d) => d.toISOString().slice(0, 10);
+        const stages = await schedStages();
+
+        const tasks = await odoo.searchRead("project.task",
+          [["sharqia_department_id", "!=", false],
+            ["sharqia_assignee_id", "=", empId],
+            ["date_deadline", "!=", false]],
+          ["name", "stage_id", "date_deadline", "priority",
+            "sharqia_department_id", "sharqia_progress",
+            "sharqia_return_note", "sharqia_assigned_on"],
+          { limit: 400, order: "date_deadline" });
+
+        const pid = await schedPartnerOf(empId);
+        const evs = pid ? await odoo.searchRead("calendar.event",
+          [["partner_ids", "in", [pid]],
+            ["stop", ">=", iso(d0) + " 00:00:00"],
+            ["start", "<=", iso(d7) + " 23:59:59"]],
+          ["name", "start", "stop", "location", "videocall_location",
+            "sharqia_mode", "allday"],
+          { limit: 200, order: "start" }) : [];
+
+        const dayOf = (s) => String(s || "").slice(0, 10);
+        const days = [];
+        for (let i = 0; i < 7; i++) {
+          const d = iso(new Date(d0.getTime() + i * 864e5));
+          days.push({
+            date: d,
+            tasks: tasks.filter((t) => dayOf(t.date_deadline) === d)
+              .map((t) => ({ ...schedTaskOut(t, stages),
+                progress: Number(t.sharqia_progress || 0) })),
+            meetings: evs.filter((e) => dayOf(e.start) === d)
+              .map((e) => ({ id: e.id, title: e.name, start: e.start,
+                stop: e.stop, allday: !!e.allday,
+                mode: e.sharqia_mode || "onsite",
+                place: e.location || "", link: e.videocall_location || "" })),
+          });
+        }
+        // المتأخّرُ: ما مضى موعدُه ولم ينتهِ — يُعرض فوق الأسبوع
+        const late = tasks
+          .filter((t) => dayOf(t.date_deadline) < iso(d0)
+            && stages.byId.get(t.stage_id && t.stage_id[0]) !== "done")
+          .map((t) => ({ ...schedTaskOut(t, stages),
+            progress: Number(t.sharqia_progress || 0) }));
+        return { from: iso(d0), days, late };
+      },
+      async () => ({ days: [], late: [] }),
+      { emptyOnError: () => ({ days: [], late: [], unavailable: true }) }
     );
   },
 };
