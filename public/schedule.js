@@ -487,6 +487,7 @@ function newTaskSheet(depts, team, refresh) {
   let mode = mgr ? "team" : "me";
   let allDepts = null;          // تُجلب عند أوّل اختيارٍ لـ«قسمٍ آخر» لا قبلَه
   let admins = 0;               // عددُ مديري النظام — لصدق رسالةِ «إلى مَن تصل»
+  let myDept = 0;               // قسمُ بطاقتي — صفرٌ يعني أنّ «لي» لا موضعَ لها
   let deptSel = null, who = null, otherSel = null;
 
   const box = el("div", {});
@@ -500,10 +501,35 @@ function newTaskSheet(depts, team, refresh) {
     el("button", { role: "tab", "aria-selected": String(k === mode),
       onclick: () => { mode = k; drawSeg(); drawBody(); } }, l)));
 
+  // تُجلب مرّةً وتُستعمل في المقصدين: «لي» تحتاج قسمَ البطاقة، و«قسمٌ آخر»
+  // تحتاج القائمةَ ومديريها.
+  async function loadDepts(host) {
+    if (allDepts) return true;
+    try {
+      const r = await api.depts();
+      allDepts = r.records || [];
+      admins = Number(r.admins || 0);
+      myDept = Number(r.mine || 0);
+      return true;
+    } catch (e) {
+      host.replaceChildren(el("div", { class: "err" }, e.message));
+      return false;
+    }
+  }
+
   async function drawBody() {
     deptSel = who = otherSel = null;
     if (mode === "me") {
-      box.replaceChildren(el("div", { class: "meta" }, "تُضاف إلى جدولك أنت."));
+      box.replaceChildren(el("div", { class: "sk" }));
+      if (!(await loadDepts(box))) return;
+      // ⚠️ ويُقال له قبل أن يملأ الورقةَ لا بعدها: عشرةٌ من ستّةٍ وعشرين
+      //    مستخدمًا بلا قسمٍ في بطاقتهم، وكان أحدُهم يكتب العنوانَ والموعدَ
+      //    والتفصيلَ ثمّ يضغط «أنشئ» فيُردُّ برسالةِ خطأٍ ويضيع ما كتب.
+      box.replaceChildren(myDept
+        ? el("div", { class: "meta" }, "تُضاف إلى جدولك أنت.")
+        : el("div", { class: "err" },
+          "⚠️ لا قسمَ في بطاقتك، فلا موضعَ لمهمّتك — راجع الموارد البشرية."
+          + " وتستطيع الآن إرسالَها إلى قسمٍ بعينه من «قسمٌ آخر»."));
       return;
     }
     if (mode === "team") {
@@ -531,13 +557,7 @@ function newTaskSheet(depts, team, refresh) {
       return;
     }
     box.replaceChildren(el("div", { class: "sk" }));
-    if (!allDepts) {
-      try {
-        const r = await api.depts();
-        allDepts = r.records || [];
-        admins = Number(r.admins || 0);
-      } catch (e) { box.replaceChildren(el("div", { class: "err" }, e.message)); return; }
-    }
+    if (!(await loadDepts(box))) return;
     const list = allDepts.filter((d) => !d.managed);
     if (!list.length) {
       box.replaceChildren(el("div", { class: "empty" }, "لا أقسامَ أخرى."));
