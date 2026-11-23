@@ -172,6 +172,65 @@ function sentCard(t, refresh) {
       : null);
 }
 
+
+// ══ البحثُ والترشيح ═══════════════════════════════════════════════════
+// ⚠️ يُرشَّح المحمَّلُ ولا يُنادى الخادمُ عند كلِّ حرف: «مهامي» مئتان
+//    و«قسمي» أربعُمئةٍ سقفًا، فالترشيحُ فيها لحظيٌّ بلا انتظار — ونداءُ
+//    الخادم مع كلِّ ضغطةٍ يجعل البحثَ أبطأ من القراءة بالعين.
+//
+// ⚠️ والمطابقةُ بعد تجريد العربيّة: العناوينُ هنا مشكولةٌ («مهمّة»)، ومن
+//    يبحث يكتب بلا شكلٍ ولا همزة («مهمه») — فلو قُورن الحرفُ بالحرف لما
+//    وجد شيئًا أبدًا. فتُحذف الحركاتُ والتطويل، وتُوحَّد الألفُ والياءُ
+//    والتاءُ المربوطة.
+const norm = (s) => String(s || "")
+  .replace(/<[^>]*>/g, " ")
+  .replace(/[\u064B-\u0652\u0640]/g, "")
+  .replace(/[أإآ]/g, "ا").replace(/[ىئ]/g, "ي").replace(/ؤ/g, "و")
+  .replace(/ة/g, "ه")
+  .replace(/\s+/g, " ")
+  .trim()
+  .toLowerCase();
+
+function matchTask(t, f) {
+  if (f.stage && t.stage !== f.stage) return false;
+  if (f.dept && Number(t.deptId || 0) !== f.dept) return false;
+  const names = (t.assignees || [t.assignee]).filter(Boolean);
+  if (f.who && !names.some((n) => norm(n) === f.who)) return false;
+  if (!f.q) return true;
+  // القسمُ والمسنَدُ إليه في المطابقة أيضًا: من يكتب «المبيعات» يقصد
+  // مهامَّها، ومن يكتب اسمًا يقصد ما عليه.
+  return norm(`${t.name} ${t.description || ""} ${names.join(" ")} ${t.dept || ""}`)
+    .includes(f.q);
+}
+
+/** شريطُ بحثٍ ومرشِّحات. يُعيد {node, f} — و f يُقرأ عند كلِّ رسم. */
+function filterBar(opts) {
+  const f = { q: "", stage: "", dept: 0, who: "" };
+  const fire = () => opts.onChange();
+  const q = el("input", { type: "search", placeholder: "ابحث في العنوان أو التفصيل…",
+    oninput: (e) => { f.q = norm(e.target.value); fire(); } });
+  const chips = el("div", { class: "row",
+    style: "gap:6px;margin-top:6px;flex-wrap:wrap" });
+  const drawChips = () => chips.replaceChildren(
+    ...[["", "الكل"], ...(opts.stages || []).map((s) => [s, STAGE_AR[s] || s])]
+      .map(([k, l]) => el("button", { class: "slot", "aria-pressed": String(f.stage === k),
+        onclick: () => { f.stage = k; drawChips(); fire(); } }, l)));
+  drawChips();
+  const kids = [q, chips];
+  if ((opts.depts || []).length > 1) {
+    kids.push(el("select", { style: "margin-top:6px",
+      onchange: (e) => { f.dept = Number(e.target.value); fire(); } },
+      el("option", { value: "0" }, "كلُّ الأقسام"),
+      ...opts.depts.map((d) => el("option", { value: String(d.id) }, d.name))));
+  }
+  if ((opts.people || []).length > 1) {
+    kids.push(el("select", { style: "margin-top:6px",
+      onchange: (e) => { f.who = e.target.value ? norm(e.target.value) : ""; fire(); } },
+      el("option", { value: "" }, "كلُّ الموظفين"),
+      ...opts.people.map((n) => el("option", { value: n }, n))));
+  }
+  return { node: el("div", { style: "margin:10px 0 2px" }, ...kids), f };
+}
 async function viewMine(host) {
   host.replaceChildren(el("div", { class: "sk" }), el("div", { class: "sk" }));
   let data;
@@ -194,33 +253,51 @@ async function viewMine(host) {
     try { await api.move(t.id, to); toast("تمّ"); refresh(); }
     catch (e) { toast(e.message, true); }
   };
-  const byStage = new Map();
-  for (const t of recs) {
-    if (!byStage.has(t.stage)) byStage.set(t.stage, []);
-    byStage.get(t.stage).push(t);
-  }
-  const out = [head];
-  if (!recs.length) {
-    out.push(el("div", { class: "empty" }, "لا مهامَّ عليك الآن."));
-  } else {
-    for (const st of MY_ORDER) {
-      const list = byStage.get(st);
-      if (!list || !list.length) continue;
-      out.push(el("div", { class: "meta", style: "margin:14px 2px 2px;font-weight:700" },
-        `${STAGE_AR[st] || st} (${list.length})`));
-      for (const t of list) out.push(taskCard(t, onAct, refresh));
-    }
-  }
-  // ⚠️ وما أرسلتَه أسفلَ ما عليك لا مختلطًا به: ذاك عملُك وهذا متابعتُك،
-  //    ولو جُمعا في قائمةٍ واحدةٍ لعُدَّ على المرء ما أرسله إلى غيره.
-  if (sent.length) {
-    out.push(el("div", { class: "meta", style: "margin:18px 2px 2px;font-weight:700" },
-      `أرسلتُها (${sent.length})`));
-    for (const t of sent) out.push(sentCard(t, refresh));
-  }
-  host.replaceChildren(...out);
-}
 
+  const listHost = el("div", {});
+  const stages = MY_ORDER.filter((s) => recs.some((t) => t.stage === s));
+  // ⚠️ أسماءُ من سلّمتَ إليهم في المرشِّح لا أسماءُ الشركة كلِّها: «أرسلتُها»
+  //    قد تكون عشراتٍ على عدّة أشخاص، والمرشِّحُ يُريك عملَ واحدٍ منهم.
+  const people = [...new Set(sent.map((t) => t.assignee).filter(Boolean))].sort();
+  const bar = filterBar({ stages, people, onChange: () => redraw() });
+
+  const redraw = () => {
+    const f = bar.f;
+    const mine = recs.filter((t) => matchTask(t, f));
+    const out = [];
+    const byStage = new Map();
+    for (const t of mine) {
+      if (!byStage.has(t.stage)) byStage.set(t.stage, []);
+      byStage.get(t.stage).push(t);
+    }
+    if (!mine.length) {
+      out.push(el("div", { class: "empty" },
+        recs.length ? "لا مهمّةَ تطابق البحث." : "لا مهامَّ عليك الآن."));
+    } else {
+      for (const st of MY_ORDER) {
+        const list = byStage.get(st);
+        if (!list || !list.length) continue;
+        out.push(el("div", { class: "meta",
+          style: "margin:14px 2px 2px;font-weight:700" },
+          `${STAGE_AR[st] || st} (${list.length})`));
+        for (const t of list) out.push(taskCard(t, onAct, refresh));
+      }
+    }
+    // ⚠️ وما أرسلتَه أسفلَ ما عليك لا مختلطًا به: ذاك عملُك وهذا متابعتُك،
+    //    ولو جُمعا في قائمةٍ واحدةٍ لعُدَّ على المرء ما أرسله إلى غيره.
+    const out2 = sent.filter((t) => matchTask(t, f));
+    if (out2.length) {
+      out.push(el("div", { class: "meta",
+        style: "margin:18px 2px 2px;font-weight:700" },
+        `أرسلتُها (${out2.length})`));
+      for (const t of out2) out.push(sentCard(t, refresh));
+    }
+    listHost.replaceChildren(...out);
+  };
+
+  host.replaceChildren(head, bar.node, listHost);
+  redraw();
+}
 
 // ══ تفاصيلُ المهمّة: النسبةُ والتعليقاتُ والمرفقات ═══════════════════
 // ⚠️ شاشةٌ واحدةٌ لكلِّ ما يخصّ المهمّة: كان الموظّفُ ينقلها من البطاقة
@@ -234,7 +311,6 @@ function openTask(id, refresh) {
   document.body.append(sheet);
 
   const close = () => { sheet.remove(); if (refresh) refresh(); };
-
   const draw = async () => {
     let d;
     try { d = await api.one(id); }
@@ -440,34 +516,55 @@ async function viewDept(host) {
   } catch (e) { host.replaceChildren(el("div", { class: "err" }, e.message)); return; }
 
   const refresh = () => viewDept(host);
+  const managed = data.managed || [];
   const head = el("div", { class: "row", style: "margin:12px 0 4px" },
     el("div", { class: "grow meta", style: "font-weight:700" },
-      (data.managed || []).map((d) => d.name).join(" · ") || "—"),
-    el("button", { class: "btn pri", onclick: () => newTaskSheet(data.managed || [], team, refresh) },
-      "+ مهمّة"));
+      managed.map((d) => d.name).join(" · ") || "—"),
+    el("button", { class: "btn pri",
+      onclick: () => newTaskSheet(managed, team, refresh) }, "+ مهمّة"));
 
   const recs = data.records || [];
   if (!recs.length) {
     host.replaceChildren(head, el("div", { class: "empty" }, "لا مهامَّ في قسمك بعد."));
     return;
   }
-  const byStage = new Map();
-  for (const t of recs) {
-    if (!byStage.has(t.stage)) byStage.set(t.stage, []);
-    byStage.get(t.stage).push(t);
-  }
-  const out = [head];
-  for (const st of DEPT_ORDER) {
-    const list = byStage.get(st);
-    if (!list || !list.length) continue;
-    out.push(el("div", { class: "meta", style: "margin:14px 2px 2px;font-weight:700" },
-      `${DEPT_STAGE_AR[st] || STAGE_AR[st] || st} (${list.length})`));
-    for (const t of list) out.push(deptCard(t, team, refresh));
-  }
-  host.replaceChildren(...out);
+
+  const listHost = el("div", {});
+  const stages = DEPT_ORDER.filter((s) => recs.some((t) => t.stage === s));
+  // أسماءُ من في القائمة فعلًا لا الفريقِ كلِّه: مرشِّحٌ بأسماءٍ بلا مهامَّ
+  // يُوهم أنّ عليهم شيئًا.
+  const people = [...new Set(recs.flatMap((t) => t.assignees || []))].sort();
+  const bar = filterBar({ stages, people, depts: managed, onChange: () => redraw() });
+
+  const redraw = () => {
+    const list = recs.filter((t) => matchTask(t, bar.f));
+    if (!list.length) {
+      listHost.replaceChildren(el("div", { class: "empty" }, "لا مهمّةَ تطابق البحث."));
+      return;
+    }
+    const byStage = new Map();
+    for (const t of list) {
+      if (!byStage.has(t.stage)) byStage.set(t.stage, []);
+      byStage.get(t.stage).push(t);
+    }
+    const out = [el("div", { class: "meta", style: "margin:8px 2px 0" },
+      `يُعرض ${list.length} من ${recs.length}`)];
+    for (const st of DEPT_ORDER) {
+      const l = byStage.get(st);
+      if (!l || !l.length) continue;
+      out.push(el("div", { class: "meta",
+        style: "margin:14px 2px 2px;font-weight:700" },
+        `${DEPT_STAGE_AR[st] || STAGE_AR[st] || st} (${l.length})`));
+      for (const t of l) out.push(deptCard(t, team, refresh, managed.length > 1));
+    }
+    listHost.replaceChildren(...out);
+  };
+
+  host.replaceChildren(head, bar.node, listHost);
+  redraw();
 }
 
-function deptCard(t, team, refresh) {
+function deptCard(t, team, refresh, showDept) {
   const acts = [];
   if (t.stage === "inbox")
     acts.push(["أسنِد", () => pickSheet("أسنِد المهمّة إلى", team, async (m) => {
@@ -497,7 +594,8 @@ function deptCard(t, team, refresh) {
       el("span", { class: "pill" + (t.late && t.stage !== "done" ? " late" : "") },
         t.late && t.stage !== "done" ? "متأخّرة" : STAGE_AR[t.stage] || "")),
     el("div", { class: "meta" },
-      [(t.assignees || []).join("، ") || "بلا مسنَد إليه",
+      [showDept && t.dept ? t.dept : null,
+        (t.assignees || []).join("، ") || "بلا مسنَد إليه",
         t.deadline ? "الموعد: " + fmtDay(t.deadline) : null]
         .filter(Boolean).join(" · ")),
     acts.length
