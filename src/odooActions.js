@@ -5163,6 +5163,8 @@ const actions = {
         const q = String(params.q || "").trim();
         const dom = [["active", "=", true], ["work_contact_id", "!=", false]];
         if (q) dom.push(["name", "ilike", q]);
+        const dept = Number(params.departmentId || 0);
+        if (dept) dom.push(["department_id", "=", dept]);
         const recs = await odoo.searchRead("hr.employee", dom,
           ["name", "job_title", "department_id"],
           { limit: 400, order: "department_id, name" });
@@ -5388,14 +5390,26 @@ const actions = {
       async () => {
         const pid = await schedPartnerOf(empId);
         if (!pid) return { records: [] };
-        const since = params.past
-          ? "1970-01-01 00:00:00"
-          : new Date(Date.now() - 36e5).toISOString().slice(0, 19).replace("T", " ");
-        const recs = await odoo.searchRead("calendar.event",
-          [["partner_ids", "in", [pid]], ["stop", ">=", since]],
+        // ⚠️ مدًى يُطلب أو «ما لم ينتهِ بعد»: القائمةُ بلا فلترٍ تعرض
+        //    اجتماعاتِ سنةٍ كاملةٍ على من يبحث عن اجتماع الغد.
+        const from = String(params.from || "").slice(0, 10);
+        const to = String(params.to || "").slice(0, 10);
+        const dom = [["partner_ids", "in", [pid]]];
+        if (/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+          dom.push(["stop", ">=", from + " 00:00:00"]);
+        } else {
+          dom.push(["stop", ">=", params.past ? "1970-01-01 00:00:00"
+            : new Date(Date.now() - 36e5).toISOString()
+              .slice(0, 19).replace("T", " ")]);
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+          dom.push(["start", "<=", to + " 23:59:59"]);
+        }
+        const recs = await odoo.searchRead("calendar.event", dom,
           ["name", "start", "stop", "allday", "location", "description",
-            "videocall_location", "sharqia_mode", "user_id", "partner_ids"],
-          { limit: 100, order: "start asc" });
+            "videocall_location", "sharqia_mode", "user_id", "partner_ids",
+            "sharqia_organizer_id"],
+          { limit: 200, order: "start asc" });
         if (!recs.length) return { records: [] };
         const atts = await odoo.searchRead("calendar.attendee",
           [["event_id", "in", recs.map((r) => r.id)]],
@@ -5416,7 +5430,12 @@ const actions = {
             mode: r.sharqia_mode || "onsite",
             place: r.location || "",
             link: r.videocall_location || "",
-            organizer: r.user_id?.[1] || "",
+            note: r.description || "",
+            // ⚠️ المنظِّمُ من حقل الموظّف: user_id حسابُ الخدمة في كلِّ
+            //    ما يُحجز من التطبيق، فكان يُقرأ اسمًا لا يعرفه أحد.
+            organizer: r.sharqia_organizer_id?.[1] || r.user_id?.[1] || "",
+            organizerId: r.sharqia_organizer_id?.[0] || 0,
+            mineOrganizer: (r.sharqia_organizer_id?.[0] || 0) === Number(empId),
             myState: mine.get(r.id) || "needsAction",
             attendees: people.get(r.id) || [],
           })),
@@ -5469,7 +5488,8 @@ const actions = {
         }
         if (partners.length < 2) throw new Error("لا حاضرين لهذا الاجتماع");
         const online = String(params.mode || "onsite") === "online";
-        const id = await odoo.create("calendar.event", {
+        const link = String(params.link || "").trim();
+        const vals = {
           name: title,
           start: params.start, stop: params.stop,
           duration: 0,
@@ -5478,8 +5498,15 @@ const actions = {
           location: online ? "" : (params.place || ""),
           sharqia_mode: online ? "online" : "onsite",
           sharqia_from_portal: true,
+          // ⚠️ المنظِّمُ موظّفٌ لا حسابَ خدمة — وإلّا قرأ المدعوُّ في
+          //    إشعاره اسمًا لا يعرفه عن اجتماعٍ دعاه إليه مديرُه.
+          sharqia_organizer_id: Number(empId) || false,
           partner_ids: [[6, 0, partners]],
-        });
+        };
+        // رابطٌ يكتبه الحاجزُ بيده يسبق رابطَ أودو المولَّد
+        if (online && link) vals.videocall_location = link;
+        const id = await odoo.execKw("calendar.event", "create", [vals],
+          hush(ctx));
         return { ok: true, id };
       },
       async () => ({ ok: false }),
@@ -5523,11 +5550,42 @@ const actions = {
           [["res_model", "=", "project.task"], ["res_id", "=", task.id]],
           ["name", "mimetype", "file_size", "create_date"],
           { limit: 60, order: "id desc" });
+        // ⚠️ سجلُّ التقارير سطورٌ مرقومةٌ لا تعليقاتٌ منثورة: المنشئُ
+        //    يقرأ «متى بلغت الستّين وبأيِّ شيء»، والتعليقاتُ تحتها
+        //    للمحادثة. ولكلِّ سطرٍ مرفقاتُه.
+        const reps = await odoo.searchRead("sharqia.task.report",
+          [["task_id", "=", task.id]],
+          ["report_date", "progress", "body", "is_final", "employee_id",
+            "attachment_ids"],
+          { limit: 100, order: "report_date desc, id desc" });
+        const attIds = [...new Set(reps.flatMap((r) => r.attachment_ids || []))];
+        const attMap = new Map();
+        if (attIds.length) {
+          for (const a of await odoo.searchRead("ir.attachment",
+            [["id", "in", attIds]], ["name", "file_size"], { limit: 200 })) {
+            attMap.set(a.id, { id: a.id, name: a.name, size: a.file_size });
+          }
+        }
         return {
           task: { ...schedTaskOut(task, stages), mine, manages,
             progress: Number(task.sharqia_progress || 0),
             assignee: task.sharqia_assignee_id
-              ? task.sharqia_assignee_id[1] : "" },
+              ? task.sharqia_assignee_id[1] : "",
+            // ⚠️ الاعتمادُ والإقفالُ لمن أنشأ المهمّة لا لمدير القسم —
+            //    والقاعدةُ في موديل أودو، وهذه صورتُها للعرض فقط.
+            canClose: (task.sharqia_requester_id
+              ? task.sharqia_requester_id[0] === Number(empId)
+              : manages) },
+          reports: reps.map((r) => ({
+            id: r.id,
+            at: r.report_date || "",
+            progress: Number(r.progress || 0),
+            text: String(r.body || ""),
+            final: !!r.is_final,
+            who: r.employee_id ? r.employee_id[1] : "",
+            files: (r.attachment_ids || [])
+              .map((i) => attMap.get(i)).filter(Boolean),
+          })),
           comments: msgs.map((m) => ({
             id: m.id, who: m.author_id ? m.author_id[1] : "—",
             at: m.date,
@@ -5538,7 +5596,7 @@ const actions = {
           })),
         };
       },
-      async () => ({ task: null, comments: [], files: [] }),
+      async () => ({ task: null, comments: [], files: [], reports: [] }),
       { forceLiveErrors: true }
     );
   },
@@ -5631,7 +5689,17 @@ const actions = {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(from))
           throw new Error("تاريخُ البداية غير صالح");
         const d0 = new Date(from + "T00:00:00Z");
-        const d7 = new Date(d0.getTime() + 7 * 864e5);
+        // ⚠️ المدى يُطلب: يومٌ واحدٌ أو أسبوعٌ أو ما بين تاريخين. وكان
+        //    سبعةً ثابتةً، فلا سبيلَ إلى «يومي» ولا إلى شهرٍ كامل.
+        const to = String(params.to || "").slice(0, 10);
+        let span = 7;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+          const d1 = new Date(to + "T00:00:00Z");
+          span = Math.round((d1 - d0) / 864e5) + 1;
+          if (span < 1) throw new Error("تاريخُ النهاية قبل البداية");
+          if (span > 92) throw new Error("المدى أطولُ من ثلاثة أشهر");
+        }
+        const d7 = new Date(d0.getTime() + span * 864e5);
         const iso = (d) => d.toISOString().slice(0, 10);
         const stages = await schedStages();
 
@@ -5655,7 +5723,7 @@ const actions = {
 
         const dayOf = (s) => String(s || "").slice(0, 10);
         const days = [];
-        for (let i = 0; i < 7; i++) {
+        for (let i = 0; i < span; i++) {
           const d = iso(new Date(d0.getTime() + i * 864e5));
           days.push({
             date: d,
@@ -5689,7 +5757,8 @@ const actions = {
             && stages.byId.get(t.stage_id && t.stage_id[0]) !== "done")
           .map((t) => ({ ...schedTaskOut(t, stages),
             progress: Number(t.sharqia_progress || 0) }));
-        return { from: iso(d0), days, late, undated };
+        return { from: iso(d0), to: iso(new Date(d7.getTime() - 864e5)),
+          days, late, undated };
       },
       async () => ({ days: [], late: [], undated: [] }),
       { emptyOnError: () => ({ days: [], late: [], undated: [], unavailable: true }) }

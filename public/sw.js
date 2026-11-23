@@ -137,7 +137,13 @@ self.addEventListener("notificationclick", (e) => {
   //    فوقه، ونافذةٌ مفتوحةٌ تُبلَّغ رسالةً بلا نقلٍ أصلًا.
   const schedTab = d.link === "task" ? "mine"
     : d.link === "meeting" ? "meetings" : "";
-  if (schedTab) q.push("sq=schedule", "t=" + schedTab);
+  // ⚠️ ويُحمل رقمُ العنصر لا تبويبُه وحدَه: كان المُشعَرُ يُفتح له
+  //    «المهام» فيبحث عمّا أُشعر به بين مهامّه.
+  if (schedTab) {
+    q.push("sq=schedule", "t=" + schedTab);
+    if (d.taskId) q.push("task=" + encodeURIComponent(d.taskId));
+    if (d.eventId) q.push("meeting=" + encodeURIComponent(d.eventId));
+  }
   const url = "/" + (q.length ? "?" + q.join("&") : "");
   e.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
@@ -145,7 +151,11 @@ self.addEventListener("notificationclick", (e) => {
       if (new URL(w.url).origin !== self.location.origin) continue;
       // نافذةٌ مفتوحة: تُركَّز وتُبلَّغ بالوجهة بدل فتح نافذةٍ ثانية للتطبيق نفسه
       await w.focus();
-      if (schedTab) { w.postMessage({ sq: "schedule-open", t: schedTab }); return; }
+      if (schedTab) {
+        w.postMessage({ sq: "schedule-open", t: schedTab,
+          taskId: d.taskId || 0, eventId: d.eventId || 0 });
+        return;
+      }
       w.postMessage({ sq: "notif-open", data: d });
       return;
     }

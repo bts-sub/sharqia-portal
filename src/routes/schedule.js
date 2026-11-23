@@ -51,7 +51,8 @@ router.get("/schedule/team", async (req, res, next) => {
 router.get("/schedule/people", async (req, res, next) => {
   try {
     const { data } = await runAction("schedule.people",
-      { q: req.query.q || "" }, { user: req.user });
+      { q: req.query.q || "", departmentId: req.query.dept || 0 },
+      { user: req.user });
     res.json(data);
   } catch (e) { next(e); }
 });
@@ -75,7 +76,8 @@ router.post("/schedule/tasks", async (req, res, next) => {
 router.get("/schedule/week", async (req, res, next) => {
   try {
     const { data } = await runAction("week.load",
-      { from: req.query.from || "" }, { user: req.user });
+      { from: req.query.from || "", to: req.query.to || "" },
+      { user: req.user });
     res.json(data);
   } catch (e) { next(e); }
 });
@@ -141,7 +143,8 @@ router.post("/schedule/tasks/:id/decide", async (req, res, next) => {
 router.get("/schedule/meetings", async (req, res, next) => {
   try {
     const { data } = await runAction("meeting.mine",
-      { past: req.query.past === "1" }, { user: req.user });
+      { past: req.query.past === "1", from: req.query.from || "",
+        to: req.query.to || "" }, { user: req.user });
     res.json(data);
   } catch (e) { next(e); }
 });

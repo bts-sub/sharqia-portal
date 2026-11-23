@@ -68,7 +68,7 @@
     }
     var block = card.children[1];
     if (block && block.children.length) {
-      if (block.children[0]) block.children[0].textContent = "مهامي وجدولي";
+      if (block.children[0]) block.children[0].textContent = "المهام والجدول";
       if (block.children[1]) block.children[1].textContent = "المهامّ والجدول الأسبوعي";
     }
     card.style.cursor = "pointer";
@@ -154,7 +154,7 @@
     return lum < 0.5 ? "dark" : "light";
   }
 
-  function openSchedule(tab) {
+  function openSchedule(tab, extra) {
     // مفتوحٌ أصلًا وجاء إشعارٌ بتبويبٍ آخر: يُنقل الإطارُ إليه بدل أن
     // يُترك على ما كان، فالمُشعَرُ ضغط ليرى شيئًا بعينه.
     var cur = document.getElementById(OV);
@@ -194,8 +194,9 @@
         ? ";left:" + Math.round(box.left) + "px;width:" + Math.round(box.width) + "px"
         : ";left:0;right:0");
     var fr = document.createElement("iframe");
-    fr.src = "/schedule?embed=1&theme=" + themeOf() + (tab ? "&t=" + tab : "");
-    fr.setAttribute("title", "مهامي وجدولي");
+    fr.src = "/schedule?embed=1&theme=" + themeOf()
+      + (tab ? "&t=" + tab : "") + (extra || "");
+    fr.setAttribute("title", "المهام والجدول");
     fr.style.cssText = "width:100%;height:100%;border:0;display:block";
     ov.appendChild(fr);
     document.body.appendChild(ov);
@@ -236,11 +237,16 @@
   // ⚠️ قشرةُ التطبيق تُرسَم بعد لحظةٍ من الإقلاع: لو قيس الشريطُ قبلها
   //    لخرجت الطبقةُ بمقاسٍ خاطئ. فيُنتظر وجودُه ثمّ تُفتح، وإن لم يظهر
   //    (شبكةٌ بطيئة) فُتحت على الشاشة كلِّها — داخل التطبيق على كلّ حال.
-  function openWhenReady(tab) {
+  function openWhenReady(tab, taskId, eventId) {
     var tries = 0;
+    var extra = "";
+    // ⚠️ ورقمُ العنصر يُمرَّر إلى الصفحة: نقرُ الإشعار يفتح المهمّةَ أو
+    //    الاجتماعَ نفسَه، لا تبويبَه فيبحث عنه المُشعَرُ بين عشرات.
+    if (taskId) extra += "&task=" + encodeURIComponent(taskId);
+    if (eventId) extra += "&meeting=" + encodeURIComponent(eventId);
     (function again() {
       if (document.getElementById(OV)) return;
-      if (findNav() || ++tries > 30) { openSchedule(tab); return; }
+      if (findNav() || ++tries > 30) { openSchedule(tab, extra); return; }
       setTimeout(again, 200);
     })();
   }
@@ -249,7 +255,7 @@
   if (navigator.serviceWorker) {
     navigator.serviceWorker.addEventListener("message", function (e) {
       var d = e.data || {};
-      if (d.sq === "schedule-open") openWhenReady(d.t || "");
+      if (d.sq === "schedule-open") openWhenReady(d.t || "", d.taskId, d.eventId);
     });
   }
 
@@ -262,12 +268,14 @@
     if (p.get("sq") !== "schedule") return;
     var tab = p.get("t") || "";
     p.delete("sq"); p.delete("t");
+    var kTask = p.get("task"), kMeet = p.get("meeting");
+    p.delete("task"); p.delete("meeting");
     var rest = p.toString();
     try {
       history.replaceState(history.state, "",
         location.pathname + (rest ? "?" + rest : "") + location.hash);
     } catch (e) { /* لا يضرّ بقاؤها */ }
-    openWhenReady(tab);
+    openWhenReady(tab, kTask, kMeet);
   }
   window.addEventListener("message", function (e) {
     if (e.origin !== location.origin) return;
