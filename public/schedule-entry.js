@@ -110,22 +110,33 @@
   function closeSchedule() {
     var ov = document.getElementById(OV);
     if (ov) ov.remove();
+    // ⚠️ ويُردُّ تمريرُ التطبيق: حُبس عند الفتح لئلّا ينزلق ما خلفَ الطبقة
+    //    فتنكشف فجوةٌ تحت الشريط العلويّ بمحتوًى لا علاقةَ له بالجدول.
+    try { document.body.style.overflow = document.body.__sqOvf || ""; } catch (e) { /* لا يضرّ */ }
   }
 
-  // شريطُ التطبيقِ العلويّ: لاصقٌ عند الصفر فيه تحيّةُ المستخدم وصورتُه.
-  // ⚠️ وهو موضعُ العلّة الأولى: كان الإطارُ يبدأ من أعلى الشاشة فيُغطّيه،
-  //    فتختفي هُويّةُ التطبيق ويبدو ما تحتَها صفحةً أخرى. (وفي الحزمة:
-  //    رأسُ كلِّ شاشةٍ لاصقٌ عند top:78 — أي أنّ فوقه هذا الشريط.)
+  // شريطُ التطبيقِ العلويّ: فيه صورةُ المستخدم و«مرحبًا بك،».
+  //
+  // ⚠️ يُعرَف بنصّه لا بهندسته. أوّلُ محاولةٍ بحثت عن «عنصرٍ لاصقٍ عند
+  //    الصفر ارتفاعُه بين ٤٤ و١٥٠» فأصابت عنصرًا آخر، فبدأت الطبقةُ في
+  //    منتصف المحتوى: ظهر رأسانِ — بطاقةُ الدخول خلفها ورأسُ الصفحة
+  //    فوقها — وبدا ذلك أسوأَ ممّا كان. والنصُّ وحدَه يُميّزه، كما يُميَّز
+  //    الشريطُ السفليُّ بـ«الرئيسية».
+  //
+  // ⚠️ وإن لم يُوجَد — أو كان قد زال بالتمرير (لصوقُه يبطُل لو كان لأحد
+  //    آبائه overflow مخفيّ) — رجعنا إلى تغطية الشاشة كلِّها فوق الشريط
+  //    السفليّ. وهو أهونُ من فجوةٍ في غير موضعها: ناقصٌ لا مكسور.
   function findTopBar() {
     var all = document.body.getElementsByTagName("div");
     for (var i = 0; i < all.length; i++) {
       var n = all[i], s, r;
-      if (n.offsetHeight < 44 || n.offsetHeight > 150) continue;
+      if (n.offsetHeight < 44 || n.offsetHeight > 160) continue;
+      if (n.textContent.indexOf("مرحبًا بك") < 0) continue;
       try { s = getComputedStyle(n); } catch (e) { continue; }
-      if (s.position !== "sticky" || parseInt(s.top, 10) !== 0) continue;
-      if (parseInt(s.zIndex, 10) < 10) continue;
+      if (s.position !== "sticky" && s.position !== "fixed") continue;
       r = n.getBoundingClientRect();
-      if (r.top > 2 || r.width < 120) continue;
+      // ملتصقٌ بأعلى الشاشة فعلًا الآن، لا مُزاحٌ ولا مُمرَّرٌ خارجها
+      if (r.top < -1 || r.top > 2 || r.width < 120 || r.bottom < 40) continue;
       return n;
     }
     return null;
@@ -188,6 +199,10 @@
     fr.style.cssText = "width:100%;height:100%;border:0;display:block";
     ov.appendChild(fr);
     document.body.appendChild(ov);
+    try {
+      document.body.__sqOvf = document.body.style.overflow || "";
+      document.body.style.overflow = "hidden";
+    } catch (e) { /* لا يضرّ */ }
 
     // ⚠️ ضغطُ تبويبٍ في الشريط يُغلق الجدول: الشريطُ ظاهرٌ فوق الإطار،
     //    ولو بقي الجدولُ مفتوحًا لانتقل التطبيقُ خلفه بلا أن يُرى.

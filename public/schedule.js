@@ -111,7 +111,10 @@ const MY_ORDER = ["doing", "review", "new", "inbox", "done"];
 
 function taskCard(t, onAct, refresh) {
   const late = t.late && t.stage !== "done";
-  const acts = [];
+  // ⚠️ زرٌّ صريحٌ للفتح لا العنوانَ وحدَه: على الهاتف لا مؤشّرَ يتبدّل،
+  //    فلا يدري المسنَدُ إليه أنّ العنوانَ بابٌ — فيقرأ سطرًا واحدًا ويظنّ
+  //    أنّ هذا كلُّ ما طُلب منه، وفيها المطلوبُ والمرفقاتُ والردود.
+  const acts = [["اقرأ المطلوب وردّ", () => openTask(t.id, refresh), false]];
   if (t.stage === "new") acts.push(["ابدأ العمل", () => onAct(t, "doing"), true]);
   if (t.stage === "doing") acts.push(["أرسل للمراجعة", () => onAct(t, "review"), true]);
   // ⚠️ العنوانُ بابٌ لا نصّ: الضغطُ عليه يفتح تفاصيلَ المهمّة — النسبةَ
@@ -255,7 +258,7 @@ function openTask(id, refresh) {
         el("div", { class: "meta", style: "font-weight:700" },
           c.who + " · " + fmtWhen(c.at)),
         el("div", {}, c.text)))
-      : [el("div", { class: "meta" }, "لا تعليقات.")]));
+      : [el("div", { class: "meta" }, "لا ردودَ بعد.")]));
 
     // ── المرفقات ──
     const flist = el("div", { class: "row", style: "gap:6px" },
@@ -311,8 +314,14 @@ function openTask(id, refresh) {
           .filter(Boolean).join(" · ")),
       t.returnNote ? el("div", { class: "err", style: "margin-top:8px" },
         "أُرجعت: " + t.returnNote) : null,
-      t.description ? el("div", { class: "meta", style: "margin-top:6px",
-        html: t.description }) : null,
+      // ⚠️ «المطلوب» بعنوانه وبخطٍّ مقروء: كان يُعرض هامشًا رماديًّا صغيرًا
+      //    بلا عنوان، فيقرؤه المسنَدُ إليه تذييلًا لا أمرًا — وهو أهمُّ ما
+      //    في المهمّة. ومن لا تفصيلَ لمهمّته يُقال له: اسأل في الردود.
+      el("label", {}, "المطلوب"),
+      t.description
+        ? el("div", { class: "card", style: "margin:4px 0 2px;padding:11px 13px",
+          html: t.description })
+        : el("div", { class: "meta" }, "لا تفصيلَ مكتوبًا — اسأل في الردود أدناه."),
       el("label", {}, "نسبة الإنجاز"),
       el("div", { class: "row" }, pct, el("div", { class: "grow" }, track)),
       t.mine ? slider : null,
@@ -330,17 +339,22 @@ function openTask(id, refresh) {
       el("button", { class: "btn", style: "margin-top:6px",
         onclick: () => picker.click() }, "+ أرفق ملفًّا"),
       picker,
-      el("label", {}, "التعليقات"),
+      // ⚠️ اسمُها «الردود» لا «التعليقات»: المسنَدُ إليه يُطلب منه أن
+      //    يقرأ ويردّ — «تعليق» كلمةٌ تدلّ على فضلةٍ تُكتب أو تُترك.
+      //    وهي نفسُها سجلُّ المهمّة في أودو (mail.message) لا سجلٌّ ثانٍ.
+      el("label", {}, "الردود"),
       clist,
-      (cbox = el("textarea", { placeholder: "اكتب تعليقًا…" })),
+      (cbox = el("textarea", {
+        placeholder: t.mine ? "اكتب ردَّك: ما أنجزتَه، أو ما تحتاجه، أو سؤالك…"
+          : "اكتب ردَّك أو ملاحظتك…" })),
       el("div", { class: "row", style: "margin-top:8px" },
         el("button", { class: "btn pri grow", onclick: async (ev) => {
           const v = cbox.value.trim();
-          if (!v) { toast("اكتب التعليق", true); return; }
+          if (!v) { toast("اكتب ردَّك", true); return; }
           ev.target.disabled = true;
-          try { await api.comment(t.id, v); cbox.value = ""; toast("أُضيف"); draw(); }
+          try { await api.comment(t.id, v); cbox.value = ""; toast("أُرسل"); draw(); }
           catch (e) { ev.target.disabled = false; toast(e.message, true); }
-        } }, "أضف تعليقًا"),
+        } }, "أرسِل الردّ"),
         el("button", { class: "btn", onclick: close }, "إغلاق")));
     setPct(t.progress || 0);
   };
