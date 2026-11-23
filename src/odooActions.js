@@ -5176,8 +5176,15 @@ const actions = {
         const mine = await schedEmpDept(empId);
         const recs = await odoo.searchRead("hr.department", [],
           ["name", "manager_id"], { limit: 100, order: "name" });
+        // ⚠️ ويُعدُّ مديرو النظام: وارِدُ قسمٍ بلا مديرٍ يؤول إليهم، فإن
+        //    لم يكن في البوابة واحدٌ منهم (وهو حالُها اليوم: صفر) فلا
+        //    يصل الطلبُ إلى أحد. ويُقال ذلك للمرسِل صراحةً — فقولُ
+        //    «يُشعَر مديرو النظام» حينئذٍ كذبٌ عليه.
+        const admins = await odoo.execKw("sharqia.portal.user", "search_count",
+          [[["role", "=", "admin"], ["status", "=", "active"]]]);
         return {
           mine: mine || 0,
+          admins: Number(admins) || 0,
           records: recs.map((r) => ({
             id: r.id,
             name: r.name,
@@ -5186,8 +5193,8 @@ const actions = {
           })),
         };
       },
-      async () => ({ records: [], mine: 0 }),
-      { emptyOnError: () => ({ records: [], mine: 0, unavailable: true }) }
+      async () => ({ records: [], mine: 0, admins: 0 }),
+      { emptyOnError: () => ({ records: [], mine: 0, admins: 0, unavailable: true }) }
     );
   },
   /** إنشاءُ مهمّة — لنفسك، أو لفريقك إن كنتَ مديرَه، أو إلى قسمٍ آخر. */

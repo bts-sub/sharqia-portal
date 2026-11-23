@@ -486,6 +486,7 @@ function newTaskSheet(depts, team, refresh) {
   const mgr = Array.isArray(depts) && depts.length > 0;
   let mode = mgr ? "team" : "me";
   let allDepts = null;          // تُجلب عند أوّل اختيارٍ لـ«قسمٍ آخر» لا قبلَه
+  let admins = 0;               // عددُ مديري النظام — لصدق رسالةِ «إلى مَن تصل»
   let deptSel = null, who = null, otherSel = null;
 
   const box = el("div", {});
@@ -531,8 +532,11 @@ function newTaskSheet(depts, team, refresh) {
     }
     box.replaceChildren(el("div", { class: "sk" }));
     if (!allDepts) {
-      try { allDepts = (await api.depts()).records || []; }
-      catch (e) { box.replaceChildren(el("div", { class: "err" }, e.message)); return; }
+      try {
+        const r = await api.depts();
+        allDepts = r.records || [];
+        admins = Number(r.admins || 0);
+      } catch (e) { box.replaceChildren(el("div", { class: "err" }, e.message)); return; }
     }
     const list = allDepts.filter((d) => !d.managed);
     if (!list.length) {
@@ -545,9 +549,19 @@ function newTaskSheet(depts, team, refresh) {
     const note = el("div", { class: "meta", style: "margin-top:4px" }, "");
     const say = () => {
       const d = list.find((x) => x.id === Number(otherSel.value));
-      note.textContent = d && d.manager
-        ? `تصل وارِدَ القسم، ويُشعَر ${d.manager} ليوزّعها.`
-        : "لا مديرَ لهذا القسم — تصل وارِدَه ويُشعَر مديرو النظام.";
+      if (d && d.manager) {
+        note.className = "meta";
+        note.textContent = `تصل وارِدَ القسم، ويُشعَر ${d.manager} ليوزّعها.`;
+      } else if (admins > 0) {
+        note.className = "meta";
+        note.textContent = "لا مديرَ لهذا القسم — تصل وارِدَه ويُشعَر مديرو النظام.";
+      } else {
+        // ⚠️ ولا تُقال له «يُشعَر مديرو النظام» وليس في البوابة واحد:
+        //    يُرسل ويطمئنّ، والطلبُ في وارِدٍ لا يفتحه أحد.
+        note.className = "err";
+        note.textContent = "⚠️ لا مديرَ لهذا القسم ولا مديرَ نظام:"
+          + " تُسجَّل في الوارد ولا يصل إشعارٌ لأحد — أبلِغ الإدارة.";
+      }
     };
     otherSel.addEventListener("change", say);
     box.replaceChildren(el("label", {}, "القسم"), otherSel, note);
