@@ -1712,14 +1712,22 @@ async function schedTaskVisible(id, empId, role) {
     [["id", "=", tid], ["sharqia_department_id", "!=", false]],
     ["name", "description", "stage_id", "date_deadline", "priority",
       "sharqia_department_id", "sharqia_assignee_id", "sharqia_progress",
+      "sharqia_requester_id",
       "sharqia_return_note", "sharqia_assigned_on"], { limit: 1 });
   if (!t) throw new Error("المهمّة غير موجودة");
   const mine = (t.sharqia_assignee_id || [0])[0] === Number(empId);
-  if (mine) return { task: t, mine: true };
+  if (mine) return { task: t, mine: true, manages: false };
+  // ⚠️ ومن أرسلها يراها وإن لم تُسنَد إليه: هو صاحبُ الطلب، يتابع أين
+  //    وصل ويقرأ تعليقاتِه — ولا يكتب نسبتَه، فالنسبةُ لمن ينفّذ.
+  // ⚠️ و manages ليس «ليست مهمّتي»: زرُّ الاعتماد والإرجاع كان مشروطًا
+  //    بـ!mine وحدَها، فلمّا صار صاحبُ الطلب يفتحها ظهر له زرُّ اعتمادِ
+  //    عملٍ في قسمٍ لا يُديره — يضغطه فيردُّه الخادمُ برفض.
+  if ((t.sharqia_requester_id || [0])[0] === Number(empId))
+    return { task: t, mine: false, manages: false };
   const depts = await schedManagedDepts(empId, role);
   const ok = depts.some((d) => d.id === (t.sharqia_department_id || [0])[0]);
   if (!ok) throw new Error("ليست من مهامّك ولا من مهامّ قسمك");
-  return { task: t, mine: false };
+  return { task: t, mine: false, manages: true };
 }
 /** مهمّةٌ يملك هذا المديرُ أمرَها — وإلّا رُفض الطلب. */
 async function schedTaskForManager(id, empId, role) {
@@ -1766,6 +1774,8 @@ function schedTaskOut(r, stages) {
     deptId: r.sharqia_department_id?.[0] || 0,
     returnNote: r.sharqia_return_note || "",
     assignedOn: r.sharqia_assigned_on || null,
+    requester: r.sharqia_requester_id?.[1] || "",
+    progress: Number(r.sharqia_progress || 0),
     late: !!(due && key !== "done" && new Date(due.replace(" ", "T") + "Z") < new Date()),
   };
 }
@@ -5030,23 +5040,39 @@ const actions = {
   //     يوزّع فيه.
   // ══════════════════════════════════════════════════════════════════
 
-  /** مهامّي — المسنَدةُ إليّ وحدها، مرتَّبةً بالموعد ثمّ المرحلة. */
+  /** مهامّي — المسنَدةُ إليّ، ومعها ما أرسلتُه إلى الأقسام. */
   async "task.mine"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
     return withOdoo(
       async () => {
-        if (!empId) return { records: [] };
+        if (!empId) return { records: [], sent: [] };
         // المسنَدُ إليه موظّفٌ لا حسابُ أودو — فلا حاجةَ إلى تحويل
         const stages = await schedStages();
+        const cols = ["name", "description", "stage_id", "date_deadline",
+          "priority", "sharqia_department_id", "sharqia_return_note",
+          "sharqia_assigned_on", "sharqia_assignee_id", "sharqia_progress",
+          "sharqia_requester_id"];
         const recs = await odoo.searchRead("project.task",
           [["sharqia_department_id", "!=", false], ["sharqia_assignee_id", "=", empId]],
-          ["name", "description", "stage_id", "date_deadline", "priority",
-            "sharqia_department_id", "sharqia_return_note", "sharqia_assigned_on"],
-          { limit: 200, order: "date_deadline asc, id desc" });
-        return { records: recs.map((r) => schedTaskOut(r, stages)) };
+          cols, { limit: 200, order: "date_deadline asc, id desc" });
+        // ⚠️ وما أرسلتَه إلى قسمٍ آخرَ يعود إليك: لولا ذلك لأرسل المرءُ
+        //    طلبَه ثمّ لم يرَ له أثرًا — لا أنُفّذ ولا أُهمل — فيعيد
+        //    إرسالَه أو يمشي يسأل. ومن أُسندت إليه مهمّتُه هو فلا تُكرَّر
+        //    عليه في القائمتين.
+        const sent = await odoo.searchRead("project.task",
+          [["sharqia_requester_id", "=", empId],
+            ["sharqia_assignee_id", "!=", empId]],
+          cols, { limit: 100, order: "date_deadline asc, id desc" });
+        return {
+          records: recs.map((r) => schedTaskOut(r, stages)),
+          sent: sent.map((r) => ({
+            ...schedTaskOut(r, stages),
+            assignee: r.sharqia_assignee_id ? r.sharqia_assignee_id[1] : "",
+          })),
+        };
       },
-      async () => ({ records: [] }),
-      { emptyOnError: () => ({ records: [], unavailable: true }) }
+      async () => ({ records: [], sent: [] }),
+      { emptyOnError: () => ({ records: [], sent: [], unavailable: true }) }
     );
   },
 
@@ -5061,7 +5087,8 @@ const actions = {
         const recs = await odoo.searchRead("project.task",
           [["sharqia_department_id", "in", depts.map((d) => d.id)]],
           ["name", "description", "stage_id", "date_deadline", "priority",
-            "sharqia_department_id", "sharqia_assignee_id", "sharqia_return_note",
+            "sharqia_department_id", "sharqia_assignee_id", "sharqia_progress",
+            "sharqia_requester_id", "sharqia_return_note",
             "sharqia_assigned_on"],
           { limit: 400, order: "date_deadline asc, id desc" });
         return {
@@ -5133,7 +5160,37 @@ const actions = {
       { emptyOnError: () => ({ records: [], me: 0, unavailable: true }) }
     );
   },
-  /** إنشاءُ مهمّة — لنفسِك، أو لموظّفٍ من قسمك إن كنتَ مديرَه. */
+
+  /** أقسامُ الشركة — لإرسال مهمّةٍ إلى قسمٍ غيرِ قسمك.
+   *
+   *  ⚠️ ويُرسَل اسمُ مديرِ كلِّ قسمٍ معه: المرسِلُ يحتاج أن يعرف إلى مَن
+   *     تصل، وقسمان من ستّةٍ بلا مديرٍ اليوم — فيُقال له صراحةً «بلا
+   *     مدير: تصل الإدارةَ» بدل أن يُرسل ويظنّ أنّ أحدًا يتابعها.
+   */
+  async "schedule.depts"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const managed = (await schedManagedDepts(empId, ctx?.user?.role))
+          .map((d) => d.id);
+        const mine = await schedEmpDept(empId);
+        const recs = await odoo.searchRead("hr.department", [],
+          ["name", "manager_id"], { limit: 100, order: "name" });
+        return {
+          mine: mine || 0,
+          records: recs.map((r) => ({
+            id: r.id,
+            name: r.name,
+            manager: r.manager_id ? r.manager_id[1] : "",
+            managed: managed.includes(r.id),
+          })),
+        };
+      },
+      async () => ({ records: [], mine: 0 }),
+      { emptyOnError: () => ({ records: [], mine: 0, unavailable: true }) }
+    );
+  },
+  /** إنشاءُ مهمّة — لنفسك، أو لفريقك إن كنتَ مديرَه، أو إلى قسمٍ آخر. */
   async "task.create"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
     return withOdoo(
@@ -5141,17 +5198,29 @@ const actions = {
         const name = String(params.name || "").trim();
         if (!name) throw new Error("اكتب عنوانَ المهمّة");
         const depts = await schedManagedDepts(empId, ctx?.user?.role);
-        const isMgr = depts.length > 0;
+        const want = Number(params.departmentId || 0);
+        const managed = want ? depts.some((d) => d.id === want) : false;
 
-        // ⚠️ كلُّ موظّفٍ يكتب مهمّةَ نفسِه، والمديرُ وحدَه يكتب لغيره:
-        //    «جدولي» جدولُ صاحبه قبل أن يكون لوحةَ توزيع. ومن لا يملك أن
-        //    يكتب لنفسه مهمّةً لا يفتح الشاشةَ إلّا ليُنفّذ ما أُملي عليه.
+        // ثلاثةُ مقاصدَ لا اثنان:
+        //  · لنفسي — في قسمي، مسنَدةً إليّ.
+        //  · لفريقي — قسمٌ أُديره، فأُسندها لمن أختار أو أتركها مسوّدةً
+        //    في وارِدي.
+        //  · إلى قسمٍ آخر — تنزل وارِدَ ذلك القسم بلا مسنَدٍ إليه،
+        //    ويُشعَر مديرُه فيوزّعها. ⚠️ ولا تُسنَد على موظّفٍ بعينه من
+        //    خارج قسمه: حِملُ الرجلِ يعرفه مديرُه، ومن أسند مباشرةً أسند
+        //    على من لا يدري ما عليه — فيصير الوارِدُ بابَ الأقسام بعضِها
+        //    على بعض، لا طريقًا جانبيًّا إلى أفرادها.
         let deptId;
         let targets;
-        if (isMgr) {
-          deptId = Number(params.departmentId || depts[0].id);
-          if (!depts.some((d) => d.id === deptId))
-            throw new Error("ليس قسمَك");
+        let requester = false;
+        if (want && !managed) {
+          deptId = want;
+          targets = [0];
+          requester = Number(empId) || false;
+          if (!requester)
+            throw new Error("بطاقتُك غيرُ مربوطةٍ بموظّفٍ في أودو — راجع الموارد البشرية");
+        } else if (managed || (depts.length && !want)) {
+          deptId = managed ? want : depts[0].id;
           // ⚠️ عدّةُ موظّفين = مهمّةٌ لكلِّ واحد، لا مهمّةٌ واحدةٌ يتقاسمونها:
           //    النسبةُ والمراجعةُ والاعتمادُ كلُّها لشخصٍ بعينه، ولو جُمعوا
           //    على سجلٍّ واحدٍ لما عُرف مَن أنجز ومَن تأخّر، ولا استطاع
@@ -5159,6 +5228,17 @@ const actions = {
           const many = Array.isArray(params.employeeIds)
             ? [...new Set(params.employeeIds.map(Number).filter(Boolean))] : [];
           targets = many.length ? many : [Number(params.employeeId || 0)];
+          // ⚠️ ويُتحقَّق أنّ المختارين من ذلك القسم فعلًا: الأرقامُ تأتي
+          //    من الواجهة، ولولا الفحصُ لأسند مديرٌ مهمّةً على موظّفٍ في
+          //    قسمٍ لا يُديره بتبديل رقمٍ في الطلب.
+          const real = targets.filter(Boolean);
+          if (real.length) {
+            const ok = await odoo.searchRead("hr.employee",
+              [["id", "in", real], ["department_id", "=", deptId]], ["id"],
+              { limit: real.length });
+            if (ok.length !== real.length)
+              throw new Error("أحدُ المختارين ليس من هذا القسم");
+          }
         } else {
           deptId = await schedEmpDept(empId);
           if (!deptId)
@@ -5179,13 +5259,14 @@ const actions = {
           description: params.description || "",
           date_deadline: params.deadline || false,
           priority: params.priority === "high" ? "1" : "0",
+          ...(requester ? { sharqia_requester_id: requester } : {}),
         };
         const ids = [];
         for (const who of targets) {
           ids.push(await odoo.create("project.task",
             who ? { ...base, sharqia_assignee_id: who } : base));
         }
-        return { ok: true, ids, count: ids.length };
+        return { ok: true, ids, count: ids.length, toInbox: !!requester };
       },
       async () => ({ ok: false }),
       { forceLiveErrors: true }
@@ -5392,7 +5473,7 @@ const actions = {
     const empId = ctx?.user?.odooEmployeeId;
     return withOdoo(
       async () => {
-        const { task, mine } = await schedTaskVisible(
+        const { task, mine, manages } = await schedTaskVisible(
           params.id, empId, ctx?.user?.role);
         const stages = await schedStages();
         const msgs = await odoo.searchRead("mail.message",
@@ -5404,7 +5485,7 @@ const actions = {
           ["name", "mimetype", "file_size", "create_date"],
           { limit: 60, order: "id desc" });
         return {
-          task: { ...schedTaskOut(task, stages), mine,
+          task: { ...schedTaskOut(task, stages), mine, manages,
             progress: Number(task.sharqia_progress || 0),
             assignee: task.sharqia_assignee_id
               ? task.sharqia_assignee_id[1] : "" },

@@ -48,6 +48,7 @@ const api = {
   deptTasks: () => call("/api/schedule/tasks/dept"),
   team: () => call("/api/schedule/team"),
   people: (q) => call("/api/schedule/people" + (q ? "?q=" + encodeURIComponent(q) : "")),
+  depts: () => call("/api/schedule/depts"),
   week: (from) => call("/api/schedule/week?from=" + encodeURIComponent(from)),
   one: (id) => call("/api/schedule/tasks/" + id),
   progress: (id, percent) => call("/api/schedule/tasks/" + id + "/progress",
@@ -138,12 +139,36 @@ function taskCard(t, onAct, refresh) {
       : null);
 }
 
+// ⚠️ بطاقةُ ما أرسلتَه غيرُ بطاقةِ ما عليك: لا أزرارَ عمل — أنت لا تُنفّذها
+//    ولا تنقل مرحلتَها — إنّما تقرأ أين وصلت ومَن أخذها، وتفتحها لتقرأ
+//    تعليقاتِها أو تُضيف توضيحًا. و«في الوارد» تعني أنّ مديرَ القسم لم
+//    يوزّعها بعد، وهذا أهمُّ ما يريد المرسِلُ معرفتَه.
+function sentCard(t, refresh) {
+  const late = t.late && t.stage !== "done";
+  return el("div", { class: "card" },
+    el("div", { class: "row" },
+      el("h3", { class: "grow", style: "cursor:pointer",
+        onclick: () => openTask(t.id, refresh) }, t.name),
+      el("span", { class: "pill" + (late ? " late" : "") },
+        late ? "متأخّرة" : STAGE_AR[t.stage] || t.stageName || "")),
+    el("div", { class: "meta" },
+      [t.dept,
+        t.assignee ? "عند: " + t.assignee : "في الوارد — لم تُوزَّع بعد",
+        t.deadline ? "الموعد: " + fmtDay(t.deadline) : null]
+        .filter(Boolean).join(" · ")),
+    t.progress
+      ? el("div", { class: "meta", style: "margin-top:4px" },
+        `أنجز ${t.progress}%`)
+      : null);
+}
+
 async function viewMine(host) {
   host.replaceChildren(el("div", { class: "sk" }), el("div", { class: "sk" }));
   let data;
   try { data = await api.tasks(); }
   catch (e) { host.replaceChildren(el("div", { class: "err" }, e.message)); return; }
   const recs = data.records || [];
+  const sent = data.sent || [];
   const refresh = () => viewMine(host);
 
   // ⚠️ زرُّ الإضافة لكلِّ موظّفٍ لا للمدير وحدَه: «جدولي» جدولُ صاحبه قبل
@@ -155,11 +180,6 @@ async function viewMine(host) {
     el("button", { class: "btn pri",
       onclick: () => newTaskSheet(null, [], refresh) }, "+ مهمّة"));
 
-  if (!recs.length) {
-    host.replaceChildren(head,
-      el("div", { class: "empty" }, "لا مهامَّ عليك الآن."));
-    return;
-  }
   const onAct = async (t, to) => {
     try { await api.move(t.id, to); toast("تمّ"); refresh(); }
     catch (e) { toast(e.message, true); }
@@ -170,12 +190,23 @@ async function viewMine(host) {
     byStage.get(t.stage).push(t);
   }
   const out = [head];
-  for (const st of MY_ORDER) {
-    const list = byStage.get(st);
-    if (!list || !list.length) continue;
-    out.push(el("div", { class: "meta", style: "margin:14px 2px 2px;font-weight:700" },
-      `${STAGE_AR[st] || st} (${list.length})`));
-    for (const t of list) out.push(taskCard(t, onAct, refresh));
+  if (!recs.length) {
+    out.push(el("div", { class: "empty" }, "لا مهامَّ عليك الآن."));
+  } else {
+    for (const st of MY_ORDER) {
+      const list = byStage.get(st);
+      if (!list || !list.length) continue;
+      out.push(el("div", { class: "meta", style: "margin:14px 2px 2px;font-weight:700" },
+        `${STAGE_AR[st] || st} (${list.length})`));
+      for (const t of list) out.push(taskCard(t, onAct, refresh));
+    }
+  }
+  // ⚠️ وما أرسلتَه أسفلَ ما عليك لا مختلطًا به: ذاك عملُك وهذا متابعتُك،
+  //    ولو جُمعا في قائمةٍ واحدةٍ لعُدَّ على المرء ما أرسله إلى غيره.
+  if (sent.length) {
+    out.push(el("div", { class: "meta", style: "margin:18px 2px 2px;font-weight:700" },
+      `أرسلتُها (${sent.length})`));
+    for (const t of sent) out.push(sentCard(t, refresh));
   }
   host.replaceChildren(...out);
 }
@@ -259,7 +290,7 @@ function openTask(id, refresh) {
       acts.push(["أرسل للمراجعة", async () => {
         try { await api.move(t.id, "review"); toast("أُرسلت"); draw(); }
         catch (e) { toast(e.message, true); } }, true]);
-    if (!t.mine && t.stage === "review") {
+    if (t.manages && t.stage === "review") {
       acts.push(["اعتمد", async () => {
         try { await api.decide(t.id, { approve: true }); toast("اعتُمدت"); close(); }
         catch (e) { toast(e.message, true); } }, true]);
@@ -275,6 +306,7 @@ function openTask(id, refresh) {
           late ? "متأخّرة" : STAGE_AR[t.stage] || t.stageName || "")),
       el("div", { class: "meta" },
         [t.dept, t.assignee ? "المسنَد إليه: " + t.assignee : null,
+          t.requester ? "طلبها: " + t.requester : null,
           t.deadline ? "الموعد: " + fmtDay(t.deadline) : null]
           .filter(Boolean).join(" · ")),
       t.returnNote ? el("div", { class: "err", style: "margin-top:8px" },
@@ -443,40 +475,96 @@ function deptCard(t, team, refresh) {
 }
 
 // depts = null → الموظّفُ يكتب لنفسه: لا اختيارَ قسمٍ ولا مسنَدٍ إليه.
+// ══ مهمّةٌ جديدة: ثلاثةُ مقاصد ════════════════════════════════════════
+// ⚠️ المقصدُ أوّلُ سؤالٍ لا آخرُه: كانت الورقةُ تسأل العنوانَ ثمّ تفترض
+//    المقصدَ من دور فاتحِها — فالموظّفُ لا يملك إلّا نفسَه، والمديرُ لا
+//    يملك إلّا فريقَه، ولا سبيلَ لأحدٍ أن يطلب من قسمٍ آخر شيئًا أصلًا.
+// ⚠️ و«إلى قسمٍ آخر» لا تُسنَد على فردٍ بعينه: تنزل وارِدَ القسم ويوزّعها
+//    مديرُه. حِملُ الرجلِ يعرفه مديرُه، ومن أسند من خارج القسم أسند على
+//    مَن لا يدري ما عليه. ويُقال للمرسِل صراحةً إلى من تصل.
 function newTaskSheet(depts, team, refresh) {
   const mgr = Array.isArray(depts) && depts.length > 0;
-  let name, dept, who, due, desc;
+  let mode = mgr ? "team" : "me";
+  let allDepts = null;          // تُجلب عند أوّل اختيارٍ لـ«قسمٍ آخر» لا قبلَه
+  let deptSel = null, who = null, otherSel = null;
+
+  const box = el("div", {});
+  const seg = el("div", { class: "seg", role: "tablist",
+    style: "margin:10px 0 6px" });
+  const tabs = [["me", "لي"]];
+  if (mgr) tabs.push(["team", "لفريقي"]);
+  tabs.push(["other", "قسمٌ آخر"]);
+
+  const drawSeg = () => seg.replaceChildren(...tabs.map(([k, l]) =>
+    el("button", { role: "tab", "aria-selected": String(k === mode),
+      onclick: () => { mode = k; drawSeg(); drawBody(); } }, l)));
+
+  async function drawBody() {
+    deptSel = who = otherSel = null;
+    if (mode === "me") {
+      box.replaceChildren(el("div", { class: "meta" }, "تُضاف إلى جدولك أنت."));
+      return;
+    }
+    if (mode === "team") {
+      box.replaceChildren(
+        depts.length > 1 ? el("label", {}, "القسم") : null,
+        depts.length > 1
+          ? (deptSel = el("select", {}, ...depts.map((d) =>
+            el("option", { value: d.id }, d.name))))
+          : null,
+        el("label", {}, "المسنَد إليهم — واحدٌ أو أكثر"),
+        // ⚠️ «اتركها في الوارد» هو الأصل: المديرُ يكتب المهمّةَ حين تخطر
+        //    له ويوزّعها حين يرى الحِمل. وما بقي بلا اختيارٍ فهو مسوّدتُه.
+        // ⚠️ واختيارُ عدّةٍ يُنشئ مهمّةً لكلِّ واحدٍ لا مهمّةً يتقاسمونها:
+        //    النسبةُ والمراجعةُ والاعتمادُ لشخصٍ بعينه.
+        el("div", { class: "meta" }, "بلا اختيارٍ تبقى في «الوارد» مسوّدةً لك."),
+        (who = el("div", { class: "row", style: "gap:6px;margin-top:4px" },
+          ...[...team].sort((a, b) => a.openTasks - b.openTasks).map((m) => {
+            const b = el("button", { class: "slot", "aria-pressed": "false",
+              "data-emp": String(m.id),
+              onclick: () => b.setAttribute("aria-pressed",
+                b.getAttribute("aria-pressed") === "true" ? "false" : "true") },
+              `${m.name} · ${m.openTasks}`);
+            return b;
+          }))));
+      return;
+    }
+    box.replaceChildren(el("div", { class: "sk" }));
+    if (!allDepts) {
+      try { allDepts = (await api.depts()).records || []; }
+      catch (e) { box.replaceChildren(el("div", { class: "err" }, e.message)); return; }
+    }
+    const list = allDepts.filter((d) => !d.managed);
+    if (!list.length) {
+      box.replaceChildren(el("div", { class: "empty" }, "لا أقسامَ أخرى."));
+      return;
+    }
+    otherSel = el("select", {}, ...list.map((d) =>
+      el("option", { value: d.id },
+        d.name + (d.manager ? " — " + d.manager : " — بلا مدير"))));
+    const note = el("div", { class: "meta", style: "margin-top:4px" }, "");
+    const say = () => {
+      const d = list.find((x) => x.id === Number(otherSel.value));
+      note.textContent = d && d.manager
+        ? `تصل وارِدَ القسم، ويُشعَر ${d.manager} ليوزّعها.`
+        : "لا مديرَ لهذا القسم — تصل وارِدَه ويُشعَر مديرو النظام.";
+    };
+    otherSel.addEventListener("change", say);
+    box.replaceChildren(el("label", {}, "القسم"), otherSel, note);
+    say();
+  }
+
+  let name, due, desc;
   const sheet = el("div", { class: "sheet", onclick: (e) => {
     if (e.target === sheet) sheet.remove();
   } },
     el("div", {},
-      el("h3", { style: "margin:4px 0 8px" },
-        mgr ? "مهمّةٌ جديدة" : "مهمّةٌ لي"),
-      !mgr ? el("div", { class: "meta", style: "margin-bottom:6px" },
-        "تُضاف إلى جدولك أنت.") : null,
+      el("h3", { style: "margin:4px 0 8px" }, "مهمّةٌ جديدة"),
       el("label", {}, "العنوان"),
       (name = el("input", { placeholder: "ما المطلوب؟" })),
-      mgr && depts.length > 1 ? el("label", {}, "القسم") : null,
-      mgr && depts.length > 1
-        ? (dept = el("select", {}, ...depts.map((d) =>
-          el("option", { value: d.id }, d.name))))
-        : null,
-      mgr ? el("label", {}, "المسنَد إليهم — واحدٌ أو أكثر") : null,
-      // ⚠️ «اتركها في الوارد» هو الأصل: المديرُ يكتب المهمّةَ حين تخطر له
-      //    ويوزّعها حين يرى الحِمل. وما بقي بلا اختيارٍ فهو مسوّدتُه.
-      // ⚠️ واختيارُ عدّةٍ يُنشئ مهمّةً لكلِّ واحد لا مهمّةً يتقاسمونها:
-      //    النسبةُ والمراجعةُ والاعتمادُ لشخصٍ بعينه.
-      mgr ? el("div", { class: "meta" },
-        "بلا اختيارٍ تبقى في «الوارد» مسوّدةً لك.") : null,
-      mgr ? (who = el("div", { class: "row", style: "gap:6px;margin-top:4px" },
-        ...[...team].sort((a, b) => a.openTasks - b.openTasks).map((m) => {
-          const b = el("button", { class: "slot", "aria-pressed": "false",
-            "data-emp": String(m.id),
-            onclick: () => b.setAttribute("aria-pressed",
-              b.getAttribute("aria-pressed") === "true" ? "false" : "true") },
-            `${m.name} · ${m.openTasks}`);
-          return b;
-        }))) : null,
+      el("label", {}, "إلى مَن"),
+      seg,
+      box,
       el("label", {}, "الموعد النهائي (اختياري)"),
       (due = el("input", { type: "date" })),
       el("label", {}, "تفصيل (اختياري)"),
@@ -485,24 +573,32 @@ function newTaskSheet(depts, team, refresh) {
         el("button", { class: "btn pri grow", onclick: async (ev) => {
           const title = name.value.trim();
           if (!title) { toast("اكتب العنوان", true); return; }
+          if (mode === "other" && !otherSel) { toast("اختر القسم", true); return; }
           ev.target.disabled = true;
           try {
-            const r = await api.createTask({
+            const body = {
               name: title,
-              ...(mgr ? {
-                departmentId: dept ? Number(dept.value) : depts[0].id,
-                employeeIds: who ? [...who.querySelectorAll('[aria-pressed="true"]')]
-                  .map((b) => Number(b.dataset.emp)) : [],
-              } : {}),
               deadline: due.value ? due.value + " 12:00:00" : null,
               description: desc.value.trim(),
-            });
+            };
+            if (mode === "team") {
+              body.departmentId = deptSel ? Number(deptSel.value) : depts[0].id;
+              body.employeeIds = who
+                ? [...who.querySelectorAll('[aria-pressed="true"]')]
+                  .map((b) => Number(b.dataset.emp)) : [];
+            } else if (mode === "other") {
+              body.departmentId = Number(otherSel.value);
+            }
+            const r = await api.createTask(body);
             sheet.remove();
-            toast(r && r.count > 1 ? `أُنشئت ${r.count} مهمّات` : "أُنشئت");
+            toast(r && r.toInbox ? "أُرسلت إلى وارِد القسم"
+              : r && r.count > 1 ? `أُنشئت ${r.count} مهمّات` : "أُنشئت");
             refresh();
           } catch (e) { ev.target.disabled = false; toast(e.message, true); }
         } }, "أنشئ"),
         el("button", { class: "btn", onclick: () => sheet.remove() }, "إلغاء"))));
+  drawSeg();
+  drawBody();
   document.body.append(sheet);
   setTimeout(() => name.focus(), 50);
 }
