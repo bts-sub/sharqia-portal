@@ -5261,10 +5261,14 @@ const actions = {
           priority: params.priority === "high" ? "1" : "0",
           ...(requester ? { sharqia_requester_id: requester } : {}),
         };
+        // ⚠️ حارسٌ صامتٌ للفحص على القاعدة الحيّة: الإنشاءُ يُشعر المسنَدَ
+        //    إليه أو مديرَ القسم، والإشعارُ يخرج إلى جهازه فلا يُستعاد.
+        //    ولا يضعه أيُّ مسارٍ من الهاتف — المسالكُ تُمرّر {user} وحدَها.
+        const kw = ctx?.silent ? { context: { sharqia_silent: true } } : {};
         const ids = [];
         for (const who of targets) {
-          ids.push(await odoo.create("project.task",
-            who ? { ...base, sharqia_assignee_id: who } : base));
+          ids.push(await odoo.execKw("project.task", "create",
+            [who ? { ...base, sharqia_assignee_id: who } : base], kw));
         }
         return { ok: true, ids, count: ids.length, toInbox: !!requester };
       },
