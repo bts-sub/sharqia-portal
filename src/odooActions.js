@@ -5639,6 +5639,20 @@ const actions = {
         const final = !!params.final;
         if (final && p < 100)
           throw new Error("التقريرُ الختاميُّ بنسبة مئةٍ كاملة");
+        // ⚠️ والمهمّةُ تمشي مع التقرير: من كتب تقريرًا فقد قرأها وعمل،
+        //    ولا معنى لأن يُطالَب بزرِّ «استلمت» بعدَه. ولولا هذا بقيت
+        //    في «مستلمة» فيُردُّ الرفعُ للاعتماد بـ«لا يُنقل من هذه
+        //    المرحلة إلى تلك» — وهو ما وقع في الفحص.
+        const stg = await schedStages();
+        const cur = stg.byId.get(task.stage_id && task.stage_id[0]);
+        if (cur === "new") {
+          await odoo.execKw("project.task", "action_sharqia_move",
+            [[task.id], "sharqia_portal.task_stage_received"], hush(ctx));
+        }
+        if (cur === "new" || cur === "received") {
+          await odoo.execKw("project.task", "action_sharqia_move",
+            [[task.id], "sharqia_portal.task_stage_doing"], hush(ctx));
+        }
         await odoo.execKw("sharqia.task.report", "create", [{
           task_id: task.id, progress: p, body: text,
           is_final: final, employee_id: Number(empId),
