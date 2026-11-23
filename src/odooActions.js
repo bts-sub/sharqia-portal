@@ -5243,10 +5243,25 @@ const actions = {
         let requester = false;
         if (want && !managed) {
           deptId = want;
-          targets = [0];
           requester = Number(empId) || false;
           if (!requester)
             throw new Error("بطاقتُك غيرُ مربوطةٍ بموظّفٍ في أودو — راجع الموارد البشرية");
+          // ⚠️ مديرُ القسم يُسند مباشرةً على اسمٍ في قسمٍ آخر (بقرار
+          //    الإدارة)، وغيرُه يُرسل إلى الوارد فيوزّعه مديرُ ذلك القسم.
+          //    وبلا اسمٍ تنزل الوارِدَ من المدير أيضًا.
+          const pick = Array.isArray(params.employeeIds)
+            ? [...new Set(params.employeeIds.map(Number).filter(Boolean))] : [];
+          if (pick.length && !depts.length)
+            throw new Error("الإسنادُ على موظّفٍ بعينه لمديري الأقسام."
+              + " أرسلها إلى القسم فيوزّعها مديرُه.");
+          if (pick.length) {
+            const okEmp = await odoo.searchRead("hr.employee",
+              [["id", "in", pick], ["department_id", "=", want]], ["id"],
+              { limit: pick.length });
+            if (okEmp.length !== pick.length)
+              throw new Error("أحدُ المختارين ليس من هذا القسم");
+          }
+          targets = pick.length ? pick : [0];
         } else if (managed || (depts.length && !want)) {
           deptId = managed ? want : depts[0].id;
           // ⚠️ عدّةُ موظّفين = مهمّةٌ لكلِّ واحد، لا مهمّةٌ واحدةٌ يتقاسمونها:
@@ -5305,7 +5320,8 @@ const actions = {
           }
           ids.push(await odoo.execKw("project.task", "create", [vals], kw));
         }
-        return { ok: true, ids, count: ids.length, toInbox: !!requester };
+        return { ok: true, ids, count: ids.length,
+          toInbox: !!requester && !targets.some(Boolean) };
       },
       async () => ({ ok: false }),
       { forceLiveErrors: true }
@@ -5362,7 +5378,10 @@ const actions = {
     return withOdoo(
       async () => {
         const id = Number(params.id);
-        const task = await schedTaskForManager(id, empId, ctx?.user?.role);
+        // ⚠️ الاعتمادُ والإرجاعُ **لمن أنشأ المهمّة** لا لمدير القسم:
+        //    كان يُطلب هنا مديرًا، فلمّا صار المنشئُ هو من يعتمد رُدَّ
+        //    بـ«ليست من مهامّ قسمك» — والقاعدةُ في الموديل تحرس أيضًا.
+        const { task } = await schedTaskVisible(id, empId, ctx?.user?.role);
         if (params.approve) {
           await odoo.execKw("project.task", "action_sharqia_approve",
             [[task.id]], hush(ctx));
