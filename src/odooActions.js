@@ -1656,9 +1656,6 @@ async function schedStages() {
   schedStagesCache = out;
   return out;
 }
-/** بطاقةُ تواصل الموظّف — بها يُعرف في التقويم. */
-
-
 /** وقتُ أودو (UTC) نصًّا بتوقيت الرياض — للرسائل التي يقرؤها الناس.
  *  ⚠️ أودو يخزّن بـUTC، فلو عُرض كما هو لقرأ المستخدمُ وقتًا يسبق
  *     وقتَه بثلاث ساعات، فيظنّ التعارضَ خطأً من النظام. */
@@ -1673,7 +1670,47 @@ function fmtOdooRiyadh(s, timeOnly = false) {
   return new Intl.DateTimeFormat("ar-SA-u-nu-latn-ca-gregory",
     { ...opts, timeZone: "Asia/Riyadh" }).format(d);
 }
+
+/** يومُ وقتٍ بتوقيت الرياض (YYYY-MM-DD) — للمقارنة بالماضي. */
+function riyadhDay(utc) {
+  const d = utc ? new Date(String(utc).replace(" ", "T") + "Z") : new Date();
+  if (Number.isNaN(d.getTime())) return "";
+  return new Date(d.getTime() + 3 * 3600e3).toISOString().slice(0, 10);
+}
 /** محجوزاتُ موظّفين في مدًى — لكلِّ تعارضٍ اسمُ صاحبه واجتماعُه ووقتُه. */
+
+/** أسماءُ الموظفين مقابلَ بطاقاتِ تواصلهم — لا اسمَ البطاقة نفسِه.
+ *  ⚠️ بطاقةُ التواصل اسمُها بريدٌ أو جوّالٌ عند كثيرين، فيُقرأ في قائمة
+ *     الحضور رقمُ هاتفٍ بدل اسم صاحبه. */
+async function schedEmpNames(partnerIds) {
+  const ids = [...new Set((partnerIds || []).map(Number).filter(Boolean))];
+  const out = new Map();
+  if (!ids.length) return out;
+  const es = await odoo.searchRead("hr.employee",
+    [["work_contact_id", "in", ids]], ["name", "work_contact_id"],
+    { limit: 300 });
+  for (const e of es) {
+    if (e.work_contact_id?.[0]) out.set(e.work_contact_id[0], e.name);
+  }
+  return out;
+}
+
+/** يُسقط أحداثَ التقويم التي وُلّدت من إجازات.
+ *  ⚠️ أودو يُنشئ لكلِّ إجازةٍ حدثًا في التقويم، فكانت إجازاتُ الزملاء
+ *     تُعرض في «اجتماعاتي» و«جدولي» كأنّها مواعيدُ تخصُّني. */
+async function schedNotLeaves(events) {
+  const ids = (events || []).map((e) => e.id);
+  if (!ids.length) return [];
+  let bad = new Set();
+  try {
+    const lv = await odoo.searchRead("hr.leave",
+      [["meeting_id", "in", ids]], ["meeting_id"], { limit: 300 });
+    bad = new Set(lv.map((l) => l.meeting_id?.[0]).filter(Boolean));
+  } catch (e) {
+    console.warn("⚠️ تعذّر استبعادُ الإجازات:", e.message);
+  }
+  return events.filter((e) => !bad.has(e.id));
+}
 async function schedBusy(empIds, from, to) {
   const emps = await odoo.searchRead("hr.employee",
     [["id", "in", empIds.map(Number)]], ["name", "work_contact_id"],
@@ -1703,6 +1740,7 @@ async function schedBusy(empIds, from, to) {
   }
   return out;
 }
+/** بطاقةُ تواصل الموظّف — بها يُعرف في التقويم. */
 async function schedPartnerOf(empId) {
   if (!empId) return 0;
   const [e] = await odoo.searchRead("hr.employee", [["id", "=", Number(empId)]],
@@ -5212,16 +5250,29 @@ const actions = {
     return withOdoo(
       async () => {
         const q = String(params.q || "").trim();
-        const dom = [["active", "=", true], ["work_contact_id", "!=", false]];
+        // ⚠️ حساباتُ النظام والفروع تُستبعد: هي موظّفون في أودو وليست
+        //    أشخاصًا، وكانت تُدعى إلى الاجتماعات وتُسنَد إليها المهامّ.
+        //    والعلَمُ على بطاقة الموظف تضعه الموارد البشرية بيدها.
+        const dom = [["active", "=", true], ["work_contact_id", "!=", false],
+          ["sharqia_hide_in_lists", "=", false]];
         if (q) dom.push(["name", "ilike", q]);
         const dept = Number(params.departmentId || 0);
         if (dept) dom.push(["department_id", "=", dept]);
         const recs = await odoo.searchRead("hr.employee", dom,
           ["name", "job_title", "department_id"],
           { limit: 400, order: "department_id, name" });
+        // ⚠️ والاسمُ المكرّرُ مرّةً واحدة: في البطاقات سجلّانِ لاسمٍ واحدٍ
+        //    (ازدواجٌ في بيانات الموارد البشرية)، فيظهر في القائمة
+        //    مرّتين ولا يُعرف أيُّهما. يُبقى الذي له قسمٌ منهما.
+        const seen = new Map();
+        for (const r of recs) {
+          const key = String(r.name || "").trim();
+          const old = seen.get(key);
+          if (!old || (!old.department_id && r.department_id)) seen.set(key, r);
+        }
         return {
           me: Number(empId) || 0,
-          records: recs.map((r) => ({
+          records: [...seen.values()].map((r) => ({
             id: r.id, name: r.name, job: r.job_title || "",
             dept: r.department_id?.[1] || "— بلا قسم —",
             deptId: r.department_id?.[0] || 0,
@@ -5284,6 +5335,10 @@ const actions = {
         const prio = ["0", "1", "2"].includes(String(params.priority))
           ? String(params.priority) : "";
         if (!prio) throw new Error("اختر الأولوية");
+        // ⚠️ ولا موعدَ في الماضي: مهمّةٌ تُنشأ متأخّرةً من ساعتها خطأُ
+        //    إدخالٍ لا نيّةُ أحد — ويُقاس باليوم بتوقيت الرياض لا UTC.
+        if (riyadhDay(deadline) < riyadhDay())
+          throw new Error("تاريخُ التسليم في الماضي — اختر اليومَ أو بعده");
         const depts = await schedManagedDepts(empId, ctx?.user?.role);
         const want = Number(params.departmentId || 0);
         const managed = want ? depts.some((d) => d.id === want) : false;
@@ -5500,17 +5555,30 @@ const actions = {
             "sharqia_organizer_id"],
           { limit: 200, order: "start asc" });
         if (!recs.length) return { records: [] };
+        const kept = await schedNotLeaves(recs);
+        if (!kept.length) return { records: [] };
         const atts = await odoo.searchRead("calendar.attendee",
-          [["event_id", "in", recs.map((r) => r.id)]],
+          [["event_id", "in", kept.map((r) => r.id)]],
           ["event_id", "partner_id", "state"], { limit: 600 });
+        // ⚠️ اسمُ الحاضر من بطاقة الموظف لا من بطاقة التواصل: الأخيرةُ
+        //    اسمُها بريدٌ أو جوّالٌ عند كثيرين، فكان يُقرأ في قائمة
+        //    الحضور رقمُ هاتفٍ بدل اسم صاحبه.
+        const names = await schedEmpNames(
+          atts.map((a) => a.partner_id?.[0]).filter(Boolean));
         const mine = new Map();
         const people = new Map();
         for (const a of atts) {
           const ev = a.event_id?.[0];
-          if (a.partner_id?.[0] === pid) mine.set(ev, a.state);
+          const p = a.partner_id?.[0];
+          if (p === pid) mine.set(ev, a.state);
           if (!people.has(ev)) people.set(ev, []);
-          people.get(ev).push({ name: a.partner_id?.[1] || "—", state: a.state });
+          people.get(ev).push({
+            name: names.get(p) || a.partner_id?.[1] || "—",
+            state: a.state,
+          });
         }
+        recs.length = 0;
+        recs.push(...kept);
         return {
           records: recs.map((r) => ({
             id: r.id,
@@ -5519,10 +5587,12 @@ const actions = {
             mode: r.sharqia_mode || "onsite",
             place: r.location || "",
             link: r.videocall_location || "",
-            note: r.description || "",
+            note: schedMsgText(r.description),
             // ⚠️ المنظِّمُ من حقل الموظّف: user_id حسابُ الخدمة في كلِّ
             //    ما يُحجز من التطبيق، فكان يُقرأ اسمًا لا يعرفه أحد.
-            organizer: r.sharqia_organizer_id?.[1] || r.user_id?.[1] || "",
+            // ⚠️ المنظِّمُ من بطاقة الموظف: user_id حسابُ الخدمة، واسمُه
+            //    عند بعضهم بريدٌ أو رقم — فيُقرأ في الكرت ما ليس اسمًا.
+            organizer: r.sharqia_organizer_id?.[1] || "",
             organizerId: r.sharqia_organizer_id?.[0] || 0,
             mineOrganizer: (r.sharqia_organizer_id?.[0] || 0) === Number(empId),
             myState: mine.get(r.id) || "needsAction",
@@ -5593,6 +5663,12 @@ const actions = {
         const title = String(params.title || "").trim();
         if (!title) throw new Error("اكتب موضوعَ الاجتماع");
         if (!params.start || !params.stop) throw new Error("حدّد الوقت");
+        // ⚠️ ولا اجتماعَ في الماضي: حجزٌ مضى موعدُه لا يحضره أحد.
+        if (new Date(String(params.start).replace(" ", "T") + "Z")
+          < new Date(Date.now() - 5 * 60e3))
+          throw new Error("الموعدُ في الماضي — اختر وقتًا قادمًا");
+        if (String(params.stop) <= String(params.start))
+          throw new Error("النهايةُ قبل البداية");
         const ids = [...new Set([
           ...(Array.isArray(params.employeeIds) ? params.employeeIds : [])
             .map(Number).filter(Boolean),
@@ -5647,6 +5723,94 @@ const actions = {
     );
   },
 
+
+  /** تعديلُ الاجتماع — للمنظِّم وحدَه، ويُخبَر المدعوُّون.
+   *
+   *  ⚠️ ويُعاد فحصُ التعارض عند تغيير الوقت: الوقتُ الجديدُ قد يصطدم
+   *     بما حُجز بعد الأوّل.
+   */
+  async "meeting.update"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const id = Number(params.id);
+        const [ev] = await odoo.searchRead("calendar.event",
+          [["id", "=", id]],
+          ["name", "start", "stop", "sharqia_organizer_id", "partner_ids",
+            "sharqia_mode"], { limit: 1 });
+        if (!ev) throw new Error("الاجتماع غير موجود");
+        if ((ev.sharqia_organizer_id || [0])[0] !== Number(empId))
+          throw new Error("يعدّله من نظّمه");
+        const vals = {};
+        const title = String(params.title || "").trim();
+        if (title) vals.name = title;
+        if (params.note !== undefined) vals.description = params.note || "";
+        const online = params.mode
+          ? String(params.mode) === "online"
+          : ev.sharqia_mode === "online";
+        if (params.mode) vals.sharqia_mode = online ? "online" : "onsite";
+        if (params.place !== undefined && !online) vals.location = params.place || "";
+        if (params.link !== undefined && online) {
+          vals.videocall_location = params.link || "";
+        }
+        let timed = false;
+        if (params.start && params.stop) {
+          if (String(params.stop) <= String(params.start))
+            throw new Error("النهايةُ قبل البداية");
+          if (new Date(String(params.start).replace(" ", "T") + "Z")
+            < new Date(Date.now() - 5 * 60e3))
+            throw new Error("الموعدُ في الماضي — اختر وقتًا قادمًا");
+          const emps = await odoo.searchRead("hr.employee",
+            [["work_contact_id", "in", ev.partner_ids || []]], ["id"],
+            { limit: 100 });
+          const clash = (await schedBusy(emps.map((e) => e.id),
+            params.start, params.stop)).filter((c) => c.eventId !== id);
+          if (clash.length) {
+            const seen = new Set();
+            const lines = [];
+            for (const c of clash) {
+              const k = c.who + "|" + c.eventId;
+              if (seen.has(k)) continue;
+              seen.add(k);
+              lines.push(`${c.who}: «${c.title}» ${fmtOdooRiyadh(c.start)}`
+                + ` – ${fmtOdooRiyadh(c.stop, true)}`);
+            }
+            throw new Error("تعارضٌ في المواعيد — " + lines.join(" · "));
+          }
+          vals.start = params.start;
+          vals.stop = params.stop;
+          timed = true;
+        }
+        if (!Object.keys(vals).length) return { ok: true, nothing: true };
+        await odoo.execKw("calendar.event", "write", [[id], vals], hush(ctx));
+        await odoo.execKw("calendar.event", "sharqia_notify_change",
+          [[id]], hush(ctx));
+        return { ok: true, timed };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  /** إلغاءُ الاجتماع — للمنظِّم، ويُخبَر المدعوُّون، ولا يُحذف السجلّ. */
+  async "meeting.cancel"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const id = Number(params.id);
+        const [ev] = await odoo.searchRead("calendar.event",
+          [["id", "=", id]], ["sharqia_organizer_id"], { limit: 1 });
+        if (!ev) throw new Error("الاجتماع غير موجود");
+        if ((ev.sharqia_organizer_id || [0])[0] !== Number(empId))
+          throw new Error("يُلغيه من نظّمه");
+        await odoo.execKw("calendar.event", "sharqia_cancel",
+          [[id], String(params.reason || "")], hush(ctx));
+        return { ok: true };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
   /** قبولُ الدعوة أو الاعتذار. */
   async "meeting.respond"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
@@ -5871,12 +6035,29 @@ const actions = {
    */
   async "week.load"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
+    // ⚠️ فحصُ المدى **قبل** withOdoo لا داخلَه: هذا الإجراءُ يُعيد فراغًا
+    //    عند أيِّ خطأ (emptyOnError)، فكانت رسالةُ «المدى أطولُ من ثلاثة
+    //    أشهر» تُبتلع ويخرج الجدولُ **فارغًا بلا بيان** — وهو ما شُكي منه.
+    {
+      const a = String(params.from || "").slice(0, 10);
+      const b = String(params.to || "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(a))
+        throw new Error("تاريخُ البداية غير صالح");
+      if (b) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(b))
+          throw new Error("تاريخُ النهاية غير صالح");
+        const span = Math.round(
+          (new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 864e5) + 1;
+        if (span < 1)
+          throw new Error("تاريخُ النهاية قبل البداية — اعكسهما.");
+        if (span > 92)
+          throw new Error("أقصى مدًى ثلاثةُ أشهر — قصِّر المدى.");
+      }
+    }
     return withOdoo(
       async () => {
         if (!empId) return { days: [], late: [], undated: [] };
         const from = String(params.from || "").slice(0, 10);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(from))
-          throw new Error("تاريخُ البداية غير صالح");
         const d0 = new Date(from + "T00:00:00Z");
         // ⚠️ المدى يُطلب: يومٌ واحدٌ أو أسبوعٌ أو ما بين تاريخين. وكان
         //    سبعةً ثابتةً، فلا سبيلَ إلى «يومي» ولا إلى شهرٍ كامل.

@@ -74,6 +74,10 @@ const api = {
     + (from ? "?from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to || from) : "")),
   slots: (b) => call("/api/schedule/meetings/slots", { method: "POST", body: JSON.stringify(b) }),
   createMeeting: (b) => call("/api/schedule/meetings", { method: "POST", body: JSON.stringify(b) }),
+  updateMeeting: (id, b) => call(`/api/schedule/meetings/${id}/update`,
+    { method: "POST", body: JSON.stringify(b) }),
+  cancelMeeting: (id, reason) => call(`/api/schedule/meetings/${id}/cancel`,
+    { method: "POST", body: JSON.stringify({ reason }) }),
   respond: (id, accept) => call(`/api/schedule/meetings/${id}/respond`,
     { method: "POST", body: JSON.stringify({ accept }) }),
 };
@@ -126,6 +130,15 @@ function goBack() {
 
 // ⚠️ ثلاثُ أولويّاتٍ بألوانٍ تُقرأ من بعيد: عاجلةٌ حمراءُ ومهمّةٌ
 //    برتقاليّةٌ وعاديّةٌ رماديّة — بطلب الإدارة.
+
+/** نصٌّ آمنٌ للعرض: ما كان فارغًا أو حرفَ «null» يصير "".
+ *  ⚠️ دفاعيٌّ: شُوهدت «null» في التفاصيل ولم أُعِد إنتاجَ موضعها —
+ *     فيُحرَس المَخرجُ نفسُه بدل تتبّع كلِّ مدخل. */
+const txt = (v) => {
+  const s = (v === null || v === undefined || v === false) ? "" : String(v);
+  const k = s.trim().toLowerCase();
+  return (k === "null" || k === "undefined" || k === "false") ? "" : s;
+};
 const PRIO_AR = { 0: "عادية", 1: "مهمة", 2: "عاجلة" };
 const prioBadge = (p) => {
   const k = String(p == null ? "0" : p);
@@ -137,7 +150,10 @@ const STAGE_AR = { inbox: "وارد", new: "جديدة", received: "مستلمة
 
 function toast(msg, bad = false) {
   const t = el("div", { class: bad ? "err" : "card",
-    style: "position:fixed;inset-inline:16px;bottom:18px;z-index:60;text-align:center" }, msg);
+    // ⚠️ فوق الأزرارِ لا عليها: كانت الرسالةُ أسفلَ الشاشة فتغطّي أزرارَ
+    //    الورقة، فيقرأ المستخدمُ خطأَه ولا يصل إلى زرِّ تصحيحه.
+    style: "position:fixed;inset-inline:16px;bottom:96px;z-index:60;"
+      + "text-align:center;box-shadow:var(--sh-2)" }, msg);
   document.body.append(t);
   setTimeout(() => t.remove(), 2600);
 }
@@ -195,7 +211,7 @@ function taskCard(t, onAct, refresh) {
       ? el("div", { class: "err", style: "margin-top:8px" }, "أُرجعت: " + t.returnNote)
       : null,
     t.description
-      ? el("div", { class: "meta", style: "margin-top:6px", html: t.description })
+      ? el("div", { class: "meta", style: "margin-top:6px", html: txt(t.description) })
       : null,
     acts.length
       ? el("div", { class: "row", style: "margin-top:10px" },
@@ -249,15 +265,19 @@ const norm = (s) => String(s || "")
   .toLowerCase();
 
 // ⚠️ خمسُ حالاتٍ في المرشِّح والنظامُ فيه ستّ: «مستلمة» تُطوى في
-//    «جديدة»، و«بانتظار الاعتماد» في «قيد التنفيذ» — بقرار الإدارة.
+//    «جديدة». و«بانتظار الاعتماد» صارت شريطًا قائمًا بذاته بعد التجربة.
 //    والحالةُ الحقيقيّةُ تبقى مكتوبةً على شارة الكرت، فلا يضيع التمييز.
 const FOLD = {
   new: ["new", "received"],
-  doing: ["doing", "review"],
+  doing: ["doing"],
+  review: ["review"],
   done: ["done"],
 };
+// ⚠️ و«بانتظار الاعتماد» شريطٌ قائمٌ بذاته: هو الطابورُ الذي ينتظر
+//    قرارَ المنشئ، ومن لم يره لم يعرف ما عليه أن يبتّ فيه.
 const TASK_FILTERS = [["", "الكل"], ["new", "جديدة"],
-  ["doing", "قيد التنفيذ"], ["done", "منتهية"], ["late", "متأخرة"]];
+  ["doing", "قيد التنفيذ"], ["review", "بانتظار الاعتماد"],
+  ["done", "منتهية"], ["late", "متأخرة"]];
 
 function matchTask(t, f) {
   if (f.stage === "late") {
@@ -440,7 +460,7 @@ function openTask(id, refresh) {
         style: "padding:9px 11px;margin:6px 0" },
         el("div", { class: "meta", style: "font-weight:700" },
           c.who + " · " + fmtWhen(c.at)),
-        el("div", {}, c.text)))
+        el("div", {}, txt(c.text))))
       : [el("div", { class: "meta" }, "لا ردودَ بعد.")]));
 
     // ── المرفقات ──
@@ -512,7 +532,7 @@ function openTask(id, refresh) {
           el("div", { class: "grow meta", style: "font-weight:700" },
             (r.who || "—") + " · " + fmtWhen(r.at)),
           r.final ? el("span", { class: "meta" }, "ختامي") : null),
-        el("div", { style: "margin-top:4px" }, r.text || ""),
+        el("div", { style: "margin-top:4px" }, txt(r.text)),
         (r.files || []).length
           ? el("div", { class: "row", style: "gap:6px;margin-top:6px" },
             ...r.files.map((f) => el("a", { class: "slot",
@@ -541,7 +561,7 @@ function openTask(id, refresh) {
       el("label", {}, "المطلوب"),
       t.description
         ? el("div", { class: "card", style: "margin:4px 0 2px;padding:11px 13px",
-          html: t.description })
+          html: txt(t.description) })
         : el("div", { class: "meta" }, "لا تفصيلَ مكتوبًا — اسأل في الردود أدناه."),
       // ⚠️ ولا تظهر النسبةُ قبل «ابدأ العمل»: من لم يبدأ لا نسبةَ له،
       //    ومِزلاقٌ معروضٌ على مهمّةٍ لم تُبدأ دعوةٌ إلى رقمٍ بلا معنى.
@@ -666,21 +686,21 @@ function pickSheet(title, team, onPick) {
   document.body.append(sheet);
 }
 
-function returnSheet(onSend) {
+function returnSheet(onSend, title, hint, btn) {
   let box;
   const sheet = el("div", { class: "sheet", onclick: (e) => {
     if (e.target === sheet) sheet.remove();
   } },
     el("div", {},
-      el("h3", { style: "margin:4px 0 2px" }, "سببُ الإرجاع"),
-      el("div", { class: "meta" }, "يصل الموظّفَ إشعارًا بنصّه."),
+      el("h3", { style: "margin:4px 0 2px" }, title || "سببُ الإرجاع"),
+      el("div", { class: "meta" }, hint || "يصل الموظّفَ إشعارًا بنصّه."),
       (box = el("textarea", { placeholder: "ما الذي ينقص؟" })),
       el("div", { class: "row", style: "margin-top:10px" },
         el("button", { class: "btn pri grow", onclick: () => {
           const v = box.value.trim();
           if (!v) { toast("اكتب السبب", true); return; }
           sheet.remove(); onSend(v);
-        } }, "أرجِع"),
+        } }, btn || "أرجِع"),
         el("button", { class: "btn", onclick: () => sheet.remove() }, "إلغاء"))));
   document.body.append(sheet);
   setTimeout(() => box.focus(), 50);
@@ -825,13 +845,25 @@ function newTaskSheet(refresh) {
       box.replaceChildren(el("div", { class: "empty" }, "لا أقسامَ أخرى."));
       return;
     }
-    otherSel = el("select", {}, ...list.map((d) =>
-      el("option", { value: String(d.id) },
-        d.name + (d.manager ? " — " + d.manager : " — بلا مدير"))));
+    // ⚠️ ولا قسمَ مختارًا سلفًا: كان أوّلُ قسمٍ في القائمة يُختار بنفسه،
+    //    فيضغط المرسِلُ «أنشئ» فتذهب إلى قسمٍ لم يقصده.
+    // ⚠️ والقسمُ بلا مديرٍ معطَّل: لا أحدَ يوزّع وارِدَه، فإرسالُ طلبٍ
+    //    إليه إضاعةٌ له. (وعلاجُه تعيينُ مديرٍ لا فتحُ الباب.)
+    otherSel = el("select", {},
+      el("option", { value: "0" }, "— اختر القسم —"),
+      ...list.map((d) => el("option", {
+        value: String(d.id),
+        ...(d.manager ? {} : { disabled: "disabled" }),
+      }, d.name + (d.manager ? " — " + d.manager : " — بلا مدير (معطّل)"))));
     const note = el("div", { class: "meta", style: "margin-top:4px" }, "");
     const whoBox = el("div", {});
     const say = async () => {
       const d = list.find((x) => x.id === Number(otherSel.value));
+      if (!Number(otherSel.value)) {
+        note.className = "meta";
+        note.textContent = "اختر القسمَ أوّلًا.";
+        otherWho = null; whoBox.replaceChildren(); return;
+      }
       if (d && d.manager) {
         note.className = "meta";
         note.textContent = `تصل القسم، ويُشعَر ${d.manager}.`;
@@ -878,7 +910,8 @@ function newTaskSheet(refresh) {
       //    فلا يُلزَم بها من لا يحتاجها.
       el("label", {}, "تاريخ التسليم (إجباري)"),
       el("div", { class: "row", style: "gap:6px" },
-        el("div", { class: "grow" }, (due = el("input", { type: "date" }))),
+        el("div", { class: "grow" }, (due = el("input", { type: "date",
+          min: todayISO() }))),
         el("div", { class: "grow" },
           (dueTime = el("input", { type: "time",
             title: "وقتٌ اختياريّ" })))),
@@ -895,7 +928,9 @@ function newTaskSheet(refresh) {
           const title = name.value.trim();
           if (!title) { toast("اكتب العنوان", true); return; }
           if (!due.value) { toast("حدّد تاريخ التسليم", true); return; }
-          if (mode === "other" && !otherSel) { toast("اختر القسم", true); return; }
+          if (mode === "other" && (!otherSel || !Number(otherSel.value))) {
+            toast("اختر القسم", true); return;
+          }
           ev.target.disabled = true;
           try {
             const body = {
@@ -1156,7 +1191,7 @@ function openMeeting(m, refresh) {
           m.organizer ? "المنظّم: " + m.organizer : ""]
           .filter(Boolean).join(" · ")),
       m.note ? el("div", { class: "card", style: "margin:8px 0;padding:11px 13px" },
-        m.note) : null,
+        txt(m.note)) : null,
       m.mode === "online" && m.link
         ? el("a", { class: "btn pri", style: "margin-top:8px;display:block;"
           + "text-align:center", href: m.link, target: "_blank",
@@ -1171,25 +1206,114 @@ function openMeeting(m, refresh) {
             : a.state === "declined" ? " late" : "") },
           RESP_SHORT[a.state] || "بانتظار")))
         : [el("div", { class: "meta" }, "لا حضور.")])),
-      el("div", { class: "row", style: "margin-top:12px" },
-        pending ? el("button", { class: "btn pri grow", onclick: async () => {
-          try {
-            await api.respond(m.id, true); toast("قبلتَ الدعوة");
-            sheet.remove(); if (refresh) refresh();
-          } catch (e) { toast(e.message, true); }
-        } }, "قبول") : null,
-        pending ? el("button", { class: "btn danger", onclick: async () => {
-          try {
-            await api.respond(m.id, false); toast("اعتذرتَ");
-            sheet.remove(); if (refresh) refresh();
-          } catch (e) { toast(e.message, true); }
-        } }, "اعتذار") : null,
+      // ⚠️ والردُّ يُغيَّر لا يُقفل: من قبِل ثمّ طرأ عليه ما يمنعه يعتذر،
+      //    ومن اعتذر ثمّ فرغ يقبل. فالزرّانِ ظاهرانِ دائمًا لغير المنظِّم،
+      //    والمختارُ منهما مميَّز.
+      !m.mineOrganizer ? el("div", { class: "row", style: "margin-top:12px" },
+        el("button", { class: "btn" + (mine === "accepted" ? " pri" : ""),
+          onclick: async () => {
+            try {
+              await api.respond(m.id, true); toast("قبلتَ الدعوة");
+              sheet.remove(); if (refresh) refresh();
+            } catch (e) { toast(e.message, true); }
+          } }, mine === "accepted" ? "✓ قبلتَ" : "قبول"),
+        el("button", { class: "btn" + (mine === "declined" ? " danger" : ""),
+          onclick: async () => {
+            try {
+              await api.respond(m.id, false); toast("اعتذرتَ");
+              sheet.remove(); if (refresh) refresh();
+            } catch (e) { toast(e.message, true); }
+          } }, mine === "declined" ? "✓ اعتذرتَ" : "اعتذار")) : null,
+      // ⚠️ وللمنظِّم أن يُعدّل أو يُلغي: كان الاجتماعُ يُحجز ولا يُمسّ،
+      //    فإن تبدّل الموعدُ حُجز ثانٍ وبقي الأوّلُ يشغل الناس.
+      m.mineOrganizer ? el("div", { class: "row", style: "margin-top:12px" },
+        el("button", { class: "btn", onclick: () => {
+          sheet.remove(); editMeetingSheet(m, refresh);
+        } }, "تعديل"),
+        el("button", { class: "btn danger", onclick: () => {
+          returnSheet(async (why) => {
+            try {
+              await api.cancelMeeting(m.id, why);
+              toast("أُلغي الاجتماع"); sheet.remove(); if (refresh) refresh();
+            } catch (e) { toast(e.message, true); }
+          }, "إلغاءُ الاجتماع", "لماذا أُلغي؟ يصل المدعوّين.", "ألغِ الاجتماع");
+        } }, "إلغاء الاجتماع")) : null,
+      el("div", { class: "row", style: "margin-top:8px" },
         el("button", { class: "btn grow", onclick: () => sheet.remove() },
           "إغلاق"))));
   document.body.append(sheet);
 }
 
 /** يفتح اجتماعًا برقمه — لنقرِ الإشعار. */
+
+// ⚠️ تعديلُ الاجتماع لا إعادةُ حجزه: كان المنظِّمُ إن تبدّل موعدُه حجز
+//    ثانيًا وبقي الأوّلُ يشغل الناسَ في تقاويمهم.
+function editMeetingSheet(m, refresh) {
+  let title, note, day, from, to, modeSel, place, link;
+  const placeBox = el("div", {});
+  const online0 = m.mode === "online";
+  const drawPlace = () => {
+    const online = modeSel.value === "online";
+    placeBox.replaceChildren(
+      el("label", {}, online ? "الرابط" : "المكان"),
+      online
+        ? (link = el("input", { value: m.link || "", placeholder: "https://…" }))
+        : (place = el("input", { value: m.place || "",
+          placeholder: "قاعةُ الاجتماعات" })));
+    if (online) place = null; else link = null;
+  };
+  const sheet = el("div", { class: "sheet", onclick: (e) => {
+    if (e.target === sheet) sheet.remove();
+  } },
+    el("div", {},
+      el("h3", { style: "margin:4px 0 8px" }, "تعديلُ الاجتماع"),
+      el("label", {}, "الموضوع"),
+      (title = el("input", { value: m.title || "" })),
+      el("label", {}, "التفاصيل"),
+      (note = el("textarea", { style: "min-height:58px" }, m.note || "")),
+      el("label", {}, "التاريخ"),
+      (day = el("input", { type: "date", min: todayISO(),
+        value: isoOf(m.start) })),
+      el("div", { class: "row", style: "gap:6px" },
+        el("div", { class: "grow" }, el("label", {}, "من"),
+          (from = el("input", { type: "time", value: hhmmOf(m.start) }))),
+        el("div", { class: "grow" }, el("label", {}, "إلى"),
+          (to = el("input", { type: "time", value: hhmmOf(m.stop) })))),
+      el("label", {}, "النوع"),
+      (modeSel = el("select", { onchange: () => drawPlace() },
+        el("option", { value: "onsite", ...(online0 ? {} : { selected: "selected" }) }, "حضوري"),
+        el("option", { value: "online", ...(online0 ? { selected: "selected" } : {}) }, "أونلاين"))),
+      placeBox,
+      el("div", { class: "row", style: "margin-top:12px" },
+        el("button", { class: "btn pri grow", onclick: async (ev) => {
+          if (!title.value.trim()) { toast("اكتب الموضوع", true); return; }
+          if (!day.value || !from.value || !to.value) {
+            toast("حدّد التاريخَ والوقت", true); return;
+          }
+          if (to.value <= from.value) { toast("النهاية قبل البداية", true); return; }
+          ev.target.disabled = true;
+          try {
+            await api.updateMeeting(m.id, {
+              title: title.value.trim(),
+              note: note.value.trim(),
+              start: riyadhToOdoo(day.value, from.value),
+              stop: riyadhToOdoo(day.value, to.value),
+              mode: modeSel.value,
+              place: place ? place.value.trim() : "",
+              link: link ? link.value.trim() : "",
+            });
+            sheet.remove(); toast("حُفظ التعديل"); refresh();
+          } catch (e) { ev.target.disabled = false; toast(e.message, true); }
+        } }, "احفظ"),
+        el("button", { class: "btn", onclick: () => sheet.remove() }, "إلغاء"))));
+  document.body.append(sheet);
+  drawPlace();
+}
+
+/** تاريخُ اليوم بتوقيت الرياض — حدٌّ أدنى لحقول التاريخ. */
+function todayISO() {
+  return new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
+}
 async function openMeetingById(id) {
   try {
     const recs = (await api.meetings()).records || [];
@@ -1325,7 +1449,8 @@ function bookSheet(refresh) {
       (note = el("textarea", { style: "min-height:58px",
         placeholder: "ما الذي سيُناقَش؟" })),
       el("label", {}, "التاريخ"),
-      (day = el("input", { type: "date", onchange: () => drawBusy() })),
+      (day = el("input", { type: "date", min: todayISO(),
+        onchange: () => drawBusy() })),
       el("div", { class: "row", style: "gap:6px" },
         el("div", { class: "grow" }, el("label", {}, "من"),
           (from = el("input", { type: "time", value: "09:00" }))),

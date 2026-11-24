@@ -182,6 +182,21 @@ router.post("/schedule/meetings", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.post("/schedule/meetings/:id/update", async (req, res, next) => {
+  try {
+    const { data } = await runAction("meeting.update",
+      { ...(req.body || {}), id: req.params.id }, { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
+router.post("/schedule/meetings/:id/cancel", async (req, res, next) => {
+  try {
+    const { data } = await runAction("meeting.cancel",
+      { id: req.params.id, reason: (req.body || {}).reason },
+      { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
 router.post("/schedule/meetings/:id/respond", async (req, res, next) => {
   try {
     const { data } = await runAction("meeting.respond",

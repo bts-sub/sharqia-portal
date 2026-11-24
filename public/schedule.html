@@ -146,7 +146,11 @@
     display: grid; align-items: end; }
   .sheet > div { background: var(--bg); border-radius: 18px 18px 0 0;
     padding: 16px 16px 28px; max-height: 88vh; overflow: auto;
-    max-width: 720px; margin: 0 auto; width: 100%; }
+    max-width: var(--col); margin: 0 auto; width: 100%;
+    overscroll-behavior: contain; }
+  /* ⚠️ شريطُ تمريرٍ واحدٌ في الورقة: كان الجسمُ يُمرَّر خلفَها فيظهر
+     شريطان متجاوران ويُسحب الخطأُ منهما. */
+  body:has(.sheet) { overflow: hidden; }
   .slot { border: 1px solid var(--line); background: var(--card); border-radius: 10px;
     padding: 8px 10px; font: inherit; font-weight: 600; cursor: pointer; }
   .slot[aria-pressed="true"] { background: var(--pick-bg); color: var(--pick-fg); }
@@ -193,6 +197,6 @@
 <div class="wrap">
   <div id="sq-body"></div>
 </div>
-<script src="/schedule.js?v=11" type="module"></script>
+<script src="/schedule.js?v=12" type="module"></script>
 </body>
 </html>
