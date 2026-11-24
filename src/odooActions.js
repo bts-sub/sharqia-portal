@@ -1862,6 +1862,16 @@ function schedMsgText(body) {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+/** وصفُ الاجتماع نصًّا بلا ذيل أودو.
+ *  ⚠️ أودو يُلحق بالوصف «تم تنظيمه من قِبَل <المستخدم> <بريد> <جوّال>»،
+ *     والمستخدمُ هنا حسابُ الخدمة — فيقرأ المدعوُّ بريدًا ورقمًا لا
+ *     يعنيانه. والمنظِّمُ الحقيقيُّ يُعرض من حقله المستقلّ. */
+function schedMeetNote(html) {
+  const s = schedMsgText(html);
+  const cut = s.search(/تم تنظيمه من ق[ِب]?بَ?ل|Organizer\s*:/i);
+  return (cut > -1 ? s.slice(0, cut) : s).trim();
+}
 /** شكلُ المهمّة كما يقرؤها التطبيق. */
 function schedTaskOut(r, stages) {
   const key = stages.byId.get(r.stage_id?.[0]) || "";
@@ -5587,7 +5597,10 @@ const actions = {
             mode: r.sharqia_mode || "onsite",
             place: r.location || "",
             link: r.videocall_location || "",
-            note: schedMsgText(r.description),
+            // ⚠️ ويُقطع ذيلُ أودو: يُلحق بالوصف سطرًا «تم تنظيمه من
+            //    قِبَل …» فيه اسمُ حسابِ الخدمة وبريدُه وجوّالُه — فكان
+            //    المدعوُّ يقرأ في وصف الاجتماع رقمَ هاتفٍ لا يعرفه.
+            note: schedMeetNote(r.description),
             // ⚠️ المنظِّمُ من حقل الموظّف: user_id حسابُ الخدمة في كلِّ
             //    ما يُحجز من التطبيق، فكان يُقرأ اسمًا لا يعرفه أحد.
             // ⚠️ المنظِّمُ من بطاقة الموظف: user_id حسابُ الخدمة، واسمُه
@@ -5917,17 +5930,12 @@ const actions = {
         const final = !!params.final;
         if (final && p < 100)
           throw new Error("التقريرُ الختاميُّ بنسبة مئةٍ كاملة");
-        // ⚠️ والمهمّةُ تمشي مع التقرير: من كتب تقريرًا فقد قرأها وعمل،
-        //    ولا معنى لأن يُطالَب بزرِّ «استلمت» بعدَه. ولولا هذا بقيت
-        //    في «مستلمة» فيُردُّ الرفعُ للاعتماد بـ«لا يُنقل من هذه
-        //    المرحلة إلى تلك» — وهو ما وقع في الفحص.
+        // ⚠️ و«مستلمة» تمضي إلى «قيد التنفيذ» مع أوّل تقرير — ولا تُستلم
+        //    المهمّةُ تلقائيًّا: الاستلامُ خبرٌ لمن أسندها، فلو أُخذ من
+        //    أوّل تحديثٍ لما عرف متى قُرئت. (بطلب الإدارة بعد التجربة.)
         const stg = await schedStages();
         const cur = stg.byId.get(task.stage_id && task.stage_id[0]);
-        if (cur === "new") {
-          await odoo.execKw("project.task", "action_sharqia_move",
-            [[task.id], "sharqia_portal.task_stage_received"], hush(ctx));
-        }
-        if (cur === "new" || cur === "received") {
+        if (cur === "received") {
           await odoo.execKw("project.task", "action_sharqia_move",
             [[task.id], "sharqia_portal.task_stage_doing"], hush(ctx));
         }
