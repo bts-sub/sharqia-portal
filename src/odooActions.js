@@ -1727,7 +1727,10 @@ async function schedBusy(empIds, from, to) {
     ["name", "start", "stop", "partner_ids", "sharqia_mode", "location"],
     { limit: 200, order: "start" });
   const out = [];
-  for (const ev of evs) {
+  // ⚠️ والإجازاتُ ليست حجزًا: أودو يُنشئ لكلِّ إجازةٍ حدثَ تقويم، فكانت
+  //    تظهر في «المحجوز» باسمها الإنجليزيّ عند من يحجز اجتماعًا.
+  const real = await schedNotLeaves(evs);
+  for (const ev of real) {
     for (const pid of ev.partner_ids || []) {
       if (!byPartner.has(pid)) continue;
       out.push({
@@ -1817,7 +1820,7 @@ async function schedTaskVisible(id, empId, role) {
       "sharqia_department_id", "sharqia_assignee_id", "sharqia_progress",
       "sharqia_requester_id",
       "sharqia_return_note", "sharqia_assigned_on", "sharqia_priority",
-      "sharqia_plan_start", "sharqia_plan_stop"], { limit: 1 });
+      "sharqia_plan_start", "sharqia_plan_stop", "sharqia_is_late"], { limit: 1 });
   if (!t) throw new Error("المهمّة غير موجودة");
   const mine = (t.sharqia_assignee_id || [0])[0] === Number(empId);
   if (mine) return { task: t, mine: true, manages: false };
@@ -1892,7 +1895,10 @@ function schedTaskOut(r, stages) {
     assignedOn: r.sharqia_assigned_on || null,
     requester: r.sharqia_requester_id?.[1] || "",
     progress: Number(r.sharqia_progress || 0),
-    late: !!(due && key !== "done" && new Date(due.replace(" ", "T") + "Z") < new Date()),
+    // ⚠️ التأخّرُ من الخادم: كان يُحسب هنا «موعدٌ مضى ولم تنتهِ» فيُوسَم
+    //    به ما رُفع للاعتماد — وصاحبُه سلّم — ويظهر في أسابيعَ قادمة.
+    isLate: !!r.sharqia_is_late,
+    late: !!r.sharqia_is_late,
   };
 }
 const actions = {
@@ -5168,7 +5174,7 @@ const actions = {
           "priority", "sharqia_department_id", "sharqia_return_note",
           "sharqia_assigned_on", "sharqia_assignee_id", "sharqia_progress",
           "sharqia_requester_id", "sharqia_priority",
-          "sharqia_plan_start", "sharqia_plan_stop"];
+          "sharqia_plan_start", "sharqia_plan_stop", "sharqia_is_late"];
         const recs = await odoo.searchRead("project.task",
           [["sharqia_department_id", "!=", false], ["sharqia_assignee_id", "=", empId]],
           cols, { limit: 200, order: "date_deadline asc, id desc" });
@@ -5206,7 +5212,7 @@ const actions = {
           ["name", "description", "stage_id", "date_deadline", "priority",
             "sharqia_department_id", "sharqia_assignee_id", "sharqia_progress",
             "sharqia_requester_id", "sharqia_return_note", "sharqia_priority",
-            "sharqia_plan_start", "sharqia_plan_stop",
+            "sharqia_plan_start", "sharqia_plan_stop", "sharqia_is_late",
             "sharqia_assigned_on"],
           { limit: 400, order: "date_deadline asc, id desc" });
         return {
@@ -5795,9 +5801,18 @@ const actions = {
           timed = true;
         }
         if (!Object.keys(vals).length) return { ok: true, nothing: true };
+        // ⚠️ يُقرأ الوقتُ القديمُ قبل الكتابة: الإشعارُ يقول «القديم ←
+        //    الجديد»، ولا سبيلَ إلى القديم بعد أن يُكتب فوقه.
+        let was = "";
+        if (timed) {
+          try {
+            was = await odoo.execKw("calendar.event", "sharqia_when_where",
+              [[id]], hush(ctx));
+          } catch (e) { was = ""; }
+        }
         await odoo.execKw("calendar.event", "write", [[id], vals], hush(ctx));
         await odoo.execKw("calendar.event", "sharqia_notify_change",
-          [[id]], hush(ctx));
+          [[id], was || false], hush(ctx));
         return { ok: true, timed };
       },
       async () => ({ ok: false }),
@@ -5816,8 +5831,10 @@ const actions = {
         if (!ev) throw new Error("الاجتماع غير موجود");
         if ((ev.sharqia_organizer_id || [0])[0] !== Number(empId))
           throw new Error("يُلغيه من نظّمه");
+        const why = String(params.reason || "").trim();
+        if (!why) throw new Error("اكتب سببَ الإلغاء");
         await odoo.execKw("calendar.event", "sharqia_cancel",
-          [[id], String(params.reason || "")], hush(ctx));
+          [[id], why], hush(ctx));
         return { ok: true };
       },
       async () => ({ ok: false }),
@@ -5967,21 +5984,33 @@ const actions = {
       async () => {
         const { task, mine } = await schedTaskVisible(
           params.id, empId, ctx?.user?.role);
-        if (!mine) throw new Error("وقتَ التنفيذ يحدّده صاحبُ المهمّة");
-        const s = String(params.start || "").trim();
-        const e = String(params.stop || "").trim();
-        if (!s && !e) {
+        if (!mine) throw new Error("تاريخَ التنفيذ يحدّده صاحبُ المهمّة");
+        // ⚠️ تاريخٌ بلا ساعات: المهمّةُ ليست اجتماعًا، ومن حدّد يومًا
+        //    كفاه. ويُخزَّن ظهرًا بتوقيت الرياض (٠٩:٠٠ UTC) ليقع اليومُ
+        //    نفسُه في التوقيتين — ولو خُزّن منتصفَ الليل لوقع في UTC
+        //    في اليوم السابق وظهر في جدولِ أمسِه.
+        const day = String(params.start || "").trim().slice(0, 10);
+        if (!day) {
           await odoo.execKw("project.task", "write",
             [[task.id], { sharqia_plan_start: false,
               sharqia_plan_stop: false }], hush(ctx));
           return { ok: true, cleared: true };
         }
-        if (!s || !e) throw new Error("حدّد الوقتَ من وإلى");
-        if (e <= s) throw new Error("النهايةُ قبل البداية");
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day))
+          throw new Error("تاريخٌ غير صالح");
+        if (day < riyadhDay())
+          throw new Error("تاريخُ التنفيذ في الماضي");
+        // ⚠️ ولا يتجاوز موعدَ التسليم: من خطّط لعملها بعد تسليمها فقد
+        //    خطّط لتأخّرها.
+        const due = task.date_deadline ? riyadhDay(task.date_deadline) : "";
+        if (due && day > due)
+          throw new Error(`لا يتجاوز موعدَ التسليم (${due})`);
+        const s = day + " 09:00:00";
+        const e = day + " 10:00:00";
         await odoo.execKw("project.task", "write",
           [[task.id], { sharqia_plan_start: s, sharqia_plan_stop: e }],
           hush(ctx));
-        return { ok: true, start: s, stop: e };
+        return { ok: true, day };
       },
       async () => ({ ok: false }),
       { forceLiveErrors: true }
@@ -6002,17 +6031,20 @@ const actions = {
         if (!text) throw new Error("اكتب التعليق");
         // ⚠️ بلا وسمِ HTML: أودو ١٩ يُفلّت الجسمَ الآتيَ عبر RPC، فالوسمُ
         //    يظهر للقارئ حروفًا لا خطًّا عريضًا — أُثبت على القاعدة الحيّة.
-        // ⚠️ والاسمُ يُقرأ من بطاقة الموظف لا من الجلسة: أودو يُنادى بحسابٍ
-        //    خدميٍّ واحدٍ فمؤلّفُ كلِّ التعليقات هو، ولولا الاسمُ في النصّ
-        //    لما عُرف قائلُها. و«name» ليس في رِمز الجلسة أصلًا.
-        let who = String(ctx?.user?.login || "");
+        // ⚠️ والكاتبُ يُنسَب إلى بطاقة تواصلِ الموظف (author_id) لا إلى
+        //    الحساب الخدميّ: كان الشاترُ يُظهر «Sara» على كلِّ تعليقٍ
+        //    يكتبه الناس — فيُقرأ في أودو أنّ حسابَ الربط هو المتكلّم.
+        //    (وكان الاسمُ يُكتب في متن النصّ تحايلًا، فيُغني عنه هذا.)
+        let author = 0;
         if (empId) {
           const [me] = await odoo.searchRead("hr.employee",
-            [["id", "=", Number(empId)]], ["name"], { limit: 1 });
-          if (me && me.name) who = me.name;
+            [["id", "=", Number(empId)]], ["name", "work_contact_id"],
+            { limit: 1 });
+          if (me?.work_contact_id?.[0]) author = me.work_contact_id[0];
         }
         await odoo.execKw("project.task", "message_post", [[task.id]], {
-          body: who ? `${who}: ${text}` : text,
+          ...(author ? { author_id: author } : {}),
+          body: text,
           message_type: "comment", subtype_xmlid: "mail.mt_comment",
         });
         // ⚠️ ويُشعَر الطرفُ الآخر: التعليقُ سؤالٌ غالبًا، ومن لم يُشعَر
@@ -6092,7 +6124,7 @@ const actions = {
           ["name", "stage_id", "date_deadline", "priority",
             "sharqia_department_id", "sharqia_progress",
             "sharqia_return_note", "sharqia_assigned_on", "sharqia_priority",
-      "sharqia_plan_start", "sharqia_plan_stop"],
+      "sharqia_plan_start", "sharqia_plan_stop", "sharqia_is_late"],
           { limit: 400, order: "date_deadline" });
 
         const pid = await schedPartnerOf(empId);
@@ -6131,7 +6163,7 @@ const actions = {
           ["name", "stage_id", "date_deadline", "priority",
             "sharqia_department_id", "sharqia_progress",
             "sharqia_return_note", "sharqia_assigned_on", "sharqia_priority",
-      "sharqia_plan_start", "sharqia_plan_stop"],
+      "sharqia_plan_start", "sharqia_plan_stop", "sharqia_is_late"],
           { limit: 200, order: "id desc" }))
           .filter((t) => stages.byId.get(t.stage_id && t.stage_id[0]) !== "done")
           .map((t) => ({ ...schedTaskOut(t, stages),

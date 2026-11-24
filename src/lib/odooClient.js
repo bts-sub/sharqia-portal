@@ -50,8 +50,20 @@ async function rpcTo(url, service, method, args, timeoutMs) {
   }
   const data = await res.json().catch(() => ({}));
   if (data.error) {
-    const msg = data.error?.data?.message || data.error?.message || "خطأ من Odoo";
-    throw new Error(msg);
+    // ⚠️ رسالةُ أودو تُنقّى قبل أن تُعرض: قد تأتي أثرًا كاملًا
+    //    (traceback) ينتهي بـ«odoo.exceptions.ValidationError: النصّ»،
+    //    فكان المستخدمُ يرى صفحاتِ بايثون مكانَ سببٍ يفهمه.
+    let msg = data.error?.data?.message || data.error?.message || "خطأ من Odoo";
+    msg = String(msg).trim();
+    const m = msg.match(/(?:ValidationError|UserError|AccessError|Warning)\s*:\s*([\s\S]+)$/);
+    if (m) msg = m[1].trim();
+    if (/Traceback|File "|odoo\.(exceptions|tools)/.test(msg)) {
+      const lines = msg.split("\n").map((s) => s.trim()).filter(Boolean);
+      const last = lines[lines.length - 1] || "";
+      msg = /[؀-ۿ]/.test(last) ? last
+        : "تعذّر تنفيذُ العملية — راجع مسؤولَ النظام";
+    }
+    throw new Error(msg.split("\n")[0].slice(0, 300));
   }
   return data.result;
 }
