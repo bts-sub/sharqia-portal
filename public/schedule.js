@@ -30,6 +30,16 @@ const el = (t, a = {}, ...kids) => {
   return n;
 };
 
+// ⚠️ replaceChildren يُحوّل null إلى نصّ «null» — بخلاف el التي تتخطّاه.
+//    وهذا مصدرُ «null» التي ظهرت في تفاصيل المهمّة ثلاثَ مرّات: كلُّ
+//    عنصرٍ شرطيٍّ ينتهي بـ`: null` كان يُطبَع حرفيًّا. فلا يُنادى
+//    replaceChildren مباشرةً بعد اليوم — بل هذه.
+function setKids(host, ...kids) {
+  host.replaceChildren(...kids.flat(Infinity)
+    .filter((c) => c !== null && c !== undefined && c !== false && c !== ""));
+  return host;
+}
+
 // ── نداءُ الخادم ───────────────────────────────────────────────────────
 async function call(path, opts = {}) {
   const res = await fetch(path, {
@@ -68,6 +78,8 @@ const api = {
     { method: "POST", body: JSON.stringify({ employeeId }) }),
   move: (id, to) => call(`/api/schedule/tasks/${id}/move`,
     { method: "POST", body: JSON.stringify({ to }) }),
+  cancelTask: (id, reason) => call(`/api/schedule/tasks/${id}/cancel`,
+    { method: "POST", body: JSON.stringify({ reason }) }),
   decide: (id, b) => call(`/api/schedule/tasks/${id}/decide`,
     { method: "POST", body: JSON.stringify(b) }),
   meetings: (from, to) => call("/api/schedule/meetings"
@@ -148,14 +160,23 @@ const prioBadge = (p) => {
 const STAGE_AR = { inbox: "وارد", new: "جديدة", received: "مستلمة",
   doing: "قيد التنفيذ", review: "بانتظار الاعتماد", done: "مكتملة" };
 
+// ⚠️ رسالةٌ واحدةٌ في وسط الشاشة: كانت أسفلَها فتغطّي الأزرار، وكانت
+//    تتراكم رسائلُ بعضها فوق بعضٍ فتبقى على الشاشة كأنّها لا تذهب —
+//    فتُمحى سابقتُها قبل عرضِ لاحقتها، ولها مؤقّتٌ واحد.
+let toastEl = null, toastTimer = null;
 function toast(msg, bad = false) {
-  const t = el("div", { class: bad ? "err" : "card",
-    // ⚠️ فوق الأزرارِ لا عليها: كانت الرسالةُ أسفلَ الشاشة فتغطّي أزرارَ
-    //    الورقة، فيقرأ المستخدمُ خطأَه ولا يصل إلى زرِّ تصحيحه.
-    style: "position:fixed;inset-inline:16px;bottom:96px;z-index:60;"
-      + "text-align:center;box-shadow:var(--sh-2)" }, msg);
-  document.body.append(t);
-  setTimeout(() => t.remove(), 2600);
+  clearTimeout(toastTimer);
+  if (toastEl) toastEl.remove();
+  toastEl = el("div", { class: bad ? "err" : "card",
+    style: "position:fixed;inset-inline:24px;top:50%;z-index:60;"
+      + "transform:translateY(-50%);text-align:center;font-weight:700;"
+      + "padding:14px 16px;max-width:360px;margin:0 auto;"
+      + "box-shadow:var(--sh-2)" }, msg);
+  document.body.append(toastEl);
+  toastTimer = setTimeout(() => {
+    if (toastEl) toastEl.remove();
+    toastEl = null;
+  }, 2200);
 }
 
 // ══ مهامّي ════════════════════════════════════════════════════════════
@@ -302,7 +323,7 @@ function filterBar(opts) {
   const q = el("input", { type: "search", placeholder: "ابحث في العنوان أو التفصيل…",
     oninput: (e) => { f.q = norm(e.target.value); fire(); } });
   const chips = el("div", { class: "chips" });
-  const drawChips = () => chips.replaceChildren(
+  const drawChips = () => setKids(chips, 
     ...(opts.filters || TASK_FILTERS).map(([k, l]) =>
       el("button", { class: "slot", "aria-pressed": String(f.stage === k),
         onclick: () => { f.stage = k; drawChips(); fire(); } }, l)));
@@ -329,10 +350,10 @@ function filterBar(opts) {
 // ⚠️ و«وارِدُ قسمي» تحت الثانية للمدير وحدَه: هو مهبطُ كلِّ طلبٍ يأتي
 //    قسمَه من خارجه، ولو لم يُعرض لبقي لا يوزّعه أحد.
 async function viewTasks(host) {
-  host.replaceChildren(el("div", { class: "sk" }), el("div", { class: "sk" }));
+  setKids(host, el("div", { class: "sk" }), el("div", { class: "sk" }));
   let data;
   try { data = await api.tasks(); }
-  catch (e) { host.replaceChildren(el("div", { class: "err" }, e.message)); return; }
+  catch (e) { setKids(host, el("div", { class: "err" }, e.message)); return; }
   const recs = data.records || [];
   const sent = data.sent || [];
   const isMgr = ME.managed.length > 0;
@@ -346,7 +367,7 @@ async function viewTasks(host) {
 
   const scopeBar = el("div", { class: "seg", role: "tablist",
     style: "margin:4px 0 0" });
-  const drawScope = () => scopeBar.replaceChildren(
+  const drawScope = () => setKids(scopeBar, 
     ...[["mine", `المسندة إليّ (${recs.length})`],
       ["sent", `اللي أسندتها (${sent.length})`]].map(([k, l]) =>
       el("button", { role: "tab", "aria-selected": String(scope === k),
@@ -408,10 +429,10 @@ async function viewTasks(host) {
         }
       }
     }
-    listHost.replaceChildren(...out);
+    setKids(listHost, ...out);
   };
 
-  host.replaceChildren(head, scopeBar, bar.node, listHost);
+  setKids(host, head, scopeBar, bar.node, listHost);
   redraw();
 }
 
@@ -443,6 +464,8 @@ function closePage() {
   else {
     const seg = document.getElementById("sq-seg");
     if (seg) seg.style.display = "";
+    const top = document.getElementById("sq-top");
+    if (top) top.style.display = "";
     if (drawTab) drawTab();
   }
 }
@@ -452,9 +475,14 @@ function drawPage() {
   if (!cur) return;
   const seg = document.getElementById("sq-seg");
   if (seg) seg.style.display = "none";
+  // ⚠️ ويُخفى رأسُ الشاشة نفسُه: رأسانِ فوق بعضهما («المهام والجدول»
+  //    ثمّ «تفاصيل المهمّة») وسهمانِ للرجوع — فلا يدري المرءُ أيَّهما
+  //    يضغط. وللصفحةِ رأسُها وسهمُها.
+  const top = document.getElementById("sq-top");
+  if (top) top.style.display = "none";
   const host = pageHost();
   const body = el("div", {});
-  host.replaceChildren(
+  setKids(host,
     el("div", { class: "row", style: "margin:10px 0 6px;gap:10px" },
       el("button", { class: "back", onclick: () => closePage() }, "›"),
       el("h3", { class: "grow", style: "margin:0;font-size:16px" }, cur.title)),
@@ -471,12 +499,12 @@ function openTask(id, refresh) {
 
 function taskPage(id, host, refresh) {
   const body = el("div", {}, el("div", { class: "sk" }), el("div", { class: "sk" }));
-  host.replaceChildren(body);
+  setKids(host, body);
   const close = () => { closePage(); if (refresh) refresh(); };
   const draw = async () => {
     let d;
     try { d = await api.one(id); }
-    catch (e) { body.replaceChildren(el("div", { class: "err" }, e.message)); return; }
+    catch (e) { setKids(body, el("div", { class: "err" }, e.message)); return; }
     const t = d.task;
     // ⚠️ التأخّرُ يأتي من الخادم لا يُحسب هنا: كان يُحسب في الواجهة
     //    «موعدٌ مضى ولم تنتهِ»، فيُوسَم به ما رُفع للاعتماد — وصاحبُه
@@ -572,6 +600,29 @@ function taskPage(id, host, refresh) {
       acts.push(["ابدأ العمل", async () => {
         try { await api.move(t.id, "doing"); toast("بدأت"); draw(); }
         catch (e) { toast(e.message, true); } }, true]);
+    // ⚠️ ومن أنشأ المهمّةَ يُحوّلها أو يُلغيها: إن اعتذر من أُسندت إليه
+    //    أو تبدّل العملُ فالأمرُ بيده — ولولا ذلك ألغاها وأنشأ غيرَها
+    //    فضاع سجلُّها وتقاريرُها.
+    if (owner && t.stage !== "done") {
+      acts.push(["غيّر المسنَد إليه", async () => {
+        try {
+          const r = await api.people("", t.deptId || 0);
+          pickSheet("أسنِدها إلى", (r.records || []).map((p) => ({
+            id: p.id, name: p.name, job: p.job, openTasks: p.openTasks || 0,
+          })), async (m) => {
+            try {
+              await api.assign(t.id, m.id);
+              toast("أُسندت إلى " + m.name); draw();
+            } catch (e) { toast(e.message, true); }
+          });
+        } catch (e) { toast(e.message, true); }
+      }]);
+      acts.push(["ألغِ المهمة", () => returnSheet(async (why) => {
+        try {
+          await api.cancelTask(t.id, why); toast("أُلغيت"); close();
+        } catch (e) { toast(e.message, true); }
+      }, "إلغاءُ المهمة", "يصل المسنَدَ إليه إشعارٌ بالسبب.", "ألغِ المهمة")]);
+    }
     if (owner && t.stage === "review") {
       if (full)
         acts.push(["اعتماد وإقفال", async () => {
@@ -582,7 +633,7 @@ function taskPage(id, host, refresh) {
         catch (e) { toast(e.message, true); } })]);
     }
 
-    body.replaceChildren(
+    setKids(body, 
       // ١) العنوانُ والشارات
       el("div", { class: "row" },
         el("h3", { class: "grow", style: "margin:2px 0" }, txt(t.name)),
@@ -605,7 +656,7 @@ function taskPage(id, host, refresh) {
       txt(t.description)
         ? el("div", { class: "card", style: "margin:4px 0 2px;padding:11px 13px",
           html: txt(t.description) })
-        : el("div", { class: "meta" }, "لا تفصيلَ مكتوبًا — اسأل في الردود."),
+        : el("div", { class: "meta" }, "لا تفاصيل."),
 
       // ٣) النسبةُ والتحديث
       el("label", {}, "نسبة الإنجاز"),
@@ -617,11 +668,11 @@ function taskPage(id, host, refresh) {
       editable ? quick : null,
       t.mine && t.stage === "review"
         ? el("div", { class: "meta", style: "margin-top:6px" },
-          "رُفعت للاعتماد — التحديثُ مقفلٌ حتى يعتمدها من أنشأها أو يُرجعها.")
+          "رُفعت للاعتماد — التحديثُ مقفل.")
         : null,
-      editable ? el("label", {}, "ما أنجزتَه (يُحفظ مع النسبة)") : null,
+      editable ? el("label", {}, "ما أنجزتَه") : null,
       editable ? (rep = el("textarea", { style: "min-height:58px",
-        placeholder: "مثلًا: رُوجعت العقودُ الخمسةُ وبقي اثنان" })) : null,
+        placeholder: "ما الذي أُنجز؟" })) : null,
       editable ? (sendBtn = el("button", { class: "btn pri",
         style: "margin-top:6px;width:100%",
         onclick: async (ev) => {
@@ -642,7 +693,7 @@ function taskPage(id, host, refresh) {
       // ٤) تاريخُ التنفيذ
       // ⚠️ تاريخٌ بلا ساعات: المهمّةُ ليست اجتماعًا، ومن حدّد يومًا كفاه.
       //    ولا يتجاوز موعدَ التسليم — وإلّا خُطّط لعملها بعد تسليمها.
-      t.mine ? el("label", {}, "تاريخ التنفيذ في جدولي (اختياري)") : null,
+      t.mine ? el("label", {}, "تاريخ التنفيذ في جدولي") : null,
       t.mine ? (planDay = el("input", { type: "date",
         min: todayISO(),
         max: t.deadline ? isoOf(t.deadline) : null,
@@ -672,7 +723,7 @@ function taskPage(id, host, refresh) {
       el("label", {}, "الردود"),
       clist,
       (cbox = el("textarea", {
-        placeholder: t.mine ? "اكتب ردَّك: ما أنجزتَه، أو ما تحتاجه، أو سؤالك…"
+        placeholder: t.mine ? "اكتب ردَّك أو سؤالك…"
           : "اكتب ردَّك أو ملاحظتك…" })),
       el("div", { class: "row", style: "margin-top:8px" },
         el("button", { class: "btn pri grow", onclick: async (ev) => {
@@ -698,7 +749,7 @@ function pickSheet(title, team, onPick) {
   //    يُحمَّل أحدُهم عشرًا ويُترك زميلُه على اثنتين.
   const sorted = [...team].sort((a, b) => a.openTasks - b.openTasks);
   openPage(title, (host) => {
-    host.replaceChildren(
+    setKids(host, 
       ...sorted.map((m) => el("button", {
         class: "btn",
         style: "width:100%;text-align:start;margin:6px 0;display:flex;gap:8px",
@@ -715,7 +766,7 @@ function pickSheet(title, team, onPick) {
 function returnSheet(onSend, title, hint, btn) {
   openPage(title || "سببُ الإرجاع", (host) => {
     let box;
-    host.replaceChildren(
+    setKids(host, 
       el("div", { class: "meta" }, hint || "يصل الموظّفَ إشعارًا بنصّه."),
       (box = el("textarea", { placeholder: "ما الذي ينقص؟" })),
       el("div", { class: "row", style: "margin-top:10px" },
@@ -795,7 +846,7 @@ function newTaskSheet(refresh) {
     ? [["team", "موظف من قسمي"], ["other", "قسم آخر"]]
     : [["me", "لنفسي"], ["other", "أرسل إلى قسم"]];
 
-  const drawSeg = () => seg.replaceChildren(...tabs.map(([k, l]) =>
+  const drawSeg = () => setKids(seg, ...tabs.map(([k, l]) =>
     el("button", { role: "tab", "aria-selected": String(mode === k),
       onclick: () => { mode = k; drawSeg(); drawBody(); } }, l)));
 
@@ -808,7 +859,7 @@ function newTaskSheet(refresh) {
       myDept = Number(r.mine || 0);
       return true;
     } catch (e) {
-      hostEl.replaceChildren(el("div", { class: "err" }, e.message));
+      setKids(hostEl, el("div", { class: "err" }, e.message));
       return false;
     }
   }
@@ -816,9 +867,9 @@ function newTaskSheet(refresh) {
   async function drawBody() {
     deptSel = whoSel = otherSel = otherWho = null;
     if (mode === "me") {
-      box.replaceChildren(el("div", { class: "sk" }));
+      setKids(box, el("div", { class: "sk" }));
       if (!(await loadDepts(box))) return;
-      box.replaceChildren(myDept
+      setKids(box, myDept
         ? el("div", { class: "meta" }, "تُضاف إلى جدولك أنت.")
         : el("div", { class: "err" },
           "لا قسمَ في بطاقتك، فلا موضعَ لمهمّتك — راجع الموارد البشرية."
@@ -842,7 +893,7 @@ function newTaskSheet(refresh) {
         const team = ME.team.filter((m) => !m.deptId || m.deptId === did);
         if (!team.length) {
           whoSel = null;
-          list.replaceChildren(el("div", { class: "meta" },
+          setKids(list, el("div", { class: "meta" },
             "لا موظفين في هذا القسم."));
           return;
         }
@@ -853,19 +904,19 @@ function newTaskSheet(refresh) {
           ...[...team].sort((a, b) => a.openTasks - b.openTasks)
             .map((m) => el("option", { value: String(m.id) },
               `${m.name} · ${m.openTasks}`)));
-        list.replaceChildren(whoSel);
+        setKids(list, whoSel);
       };
-      box.replaceChildren(...kids);
+      setKids(box, ...kids);
       drawTeam();
       return;
     }
 
     // قسمٌ آخر
-    box.replaceChildren(el("div", { class: "sk" }));
+    setKids(box, el("div", { class: "sk" }));
     if (!(await loadDepts(box))) return;
     const list = allDepts.filter((d) => !d.managed);
     if (!list.length) {
-      box.replaceChildren(el("div", { class: "empty" }, "لا أقسامَ أخرى."));
+      setKids(box, el("div", { class: "empty" }, "لا أقسامَ أخرى."));
       return;
     }
     // ⚠️ ولا قسمَ مختارًا سلفًا: كان أوّلُ قسمٍ في القائمة يُختار بنفسه،
@@ -885,7 +936,7 @@ function newTaskSheet(refresh) {
       if (!Number(otherSel.value)) {
         note.className = "meta";
         note.textContent = "اختر القسمَ أوّلًا.";
-        otherWho = null; whoBox.replaceChildren(); return;
+        otherWho = null; setKids(whoBox, ); return;
       }
       if (d && d.manager) {
         note.className = "meta";
@@ -899,22 +950,22 @@ function newTaskSheet(refresh) {
         note.textContent = "لا مديرَ لهذا القسم ولا مديرَ نظام:"
           + " تُسجَّل في الوارد ولا يصل إشعارٌ لأحد — أبلِغ الإدارة.";
       }
-      if (!isMgr) { otherWho = null; whoBox.replaceChildren(); return; }
-      whoBox.replaceChildren(el("div", { class: "sk" }));
+      if (!isMgr) { otherWho = null; setKids(whoBox, ); return; }
+      setKids(whoBox, el("div", { class: "sk" }));
       try {
         const r = await api.people("", Number(otherSel.value));
         const recs = r.records || [];
         otherWho = el("select", {},
           el("option", { value: "0" }, "— اتركها في وارد القسم —"),
           ...recs.map((m) => el("option", { value: String(m.id) }, m.name)));
-        whoBox.replaceChildren(el("label", {}, "الموظف (اختياري)"), otherWho);
+        setKids(whoBox, el("label", {}, "الموظف (اختياري)"), otherWho);
       } catch (e) {
         otherWho = null;
-        whoBox.replaceChildren(el("div", { class: "err" }, e.message));
+        setKids(whoBox, el("div", { class: "err" }, e.message));
       }
     };
     otherSel.addEventListener("change", say);
-    box.replaceChildren(el("label", {}, "القسم"), otherSel, note, whoBox);
+    setKids(box, el("label", {}, "القسم"), otherSel, note, whoBox);
     say();
   }
 
@@ -981,7 +1032,7 @@ function newTaskSheet(refresh) {
         el("button", { class: "btn", onclick: () => closePage() }, "إلغاء"))));
   drawSeg();
   drawBody();
-  openPage("مهمة جديدة", (host) => host.replaceChildren(sheet));
+  openPage("مهمة جديدة", (host) => setKids(host, sheet));
   setTimeout(() => name.focus(), 50);
 }
 
@@ -1010,7 +1061,7 @@ let rangeTo = null;
 
 async function viewWeek(host) {
   if (!weekStart) weekStart = sundayOf(new Date());
-  host.replaceChildren(el("div", { class: "sk" }), el("div", { class: "sk" }));
+  setKids(host, el("div", { class: "sk" }), el("div", { class: "sk" }));
 
   const endOf = () => {
     if (weekSpan === "day") return new Date(weekStart.getTime());
@@ -1036,7 +1087,7 @@ async function viewWeek(host) {
 
   const spanBar = el("div", { class: "seg sm chips", role: "tablist",
     style: "margin:10px 0 6px" });
-  const drawSpan = () => spanBar.replaceChildren(
+  const drawSpan = () => setKids(spanBar, 
     ...[["day", "يوم"], ["week", "أسبوع"], ["range", "من - إلى"]]
       .map(([k, l]) => el("button", {
         role: "tab", "aria-selected": String(weekSpan === k),
@@ -1117,7 +1168,7 @@ async function viewWeek(host) {
           ...day.meetings.map((m) => dayMeet(m, refresh))]
         : [el("div", { class: "meta", style: "padding:4px 2px" }, "فارغ")])));
   }
-  host.replaceChildren(...out);
+  setKids(host, ...out);
 }
 
 function todayUTC() {
@@ -1262,7 +1313,7 @@ function openMeeting(m, refresh) {
       el("div", { class: "row", style: "margin-top:8px" },
         el("button", { class: "btn grow", onclick: () => closePage() },
           "إغلاق"))));
-  openPage(txt(m.title) || "تفاصيل الاجتماع", (host) => host.replaceChildren(sheet));
+  openPage(txt(m.title) || "تفاصيل الاجتماع", (host) => setKids(host, sheet));
 }
 
 /** يفتح اجتماعًا برقمه — لنقرِ الإشعار. */
@@ -1275,7 +1326,7 @@ function editMeetingSheet(m, refresh) {
   const online0 = m.mode === "online";
   const drawPlace = () => {
     const online = modeSel.value === "online";
-    placeBox.replaceChildren(
+    setKids(placeBox, 
       el("label", {}, online ? "الرابط" : "المكان"),
       online
         ? (link = el("input", { value: m.link || "", placeholder: "https://…" }))
@@ -1324,7 +1375,7 @@ function editMeetingSheet(m, refresh) {
           } catch (e) { ev.target.disabled = false; toast(e.message, true); }
         } }, "احفظ"),
         el("button", { class: "btn", onclick: () => closePage() }, "إلغاء"))));
-  openPage("تعديلُ الاجتماع", (host) => host.replaceChildren(sheet));
+  openPage("تعديلُ الاجتماع", (host) => setKids(host, sheet));
   drawPlace();
 }
 
@@ -1342,12 +1393,12 @@ async function openMeetingById(id) {
 }
 
 async function viewMeetings(host) {
-  host.replaceChildren(el("div", { class: "sk" }), el("div", { class: "sk" }));
+  setKids(host, el("div", { class: "sk" }), el("div", { class: "sk" }));
   let recs = [];
   try {
     recs = (await api.meetings(meetFrom, meetTo)).records || [];
   } catch (e) {
-    host.replaceChildren(el("div", { class: "err" }, e.message)); return;
+    setKids(host, el("div", { class: "err" }, e.message)); return;
   }
 
   const refresh = () => viewMeetings(host);
@@ -1373,7 +1424,7 @@ async function viewMeetings(host) {
       } }, "القادمة")
       : null);
 
-  host.replaceChildren(head, bar,
+  setKids(host, head, bar,
     ...(recs.length
       ? recs.map((m) => meetingCard(m, refresh))
       : [el("div", { class: "empty" },
@@ -1403,13 +1454,13 @@ function bookSheet(refresh) {
   const drawBusy = () => {
     clearTimeout(busyTimer);
     busyTimer = setTimeout(async () => {
-      if (!day.value) { slotBox.replaceChildren(); return; }
-      slotBox.replaceChildren(el("div", { class: "meta" }, "يُقرأ التقويم…"));
+      if (!day.value) { setKids(slotBox, ); return; }
+      setKids(slotBox, el("div", { class: "meta" }, "يُقرأ التقويم…"));
       try {
         const r = await api.busy({ day: day.value,
           employeeIds: [...picked.keys()] });
         const rows = r.records || [];
-        slotBox.replaceChildren(
+        setKids(slotBox, 
           el("label", {}, `المحجوز في ${day.value} (${rows.length})`),
           ...(rows.length
             ? rows.map((b) => el("div", { class: "row",
@@ -1419,12 +1470,12 @@ function bookSheet(refresh) {
             el("div", { class: "grow meta" }, `${b.who} · ${b.title || ""}`)))
             : [el("div", { class: "meta" }, "لا حجزَ في هذا اليوم.")]));
       } catch (e) {
-        slotBox.replaceChildren(el("div", { class: "meta" }, e.message));
+        setKids(slotBox, el("div", { class: "meta" }, e.message));
       }
     }, 250);
   };
 
-  const drawChips = () => chips.replaceChildren(...(picked.size
+  const drawChips = () => setKids(chips, ...(picked.size
     ? [...picked.entries()].map(([id, name]) =>
       el("button", { class: "slot", onclick: () => {
         picked.delete(id); drawChips(); drawList(); drawBusy();
@@ -1437,7 +1488,7 @@ function bookSheet(refresh) {
       .filter((p) => !picked.has(p.id))
       .filter((p) => !q || norm(p.name + " " + p.dept).includes(q))
       .slice(0, 40);
-    list.replaceChildren(...(show.length
+    setKids(list, ...(show.length
       ? show.map((p) => el("div", { class: "row",
         style: "padding:7px 2px;cursor:pointer;border-top:1px solid var(--line-2)",
         onclick: () => { picked.set(p.id, p.name); drawChips(); drawList(); drawBusy(); } },
@@ -1448,7 +1499,7 @@ function bookSheet(refresh) {
 
   const drawPlace = () => {
     const online = modeSel.value === "online";
-    placeBox.replaceChildren(
+    setKids(placeBox, 
       el("label", {}, online ? "الرابط (اتركه فارغًا ليُولّده النظام)" : "المكان"),
       online
         ? (link = el("input", { placeholder: "https://…" }))
@@ -1515,7 +1566,7 @@ function bookSheet(refresh) {
         } }, "احجز"),
         el("button", { class: "btn", onclick: () => closePage() }, "إلغاء"))));
 
-  openPage("حجزُ اجتماع", (host) => host.replaceChildren(sheet));
+  openPage("حجزُ اجتماع", (host) => setKids(host, sheet));
   drawChips();
   drawPlace();
   (async () => {
@@ -1571,7 +1622,7 @@ async function boot() {
   let active = tabs.some((t) => t.k === start) ? start : tabs[0].k;
 
   const draw = () => {
-    seg.replaceChildren(...tabs.map((t) => el("button", {
+    setKids(seg, ...tabs.map((t) => el("button", {
       role: "tab", "aria-selected": String(t.k === active),
       onclick: () => {
         active = t.k;

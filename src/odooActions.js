@@ -5475,7 +5475,15 @@ const actions = {
     return withOdoo(
       async () => {
         const id = Number(params.id);
-        const task = await schedTaskForManager(id, empId, ctx?.user?.role);
+        // ⚠️ ومن أنشأ المهمّةَ يُعيد إسنادَها كمديرِ القسم: هو صاحبُ
+        //    الطلب، فإن اعتذر من أُسندت إليه أو تبدّل العملُ فالتحويلُ
+        //    بيده — ولولا ذلك ألغاها وأنشأ غيرَها فضاع سجلُّها.
+        const { task, manages } = await schedTaskVisible(
+          id, empId, ctx?.user?.role);
+        const owner = task.sharqia_requester_id
+          ? task.sharqia_requester_id[0] === Number(empId) : manages;
+        if (!owner && !manages)
+          throw new Error("إعادةُ الإسناد لمن أنشأ المهمّة أو مديرِ قسمها");
         const toEmp = Number(params.employeeId || 0);
         if (!toEmp) throw new Error("اختر الموظّف");
         await odoo.execKw("project.task", "write", [[task.id], {
@@ -5513,6 +5521,24 @@ const actions = {
     );
   },
 
+
+  /** إلغاءُ المهمّة — لمن أنشأها، بسببٍ يصل المسنَدَ إليه. */
+  async "task.cancel"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const { task } = await schedTaskVisible(
+          params.id, empId, ctx?.user?.role);
+        const why = String(params.reason || "").trim();
+        if (!why) throw new Error("اكتب سببَ الإلغاء");
+        await odoo.execKw("project.task", "action_sharqia_cancel",
+          [[task.id], why], hush(ctx));
+        return { ok: true };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
   /** اعتمادُ المهمّة أو إرجاعُها بتعليق — للمدير. */
   async "task.decide"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;

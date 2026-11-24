@@ -145,6 +145,14 @@ router.post("/schedule/tasks/:id/move", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.post("/schedule/tasks/:id/cancel", async (req, res, next) => {
+  try {
+    const { data } = await runAction("task.cancel",
+      { id: req.params.id, reason: (req.body || {}).reason },
+      { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
 router.post("/schedule/tasks/:id/decide", async (req, res, next) => {
   try {
     const b = req.body || {};
