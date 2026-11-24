@@ -81,7 +81,9 @@
   /* عمودُ التطبيق نفسُه: جذرُ الحزمة <div style="max-width:440;margin:0 auto">
      وشريطُ تبويباتها كذلك. ولو اتّسعت الصفحةُ عنه لبرزت خارجَ عمودِه
      فبانت غريبةً عنه ولو تطابقت الألوان. */
-  .wrap { max-width: var(--col); margin: 0 auto; padding: 0 16px 96px; }
+  /* ⚠️ فراغٌ أعلى المحتوى: الرأسُ لاصقٌ، فأوّلُ عنصرٍ يقع تحته ويُقصّ
+     شريطُ التبويبات. */
+  .wrap { max-width: var(--col); margin: 0 auto; padding: 8px 16px 96px; }
   /* مُضمَّنةٌ داخل التطبيق: شريطُ التبويبات خارجَ الإطار، فلا حاجةَ
      إلى فراغٍ تحتَه داخلَه. */
   .sq-embed .wrap { padding-bottom: 24px; }
@@ -148,17 +150,49 @@
   .slot { border: 1px solid var(--line); background: var(--card); border-radius: 10px;
     padding: 8px 10px; font: inherit; font-weight: 600; cursor: pointer; }
   .slot[aria-pressed="true"] { background: var(--pick-bg); color: var(--pick-fg); }
+
+  /* ⚠️ شرائطُ الترشيح صغيرةٌ في سطرٍ واحدٍ يُسحب أفقيًّا: خمسةُ أزرارٍ
+     بحجم الأزرار العاديّة تلتفُّ سطرين وتبتلع نصفَ الشاشة قبل أن تُقرأ
+     مهمّةٌ واحدة. والشريطُ يُخفي مِسطرتَه فلا يبدو عنصرًا غريبًا. */
+  .chips { display: flex; gap: 6px; overflow-x: auto; flex-wrap: nowrap;
+    margin-top: 6px; padding-bottom: 2px; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chips .slot { flex: 0 0 auto; padding: 5px 11px; font-size: 13px;
+    border-radius: 999px; }
+
+  /* خانةُ بحثٍ أنحف — هي معينةٌ لا عنصرٌ رئيسٌ في الشاشة */
+  input[type="search"] { padding: 6px 11px; font-size: 14px; }
+
+  /* ⚠️ ألوانُ الأولويّة تُقرأ من بعيدٍ بلا قراءة: الأحمرُ عاجلٌ
+     والبرتقاليُّ مهمٌّ والرماديُّ عاديّ — وهذا ما طلبته الإدارة. */
+  .pri { display: inline-flex; align-items: center; font-size: 12px;
+    font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+  .pri0 { background: var(--line-2); color: var(--mut); }
+  .pri1 { background: #FBF0E0; color: #9A5B00; }
+  .pri2 { background: var(--bad-bg); color: var(--bad); }
+  :root[data-theme="dark"] .pri1 { background: #2A2110; color: #E8A33D; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .pri1 { background: #2A2110; color: #E8A33D; }
+  }
 </style>
 </head>
 <body>
-<header><div class="hbar">
-  <button class="back" id="sq-back" aria-label="رجوع">›</button>
-  <h1>المهام والجدول</h1>
-</div></header>
+<!-- ⚠️ شريطُ التبويبات **داخلَ** الرأس اللاصق لا تحته: كان أوّلَ عنصرٍ
+     في المحتوى، فيقع تحت الرأس عند بعض أحجام الخطوط ويُقصّ نصفُه.
+     وباجتماعهما في عنصرٍ لاصقٍ واحدٍ لا يُقصّ أبدًا. -->
+<header>
+  <div class="hbar">
+    <button class="back" id="sq-back" aria-label="رجوع">›</button>
+    <h1>المهام والجدول</h1>
+  </div>
+  <div class="hbar" style="padding-top:0;padding-bottom:10px">
+    <div class="seg" role="tablist" id="sq-seg" style="flex:1;margin:0"></div>
+  </div>
+</header>
 <div class="wrap">
-  <div class="seg" role="tablist" id="sq-seg"></div>
   <div id="sq-body"></div>
 </div>
-<script src="/schedule.js?v=10" type="module"></script>
+<script src="/schedule.js?v=11" type="module"></script>
 </body>
 </html>

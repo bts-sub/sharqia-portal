@@ -1657,6 +1657,52 @@ async function schedStages() {
   return out;
 }
 /** بطاقةُ تواصل الموظّف — بها يُعرف في التقويم. */
+
+
+/** وقتُ أودو (UTC) نصًّا بتوقيت الرياض — للرسائل التي يقرؤها الناس.
+ *  ⚠️ أودو يخزّن بـUTC، فلو عُرض كما هو لقرأ المستخدمُ وقتًا يسبق
+ *     وقتَه بثلاث ساعات، فيظنّ التعارضَ خطأً من النظام. */
+function fmtOdooRiyadh(s, timeOnly = false) {
+  if (!s) return "";
+  const d = new Date(String(s).replace(" ", "T") + "Z");
+  if (Number.isNaN(d.getTime())) return String(s);
+  const opts = timeOnly
+    ? { hour: "2-digit", minute: "2-digit" }
+    : { year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit" };
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn-ca-gregory",
+    { ...opts, timeZone: "Asia/Riyadh" }).format(d);
+}
+/** محجوزاتُ موظّفين في مدًى — لكلِّ تعارضٍ اسمُ صاحبه واجتماعُه ووقتُه. */
+async function schedBusy(empIds, from, to) {
+  const emps = await odoo.searchRead("hr.employee",
+    [["id", "in", empIds.map(Number)]], ["name", "work_contact_id"],
+    { limit: 100 });
+  const byPartner = new Map();
+  for (const e of emps) {
+    if (e.work_contact_id?.[0]) byPartner.set(e.work_contact_id[0], e.name);
+  }
+  if (!byPartner.size) return [];
+  // التقاطعُ: يبدأ قبل نهايتنا وينتهي بعد بدايتنا
+  const evs = await odoo.searchRead("calendar.event",
+    [["partner_ids", "in", [...byPartner.keys()]],
+      ["start", "<", to], ["stop", ">", from]],
+    ["name", "start", "stop", "partner_ids", "sharqia_mode", "location"],
+    { limit: 200, order: "start" });
+  const out = [];
+  for (const ev of evs) {
+    for (const pid of ev.partner_ids || []) {
+      if (!byPartner.has(pid)) continue;
+      out.push({
+        eventId: ev.id, title: ev.name || "",
+        start: ev.start, stop: ev.stop,
+        who: byPartner.get(pid),
+        place: ev.location || "",
+      });
+    }
+  }
+  return out;
+}
 async function schedPartnerOf(empId) {
   if (!empId) return 0;
   const [e] = await odoo.searchRead("hr.employee", [["id", "=", Number(empId)]],
@@ -1732,7 +1778,8 @@ async function schedTaskVisible(id, empId, role) {
     ["name", "description", "stage_id", "date_deadline", "priority",
       "sharqia_department_id", "sharqia_assignee_id", "sharqia_progress",
       "sharqia_requester_id",
-      "sharqia_return_note", "sharqia_assigned_on"], { limit: 1 });
+      "sharqia_return_note", "sharqia_assigned_on", "sharqia_priority",
+      "sharqia_plan_start", "sharqia_plan_stop"], { limit: 1 });
   if (!t) throw new Error("المهمّة غير موجودة");
   const mine = (t.sharqia_assignee_id || [0])[0] === Number(empId);
   if (mine) return { task: t, mine: true, manages: false };
@@ -1788,7 +1835,9 @@ function schedTaskOut(r, stages) {
     stage: key,
     stageName: r.stage_id?.[1] || "",
     deadline: due,
-    priority: r.priority === "1" ? "high" : "normal",
+    priority: r.sharqia_priority || "0",
+    planStart: r.sharqia_plan_start || null,
+    planStop: r.sharqia_plan_stop || null,
     dept: r.sharqia_department_id?.[1] || "",
     deptId: r.sharqia_department_id?.[0] || 0,
     returnNote: r.sharqia_return_note || "",
@@ -5070,7 +5119,8 @@ const actions = {
         const cols = ["name", "description", "stage_id", "date_deadline",
           "priority", "sharqia_department_id", "sharqia_return_note",
           "sharqia_assigned_on", "sharqia_assignee_id", "sharqia_progress",
-          "sharqia_requester_id"];
+          "sharqia_requester_id", "sharqia_priority",
+          "sharqia_plan_start", "sharqia_plan_stop"];
         const recs = await odoo.searchRead("project.task",
           [["sharqia_department_id", "!=", false], ["sharqia_assignee_id", "=", empId]],
           cols, { limit: 200, order: "date_deadline asc, id desc" });
@@ -5107,7 +5157,8 @@ const actions = {
           [["sharqia_department_id", "in", depts.map((d) => d.id)]],
           ["name", "description", "stage_id", "date_deadline", "priority",
             "sharqia_department_id", "sharqia_assignee_id", "sharqia_progress",
-            "sharqia_requester_id", "sharqia_return_note",
+            "sharqia_requester_id", "sharqia_return_note", "sharqia_priority",
+            "sharqia_plan_start", "sharqia_plan_stop",
             "sharqia_assigned_on"],
           { limit: 400, order: "date_deadline asc, id desc" });
         return {
@@ -5225,6 +5276,14 @@ const actions = {
       async () => {
         const name = String(params.name || "").trim();
         if (!name) throw new Error("اكتب عنوانَ المهمّة");
+        // ⚠️ الموعدُ والأولويّةُ إجباريّان بطلب الإدارة: مهمّةٌ بلا موعدٍ
+        //    لا تدخل جدولَ أحدٍ ولا تتأخّر أبدًا، وبلا أولويّةٍ لا يُعرف
+        //    ما يُقدَّم على ما. والوقتُ في الموعد اختياريّ.
+        const deadline = String(params.deadline || "").trim();
+        if (!deadline) throw new Error("حدّد تاريخَ التسليم");
+        const prio = ["0", "1", "2"].includes(String(params.priority))
+          ? String(params.priority) : "";
+        if (!prio) throw new Error("اختر الأولوية");
         const depts = await schedManagedDepts(empId, ctx?.user?.role);
         const want = Number(params.departmentId || 0);
         const managed = want ? depts.some((d) => d.id === want) : false;
@@ -5270,7 +5329,12 @@ const actions = {
           //    المديرُ أن يعتمد عملَ أحدهم ويردَّ عملَ الآخر.
           const many = Array.isArray(params.employeeIds)
             ? [...new Set(params.employeeIds.map(Number).filter(Boolean))] : [];
-          targets = many.length ? many : [Number(params.employeeId || 0)];
+          // ⚠️ وبلا اختيارِ اسمٍ تصير لك أنت لا مسوّدةً في الوارد: من
+          //    كتب مهمّةً ولم يُسنِدها فهي مهمّتُه — وهذا ما طلبته
+          //    الإدارة. («قسمٌ آخر» بلا اسمٍ تبقى على الوارد، فهناك
+          //    يوزّعها مديرُ ذلك القسم.)
+          targets = many.length ? many
+            : [Number(params.employeeId || 0) || Number(empId) || 0];
           // ⚠️ ويُتحقَّق أنّ المختارين من ذلك القسم فعلًا: الأرقامُ تأتي
           //    من الواجهة، ولولا الفحصُ لأسند مديرٌ مهمّةً على موظّفٍ في
           //    قسمٍ لا يُديره بتبديل رقمٍ في الطلب.
@@ -5300,8 +5364,14 @@ const actions = {
           // يجري أيضًا من شاشة أودو.
           stage_id: stages.inbox,
           description: params.description || "",
-          date_deadline: params.deadline || false,
-          priority: params.priority === "high" ? "1" : "0",
+          date_deadline: deadline,
+          sharqia_priority: prio,
+          // ونجمةُ أودو تتبع الأولويّة، فيبقى فرزُها القياسيُّ عاملًا
+          priority: prio === "0" ? "0" : "1",
+          ...(params.planStart
+            ? { sharqia_plan_start: params.planStart,
+              sharqia_plan_stop: params.planStop || false }
+            : {}),
         };
         // حارسٌ صامتٌ للفحص على القاعدة الحيّة — انظر hush أعلاه.
         const kw = hush(ctx);
@@ -5465,6 +5535,34 @@ const actions = {
     );
   },
 
+
+  /** ما هو محجوزٌ على الحاضرين في يومٍ أو مدًى — ومن يتعارض مع ماذا.
+   *
+   *  ⚠️ يُسأل أودو عن تقويم كلِّ مدعوٍّ لا عن تقويمي وحدي: من يحجز لا
+   *     يرى جداولَ غيره، فيختار وقتًا يعتذر عنه نصفُهم.
+   *  ⚠️ والتعارضُ يُسمّى: من، ومع أيِّ اجتماع، وفي أيِّ وقت — ورسالةُ
+   *     «الوقتُ مشغول» وحدَها تترك الحاجزَ يُجرّب الأوقاتَ واحدًا واحدًا.
+   */
+  async "meeting.busy"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const ids = [...new Set([
+          ...(Array.isArray(params.employeeIds) ? params.employeeIds : [])
+            .map(Number).filter(Boolean),
+          Number(empId) || 0,
+        ].filter(Boolean))];
+        if (!ids.length) return { records: [] };
+        const day = String(params.day || "").slice(0, 10);
+        const from = params.start || (day ? day + " 00:00:00" : "");
+        const to = params.stop || (day ? day + " 23:59:59" : "");
+        if (!from || !to) throw new Error("حدّد اليومَ أو الوقت");
+        return { records: await schedBusy(ids, from, to) };
+      },
+      async () => ({ records: [] }),
+      { emptyOnError: () => ({ records: [], unavailable: true }) }
+    );
+  },
   /** الأوقاتُ التي يفرغ فيها الحاضرون كلُّهم. */
   async "meeting.slots"(params, ctx) {
     const empId = ctx?.user?.odooEmployeeId;
@@ -5506,6 +5604,22 @@ const actions = {
           if (p) partners.push(p);
         }
         if (partners.length < 2) throw new Error("لا حاضرين لهذا الاجتماع");
+        // ⚠️ ولا يُحجز على مشغول: يُسأل تقويمُ كلِّ مدعوٍّ قبل الحفظ،
+        //    ويُسمّى التعارضُ باسمه — من، ومع أيِّ اجتماع، وفي أيِّ وقت.
+        //    ورسالةُ «الوقتُ مشغول» وحدَها تترك الحاجزَ يُجرّب عشوائيًّا.
+        const clash = await schedBusy(ids, params.start, params.stop);
+        if (clash.length) {
+          const seen = new Set();
+          const lines = [];
+          for (const c of clash) {
+            const key = c.who + "|" + c.eventId;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            lines.push(`${c.who}: «${c.title}» ${fmtOdooRiyadh(c.start)}`
+              + ` – ${fmtOdooRiyadh(c.stop, true)}`);
+          }
+          throw new Error("تعارضٌ في المواعيد — " + lines.join(" · "));
+        }
         const online = String(params.mode || "onsite") === "online";
         const link = String(params.link || "").trim();
         const vals = {
@@ -5668,6 +5782,39 @@ const actions = {
     );
   },
 
+
+  /** وقتُ تنفيذ المهمّة — تاريخٌ ومن ساعةٍ إلى ساعة.
+   *
+   *  ⚠️ غيرُ موعد التسليم: الموعدُ آخرُ ما يُقبل، والوقتُ متى ينوي
+   *     صاحبُها أن يعملها. وبه تظهر في «جدولي» في ساعتها.
+   *  ⚠️ ويكتبه صاحبُ المهمّة وحدَه: هو من يعرف متى يفرغ لها.
+   */
+  async "task.plan"(params, ctx) {
+    const empId = ctx?.user?.odooEmployeeId;
+    return withOdoo(
+      async () => {
+        const { task, mine } = await schedTaskVisible(
+          params.id, empId, ctx?.user?.role);
+        if (!mine) throw new Error("وقتَ التنفيذ يحدّده صاحبُ المهمّة");
+        const s = String(params.start || "").trim();
+        const e = String(params.stop || "").trim();
+        if (!s && !e) {
+          await odoo.execKw("project.task", "write",
+            [[task.id], { sharqia_plan_start: false,
+              sharqia_plan_stop: false }], hush(ctx));
+          return { ok: true, cleared: true };
+        }
+        if (!s || !e) throw new Error("حدّد الوقتَ من وإلى");
+        if (e <= s) throw new Error("النهايةُ قبل البداية");
+        await odoo.execKw("project.task", "write",
+          [[task.id], { sharqia_plan_start: s, sharqia_plan_stop: e }],
+          hush(ctx));
+        return { ok: true, start: s, stop: e };
+      },
+      async () => ({ ok: false }),
+      { forceLiveErrors: true }
+    );
+  },
   /** تعليقٌ على المهمّة — يُكتب في شاتر أودو نفسِه.
    *
    *  ⚠️ واسمُ الكاتب يُكتب في متن التعليق: نداءُ البوابة يمرّ بحساب خدمةٍ
@@ -5696,6 +5843,15 @@ const actions = {
           body: who ? `${who}: ${text}` : text,
           message_type: "comment", subtype_xmlid: "mail.mt_comment",
         });
+        // ⚠️ ويُشعَر الطرفُ الآخر: التعليقُ سؤالٌ غالبًا، ومن لم يُشعَر
+        //    به لا يجيب — فيبقى السائلُ ينتظر ويظنّ أنّ أحدًا لا يقرأ.
+        //    والقاعدةُ في الموديل لتعمل من أودو أيضًا.
+        try {
+          await odoo.execKw("project.task", "sharqia_notify_comment",
+            [[task.id], Number(empId) || 0, text], hush(ctx));
+        } catch (e) {
+          console.warn("⚠️ تعذّر إشعارُ التعليق:", e.message);
+        }
         return { ok: true };
       },
       async () => ({ ok: false }),
@@ -5736,13 +5892,18 @@ const actions = {
         const iso = (d) => d.toISOString().slice(0, 10);
         const stages = await schedStages();
 
+        // ⚠️ المهمّةُ تقع في **وقت تنفيذها** إن حدّده صاحبُها، وإلّا في
+        //    يوم استحقاقها: من خطّط ليومٍ بعينه يريد أن يراها فيه، لا
+        //    في آخر يومٍ يُقبل فيه التسليم.
         const tasks = await odoo.searchRead("project.task",
           [["sharqia_department_id", "!=", false],
             ["sharqia_assignee_id", "=", empId],
-            ["date_deadline", "!=", false]],
+            "|", ["date_deadline", "!=", false],
+            ["sharqia_plan_start", "!=", false]],
           ["name", "stage_id", "date_deadline", "priority",
             "sharqia_department_id", "sharqia_progress",
-            "sharqia_return_note", "sharqia_assigned_on"],
+            "sharqia_return_note", "sharqia_assigned_on", "sharqia_priority",
+      "sharqia_plan_start", "sharqia_plan_stop"],
           { limit: 400, order: "date_deadline" });
 
         const pid = await schedPartnerOf(empId);
@@ -5760,7 +5921,8 @@ const actions = {
           const d = iso(new Date(d0.getTime() + i * 864e5));
           days.push({
             date: d,
-            tasks: tasks.filter((t) => dayOf(t.date_deadline) === d)
+            tasks: tasks
+              .filter((t) => dayOf(t.sharqia_plan_start || t.date_deadline) === d)
               .map((t) => ({ ...schedTaskOut(t, stages),
                 progress: Number(t.sharqia_progress || 0) })),
             meetings: evs.filter((e) => dayOf(e.start) === d)
@@ -5779,7 +5941,8 @@ const actions = {
             ["date_deadline", "=", false]],
           ["name", "stage_id", "date_deadline", "priority",
             "sharqia_department_id", "sharqia_progress",
-            "sharqia_return_note", "sharqia_assigned_on"],
+            "sharqia_return_note", "sharqia_assigned_on", "sharqia_priority",
+      "sharqia_plan_start", "sharqia_plan_stop"],
           { limit: 200, order: "id desc" }))
           .filter((t) => stages.byId.get(t.stage_id && t.stage_id[0]) !== "done")
           .map((t) => ({ ...schedTaskOut(t, stages),

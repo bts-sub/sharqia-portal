@@ -105,6 +105,22 @@ router.post("/schedule/tasks/:id/progress", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.post("/schedule/tasks/:id/plan", async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const { data } = await runAction("task.plan",
+      { id: req.params.id, start: b.start, stop: b.stop },
+      { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
+router.post("/schedule/meetings/busy", async (req, res, next) => {
+  try {
+    const { data } = await runAction("meeting.busy", req.body || {},
+      { user: req.user });
+    res.json(data);
+  } catch (e) { next(e); }
+});
 router.post("/schedule/tasks/:id/comment", async (req, res, next) => {
   try {
     const { data } = await runAction("task.comment",
