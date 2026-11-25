@@ -380,9 +380,26 @@ router.post("/requests/:id/comment", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post("/requests/:id/cancel", (req, res, next) => {
-  try { res.json(wf.cancelRequest({ user: req.user, id: req.params.id })); }
-  catch (e) { next(e); }
+// ⚠️ إلى أودو لا إلى المخزن المحلّيّ: كان هذا المسارُ وحدَه بين أخواته يذهب
+// إلى `wf` — والطلباتُ كلُّها في أودو، فلا يجد الرقمَ فيرمي خطأً عاديًّا (لا
+// AppError) يصير 500. والمخزنُ المحلّيّ يبقى لوضع الاختبار كبقيّة المسارات.
+router.post("/requests/:id/cancel", async (req, res, next) => {
+  try {
+    if (!isTestMode()) {
+      const { data } = await runAction("request.cancel",
+        { id: req.params.id, reason: req.body?.reason || req.body?.note || "" },
+        { user: req.user });
+      return res.json(data);
+    }
+    res.json(wf.cancelRequest({ user: req.user, id: req.params.id }));
+  } catch (e) {
+    // ⚠️ الرمزُ يُترجَم إلى خطأٍ معروفٍ للمعالج: معالجُ الأخطاء لا يقرأ
+    //    `status` إلّا من AppError، فخطأٌ عاديٌّ عليه رمزٌ يخرج 500 — وهو
+    //    عينُ العيب الذي نُصلحه هنا.
+    const st = Number(e?.status) || 0;
+    const msg = e?.message || "تعذّر إلغاء الطلب";
+    next(st === 404 ? notFound(msg) : st === 403 ? forbidden(msg) : badRequest(msg));
+  }
 });
 
 // توافق updateRequest("model", id, values) — تحديث عام على الطلب المحلي

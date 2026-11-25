@@ -6,7 +6,7 @@
 import { Router } from "express";
 import { requireIntegrationToken } from "../middleware/integrationAuth.js";
 import { upsertFromOdoo, updateByLogin, setPassword, findByLogin } from "../lib/users.js";
-import { insert } from "../lib/store.js";
+import { insert, readAll } from "../lib/store.js";
 import { sendToUser } from "../lib/push.js";
 import { sendWhatsApp } from "../lib/whatsapp.js";
 import { badRequest, notFound, unauthorized } from "../lib/errors.js";
@@ -66,11 +66,21 @@ router.post("/integration/users/:login/reset-password", async (req, res, next) =
 router.post("/integration/notifications", (req, res, next) => {
   try {
     const { login, title, body = "", type = "system", reqId = "",
-      link = "", penaltyId = 0, letterId = 0, taskId = 0, eventId = 0 } = req.body || {};
+      link = "", penaltyId = 0, letterId = 0, taskId = 0, eventId = 0,
+      nid = 0 } = req.body || {};
     if (!login || !title) throw badRequest("login و title مطلوبان");
     const user = findByLogin(login);
     if (!user) throw notFound("المستخدم غير موجود");
+    // ⚠️ إشعارٌ وصل مرّةً لا يُخزَّن مرّتين: الدفعُ قد يَصِل ويَفشل ردُّه
+    //    (مهلةُ شبكةٍ بعد التسليم) فيبقى السجلُّ «فاشلًا» في أودو ويُعيده
+    //    الـcron — فيقرأ الموظفُ الخبرَ مرّتين في قائمته ويصله دفعٌ ثانٍ.
+    //    ورقمُ سجلّ أودو (nid) هو ما يميّز الثاني من الأوّل.
+    if (nid) {
+      const twin = readAll("notifs").find((n) => n.nid === Number(nid));
+      if (twin) return res.json({ ok: true, id: twin.id, duplicate: true });
+    }
     const notif = insert("notifs", {
+      ...(nid ? { nid: Number(nid) } : {}),
       id: Date.now() + Math.floor(Math.random() * 1000),
       userId: user.id, type, title, body, read: false,
       // reqId = رقم الطلب النصّي؛ التطبيق يفتح تفاصيل الطلب عند الضغط عليه.

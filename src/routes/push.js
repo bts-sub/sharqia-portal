@@ -31,7 +31,10 @@ router.get("/push/key", requireAuth, (req, res, next) => {
 router.post("/push/subscribe", requireAuth, (req, res, next) => {
   try {
     const sub = req.body?.subscription || req.body;
-    saveSubscription(req.user.id, sub, { ua: req.get("user-agent") });
+    saveSubscription(req.user.id, sub, {
+      ua: req.get("user-agent"),
+      dev: String(req.body?.deviceId || "").slice(0, 64),
+    });
     res.json({ ok: true, devices: countFor(req.user.id) });
   } catch (e) { next(e?.status ? e : badRequest(e?.message || "تعذّر تسجيل الجهاز")); }
 });

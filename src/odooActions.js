@@ -1486,6 +1486,149 @@ function assertSickWindow(params, empId) {
 }
 
 // ---------------------------------------------------------------------------
+// الطلبُ العامّ: عنوانٌ وتفاصيلُ مكتوبة
+//
+// ⚠️ عنوانُ الطلب يُبنى آليًّا من اسم الخدمة حين لا يُكتب، فلا يخرج فارغًا
+// أبدًا — ولذلك لم يُكتشف العيب: تصل الموارد البشرية «طلب موارد بشرية عام»
+// وجسمُه خالٍ، فلا يعرف من يقرؤه ما المطلوب ولا من يسأل. والطلبُ العامّ
+// بابٌ لما لا بابَ له، فهو أحقُّ الأبواب بأن يُشترط فيه الكلام.
+// ---------------------------------------------------------------------------
+const DESC_MIN = 10;
+
+function assertGeneralHasBody(params) {
+  if (String(params?.category || "") !== "general") return;
+  const title = String(params?.title || "").trim();
+  const svc = String(params?.service || "").trim();
+  const desc = String(params?.desc || params?.description || "").trim();
+  if (!title || title === svc || title === `طلب ${svc}`)
+    throw new Error("اكتب عنوانًا يقول ما تطلبه — لا يكفي اسمُ الخدمة.");
+  if (desc.length < DESC_MIN)
+    throw new Error(`اكتب تفاصيلَ طلبك (${DESC_MIN} أحرفٍ على الأقل) — `
+      + "من يقرؤه لا يعرف المطلوب بلا بيان.");
+}
+
+// ---------------------------------------------------------------------------
+// شكلُ الجوّال والبريد — في الخادم لا في الشاشة وحدَها
+//
+// ⚠️ الشاشةُ تُنقّي ما يُكتب في حقل الأرقام وتحدّ طولَه، ولا تفحص شيئًا عند
+// الإرسال: جوّالٌ من خمسة أرقامٍ يمرّ، والبريدُ حقلُ نصٍّ حرٍّ بلا نمط. ثمّ
+// يُكتب الرقمُ الناقص في بطاقة الموظف فلا يُبلَّغ صاحبُه بشيء.
+//
+// ولا يُفتَّش عن مفتاحٍ بعينه: الشاشاتُ ترسل الحقلَ باسمٍ (new) أو بسطرٍ له
+// label، فيُمشى على التفاصيل كلِّها ويُحكم بما يقوله الاسمُ عن محتواه.
+// ---------------------------------------------------------------------------
+// ⚠️ والجوّالُ يُفرَّق عن «رقم الاتصال»: الأوّلُ صيغةٌ واحدةٌ معروفة
+// (05 وثمانيةُ أرقام)، والثاني قد يكون هاتفَ بيتٍ أو مكتبٍ أو رقمًا
+// دوليًّا — فإلزامُه بصيغة الجوّال يردّ رقمًا صحيحًا. وهو حقلُ «رقم
+// التواصل أثناء الإجازة»: من سافر تركَ رقمَ فندقٍ أو أهلٍ لا جوّالَه.
+const MOBILE_KEY = /جوّ?ال|موبايل|mobile|cell/i;
+// ⚠️ والمفاتيحُ تأتي بالإنجليزيّة أيضًا: شاشةُ الإجازة ترسل `contact`
+//    لا «رقم التواصل» — فحصٌ على العربيّة وحدَها كان يمرّ عليه.
+const PHONE_KEY = /هاتف|تواصل|اتصال|phone|contact|tel\b/i;
+const EMAIL_KEY = /بريد|ايميل|إيميل|e-?mail/i;
+const SA_MOBILE = /^05\d{8}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
+
+function walkDetails(node, label, visit, depth = 0) {
+  if (depth > 4 || node == null) return;
+  if (Array.isArray(node)) {
+    for (const it of node) walkDetails(it, label, visit, depth + 1);
+    return;
+  }
+  if (typeof node === "object") {
+    const own = String(node.label || node.name || label || "");
+    for (const [k, v] of Object.entries(node)) {
+      if (k === "label" || k === "name") continue;
+      walkDetails(v, /^(new|value|val|confirm)$/.test(k) ? own : k, visit,
+        depth + 1);
+    }
+    return;
+  }
+  visit(String(label || ""), String(node));
+}
+
+function assertContactShapes(params) {
+  const bad = [];
+  walkDetails(params?.extra ?? {}, "", (key, val) => {
+    const v = val.trim();
+    if (!v) return;
+    if (EMAIL_KEY.test(key)) {
+      if (!EMAIL_RE.test(v)) bad.push(`البريد «${v}» غير صالح`);
+      return;
+    }
+    const isMobile = MOBILE_KEY.test(key);
+    if (!isMobile && !PHONE_KEY.test(key)) return;
+    const d = v.replace(/[^0-9]/g, "");
+    if (isMobile) {
+      // رقمٌ دوليٌّ مكتوبٌ بمفتاح السعودية يُقبل بصورته المحلّيّة
+      let local = d.replace(/^00966|^966/, "0");
+      if (local.length === 9 && local[0] === "5") local = "0" + local;
+      if (!SA_MOBILE.test(local))
+        bad.push(`رقم «${key}»: ${v} — عشرةُ أرقامٍ تبدأ بـ05`);
+      return;
+    }
+    // هاتفٌ عامّ: من تسعةٍ إلى خمسةَ عشرَ رقمًا (أرضيٌّ أو دوليّ)
+    if (d.length < 9 || d.length > 15)
+      bad.push(`رقم «${key}»: ${v} — رقمٌ غير مكتمل`);
+  });
+  if (bad.length) throw new Error(bad.join(" · "));
+}
+
+// ---------------------------------------------------------------------------
+// توقيعُ نموذج الإجازة
+//
+// ⚠️ كان الشرطُ معكوسًا في الشاشة: التوقيعُ يُرفَق **إن** أُشِّر المربّع،
+// وإلّا مضى الطلبُ بلا توقيع — فيخرج نموذجٌ معتمَدٌ بخانةٍ فارغة. والحارسُ
+// هنا على من له توقيعٌ مسجَّل: من لم يُسجّله بعد لا يُحجَب عن إجازته، بل
+// يُدَلّ على موضع تسجيله.
+// ---------------------------------------------------------------------------
+async function assertLeaveSigned(params, ctx) {
+  if (String(params?.category || "") !== "leave") return;
+  if (params?.extra?.signature || params?.signature) return;
+  const login = ctx?.user?.login;
+  if (!login) return;
+  try {
+    const [pu] = await odoo.searchRead("sharqia.portal.user",
+      [["login", "=", login]], ["signature"], { limit: 1 });
+    if (pu && pu.signature)
+      throw new Error("أشّر على إقرار التوقيع — نموذجُ الإجازة يصدر بتوقيعك.");
+  } catch (e) {
+    if (/أشّر/.test(e.message)) throw e;
+    console.warn("⚠️ تعذّر فحصُ توقيع الإجازة:", e.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ضغطتان على «إرسال» لا تُنشئان طلبين
+//
+// ⚠️ الواجهةُ ترسل idempotencyKey لكنّ قيمتَه UUID جديدٌ في كلِّ نداء، فالضغطتان
+// مفتاحان مختلفان — والخادمُ كان يرميه أصلًا. والبصمةُ هي الحلُّ الذي لا يعتمد
+// على أمانة المتصفّح: من أرسل الطلبَ نفسَه لصاحبه نفسِه في دقيقةٍ ونصف فهو
+// ضغطةٌ مكرّرةٌ لا طلبٌ ثانٍ، فيُردّ عليه رقمُ الأوّل.
+//
+// ووقع فعلًا ثلاثَ مرّاتٍ في القاعدة الحيّة (HR-REQ-00436/437 وغيرُها).
+// ---------------------------------------------------------------------------
+const TWIN_WINDOW_MS = 90000;
+
+async function findRecentTwin(owner, service, title) {
+  const since = new Date(Date.now() - TWIN_WINDOW_MS)
+    .toISOString().slice(0, 19).replace("T", " ");
+  try {
+    const recs = await odoo.searchRead("sharqia.portal.request",
+      [["employee_id", "=", owner], ["service", "=", service],
+        ["create_date", ">=", since]],
+      ["name", "state", "category", "service", "title"],
+      { limit: 5, order: "id desc" });
+    const want = String(title || "").trim();
+    return recs.find((r) => String(r.title || "").trim() === want) || null;
+  } catch (e) {
+    // فحصُ التكرار لا يمنع طلبًا: إن تعذّر، يمضي الإنشاءُ كما كان
+    console.warn("⚠️ تعذّر فحصُ تكرار الطلب:", e.message);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // صلاحيّةُ الخدمة — استثناءُ المستخدم المكتوب في أودو
 //
 // ⚠️ والفحصُ على الخادم لا في الشاشة: إخفاءُ زرٍّ ليس منعًا — يُنادى المسارُ
@@ -2084,7 +2227,8 @@ const actions = {
           // معرّف الموظف الكاتب يُمرَّر ليُستبعد من إشعار التعليق: كل التعليقات
           // تصل أودو من حساب خدمة واحد، فلا يميّزها env.user.
           msgId = await odoo.execKw("sharqia.portal.request", "post_app_comment",
-            [[id], author, text, empId || false]);
+            [[id], author, text, empId || false],
+            ctx?.silent ? { context: { sharqia_silent: true } } : {});
         } catch (e) {
           // أدون أقدم من 19.0.1.11.0 — نصٌّ صِرف أسلم من HTML مهرَّب
           if (!/post_app_comment/i.test(e.message || "")) throw e;
@@ -2880,6 +3024,9 @@ const actions = {
         // والخطاب يصدر باسمه، والموظف المستفيد لا أثر له إطلاقًا.
         await assertServiceAllowed(params, ctx);
         const owner = await resolveBeneficiary(params, ctx);
+        assertGeneralHasBody(params);
+        assertContactShapes(params);
+        await assertLeaveSigned(params, ctx);
         await assertAttendanceFixQuota(params, owner, ctx);
         await assertNoLeaveOverlap(params, owner);
         await assertHajjOnce(params, owner);
@@ -2927,7 +3074,23 @@ const actions = {
           if (summary) payload.description = `${payload.description || ""}\n\n— تفاصيل الطلب —\n${summary}`.trim();
         }
 
-        const id = await odoo.create("sharqia.portal.request", payload);
+        // توأمٌ أُنشئ قبل ثوانٍ بالخدمة والعنوان نفسِهما لصاحبه نفسِه = ضغطةٌ
+        // مكرّرة: يُردّ رقمُه ولا يُنشأ ثانٍ. ويُرجَّح المرفقُ على التوأم: من
+        // ضغط مرّتين لم يُرفق مرّتين.
+        const twin = await findRecentTwin(owner, payload.service, payload.title);
+        if (twin) {
+          console.warn(`↺ طلبٌ مكرّر: رُدَّ ${twin.name} بدل إنشاء ثانٍ`);
+          return { odooId: twin.id, ...twin, duplicate: true };
+        }
+
+        // ⚠️ حارسٌ صامتٌ للفحص على القاعدة الحيّة: إنشاءُ الطلب يُشعر صاحبَ
+        //    المرحلة في جهازه، وفحصُ سلوكٍ كان يُنشئ طلبًا تجريبيًّا فيصل
+        //    مديرًا إشعارٌ عن طلبٍ لا وجودَ له — وقع فعلًا. وما خرج إلى
+        //    الجهاز لا يُستعاد، فالحذفُ بعده لا يردّ شيئًا.
+        const id = ctx?.silent
+          ? await odoo.execKw("sharqia.portal.request", "create", [payload],
+            { context: { sharqia_silent: true } })
+          : await odoo.create("sharqia.portal.request", payload);
 
         // ارفع المرفقات التي وصلت بمحتواها واربطها بالطلب.
         // ⚠️ الرفع بالتوازي لا بالتتابع: كل مرفق كان يُرفع ثم يُنتظر ثم التالي،
@@ -3413,6 +3576,66 @@ const actions = {
         return { ok: true };
       },
       async () => ({ ok: true }),
+      { forceLiveErrors: true }
+    );
+  },
+
+  // ---------------------------------------------------------------------------
+  // إلغاءُ الطلب
+  //
+  // ⚠️ كان مسارُ الإلغاء وحدَه يذهب إلى المخزن المحلّيّ، والطلباتُ كلُّها في
+  // أودو — فلا يجدها فيرمي خطأً عاديًّا يُترجمه معالجُ الأخطاء إلى 500. وكانت
+  // الواجهةُ تبلع الخطأ وتُعلن الإلغاء، فيظنّ الموظفُ طلبَه ملغًى وهو ماضٍ في
+  // مساره إلى الاعتماد.
+  //
+  // ⚠️ ولا يُلغي أحدٌ طلبَ أحد: صاحبُ الطلب، أو الموارد البشرية والإدارة.
+  // ---------------------------------------------------------------------------
+  async "request.cancel"(params, ctx) {
+    const id = toEmpId(params?.id);
+    if (!id) throw new Error("معرّف الطلب مطلوب");
+    const reason = String(params?.reason || params?.note || "").trim();
+    const empId = Number(ctx?.user?.odooEmployeeId) || 0;
+    const role = ctx?.user?.role || "employee";
+    return withOdoo(
+      async () => {
+        const [rec] = await odoo.searchRead("sharqia.portal.request",
+          [["id", "=", id]], ["employee_id", "name", "state"], { limit: 1 });
+        if (!rec) { const e = new Error("الطلب غير موجود"); e.status = 404; throw e; }
+        const owner = rec.employee_id?.[0] || 0;
+        if (owner !== empId && !["hr", "admin"].includes(role)) {
+          const e = new Error("يُلغي الطلبَ صاحبُه أو الموارد البشرية");
+          e.status = 403;
+          throw e;
+        }
+        if (["done", "rejected", "cancelled"].includes(rec.state)) {
+          throw new Error(`الطلب ${rec.name} مغلقٌ أصلًا — لا يُلغى.`);
+        }
+        const kw = {
+          context: {
+            portal_actor: ctx?.user?.name || "",
+            portal_actor_login: ctx?.user?.login || "",
+            portal_actor_employee: empId,
+            ...(ctx?.silent ? { sharqia_silent: true } : {}),
+          },
+        };
+        try {
+          await odoo.execKw("sharqia.portal.request", "action_cancel", [[id]],
+            { ...kw, note: reason });
+        } catch (e) {
+          // ⚠️ أدونٌ أقدم من 19.0.1.217.0 لا يأخذ سببًا: الإلغاءُ يمضي بلا
+          //    سببٍ مسجَّلٍ أهونُ من طلبٍ لا يُلغى أصلًا — ونافذةُ بناء
+          //    أودو.sh تمتدّ دقائقَ بعد نشر البوابة.
+          if (!/unexpected keyword|note|positional argument/i.test(e.message || ""))
+            throw e;
+          console.warn("↷ إلغاءٌ بلا سببٍ مسجَّل (أدونٌ قديم):", e.message);
+          await odoo.execKw("sharqia.portal.request", "action_cancel", [[id]], kw);
+        }
+        const [after] = await odoo.searchRead("sharqia.portal.request",
+          [["id", "=", id]], ["name", "state"], { limit: 1 });
+        return { ok: true, odooId: id, name: after?.name || rec.name,
+          state: after?.state || "cancelled" };
+      },
+      async () => ({ ok: true, odooId: id, state: "cancelled" }),
       { forceLiveErrors: true }
     );
   },

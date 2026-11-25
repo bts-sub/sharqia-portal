@@ -175,6 +175,29 @@
     });
   }
 
+  // ⚠️ معرّفٌ ثابتٌ للجهاز، يُولَّد مرّةً ويبقى في مخزن المتصفّح:
+  //
+  //    الـendpoint ليس هويّةَ جهاز — المتصفّح يُنشئ واحدًا جديدًا عند إعادة
+  //    الاشتراك (تحديثُ عامل الخدمة، أو تبديلُ مفتاح VAPID)، والقديمُ يبقى
+  //    صالحًا عند مزوّد الدفع. ولا بصمةُ المتصفّح (user-agent) تصلح بديلًا:
+  //    تتغيّر مع كلِّ تحديثٍ للمتصفّح، وهذا ما وقع فعلًا — جهازٌ واحدٌ له
+  //    صفّان بإصدارَي كروم، فيصله الإشعارُ مرّتين.
+  //
+  //    وإن مُسح مخزنُ المتصفّح مُسح معه الاشتراكُ نفسُه، فمعرّفٌ جديدٌ مع
+  //    endpoint جديدٍ هو الصواب لا خطأ.
+  function deviceId() {
+    try {
+      var k = "sq-dev-id";
+      var v = localStorage.getItem(k);
+      if (!v) {
+        v = (crypto && crypto.randomUUID) ? crypto.randomUUID()
+          : String(Date.now()) + "-" + Math.random().toString(36).slice(2);
+        localStorage.setItem(k, v);
+      }
+      return v;
+    } catch (e) { return ""; }   // نافذةٌ خاصّةٌ أو مخزنٌ محجوب
+  }
+
   // تسجيل الجهاز عند الخادم. يُعاد في كل إقلاع: الاشتراك ينتهي من تلقاء نفسه
   // أحيانًا (تنظيف المتصفّح أو تبديل الجهاز)، والتسجيل بالـ endpoint فلا يتكرّر.
   function subscribe() {
@@ -188,8 +211,10 @@
         });
       });
     }).then(function (sub) {
-      return api("/api/push/subscribe", { subscription: sub.toJSON ? sub.toJSON() : sub })
-        .then(function (r) { return r.ok; });
+      return api("/api/push/subscribe", {
+        subscription: sub.toJSON ? sub.toJSON() : sub,
+        deviceId: deviceId(),
+      }).then(function (r) { return r.ok; });
     }).catch(function () { return false; });
   }
 

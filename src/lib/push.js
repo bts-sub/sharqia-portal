@@ -45,16 +45,35 @@ export function publicKey() {
   return loadKeys().publicKey;
 }
 
-/** تسجيل جهاز. المفتاح هو endpoint: الجهاز الواحد لا يتكرّر مهما أُعيد الاشتراك. */
+/** تسجيل جهاز. المفتاح هو endpoint: الجهاز الواحد لا يتكرّر مهما أُعيد الاشتراك.
+ *
+ * ⚠️ والـendpoint وحدَه لا يكفي: المتصفّحُ يُنشئ نهايةً **جديدة** عند إعادة
+ * الاشتراك (تحديثُ عامل الخدمة، أو مسحُ البيانات، أو تغييرُ مفتاح VAPID)
+ * والنهايةُ القديمةُ تبقى صالحةً عند مزوّد الدفع — فيصل الجهازَ الواحدَ
+ * إشعاران. ووقع فعلًا في بيانات السيرفر.
+ *
+ * فالمفتاحُ معرّفُ الجهاز (dev) الذي يُولّده التطبيقُ مرّةً ويحفظه في مخزن
+ * المتصفّح: نهايةٌ جديدةٌ لمعرّفٍ معروفٍ تُحلّ محلّ سابقتها.
+ *
+ * ⚠️ والبصمةُ (ua) بديلٌ احتياطيٌّ لا أصل: تتغيّر مع كلِّ تحديثٍ للمتصفّح —
+ * وهذا ما خلّف الصفوفَ الزائدةَ أصلًا. تُستعمل لمن لم يُرسل معرّفًا بعد
+ * (نسخةٌ قديمةٌ محفوظةٌ في جهازه)، ويزول أثرُها عند أوّل تسجيلٍ بمعرّف.
+ */
 export function saveSubscription(userId, sub, meta = {}) {
   if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) {
     throw new Error("اشتراك غير صالح");
   }
   const all = readAll("pushSubs");
-  const rest = all.filter((s) => s.endpoint !== sub.endpoint);
+  const ua = String(meta.ua || "").slice(0, 200);
+  const dev = String(meta.dev || "").slice(0, 64);
+  const same = (s) => (dev
+    ? s.dev === dev
+    : (ua && !s.dev && s.ua === ua));
+  const rest = all.filter((s) => s.endpoint !== sub.endpoint
+    && !(s.userId === userId && same(s)));
   rest.unshift({
-    endpoint: sub.endpoint, keys: sub.keys, userId,
-    ua: String(meta.ua || "").slice(0, 200),
+    endpoint: sub.endpoint, keys: sub.keys, userId, ua,
+    ...(dev ? { dev } : {}),
     at: new Date().toISOString(),
   });
   writeAll("pushSubs", rest);
